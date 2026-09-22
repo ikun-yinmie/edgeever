@@ -9,6 +9,7 @@ import { hashPassword, randomToken, verifyPassword } from "./auth-crypto";
 import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { apiError, notFound } from "./http-errors";
+import { getShareMissingMessage } from "./instance-settings-service";
 import { resolveObjectStorage } from "./object-storage";
 import { getAuditActor, getWorkspaceId, requireUser } from "./request-auth";
 import { contentDispositionAttachment, contentDispositionInline } from "./resource-service";
@@ -128,10 +129,16 @@ const loadShareGate = async (c: AppContext, token: string) =>
 const selectMemoShareSql = `SELECT memo_id, token, created_at, updated_at, password_hash
   FROM memo_shares WHERE memo_id = ? AND workspace_id = ?`;
 
+// Owner-customizable message returned when a public share is missing or revoked.
+const shareMissing = async (c: AppContext, fallback: string) => {
+  const custom = await getShareMissingMessage(c.env.storage.db);
+  return notFound(c, custom ?? fallback);
+};
+
 export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
   app.get("/api/public/shares/:token", async (c) => {
     const token = normalizeShareToken(c.req.param("token"));
-    if (!token) return notFound(c, "Shared note not found");
+    if (!token) return shareMissing(c, "Shared note not found");
 
     const row = await c.env.storage.db.prepare(
       `SELECT ms.workspace_id, m.title, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash
@@ -141,7 +148,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
        WHERE ms.token = ? AND m.is_deleted = 0
        LIMIT 1`
     ).bind(token).first<PublicMemoShareRow>();
-    if (!row) return notFound(c, "Shared note not found");
+    if (!row) return shareMissing(c, "Shared note not found");
     if (row.password_hash && !(await allowPasswordProtectedShare(c, token, row.workspace_id, row.password_hash))) {
       return sharePasswordRequired(c);
     }
@@ -178,10 +185,10 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
 
   app.post("/api/public/shares/:token/unlock", zValidator("json", PublicShareUnlockSchema), async (c) => {
     const token = normalizeShareToken(c.req.param("token"));
-    if (!token) return notFound(c, "Shared note not found");
+    if (!token) return shareMissing(c, "Shared note not found");
 
     const gate = await loadShareGate(c, token);
-    if (!gate) return notFound(c, "Shared note not found");
+    if (!gate) return shareMissing(c, "Shared note not found");
     if (!gate.password_hash) {
       return apiError(c, "share_password_not_required", "This shared note does not require a password", 400);
     }

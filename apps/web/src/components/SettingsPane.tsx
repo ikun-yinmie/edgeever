@@ -5,6 +5,7 @@ import {
   Info,
   LayoutTemplate,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -31,6 +32,7 @@ import { McpConfigCard } from "./settings/McpConfigCard";
 import { PreferenceCard } from "./settings/PreferenceCard";
 import { PasswordCard } from "./settings/PasswordCard";
 import { UserManagementCard } from "./settings/UserManagementCard";
+import { InstanceAdminCard } from "./settings/InstanceAdminCard";
 import { ObjectStorageCard } from "./settings/ObjectStorageCard";
 import { AiModelCard } from "./settings/AiModelCard";
 import { AiTagSuggestionPromptCard } from "./settings/AiTagSuggestionPromptCard";
@@ -67,7 +69,7 @@ const SettingsGroup = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-type TabKey = "general" | "users" | "data" | "ai" | "advanced" | "account";
+type TabKey = "general" | "users" | "admin" | "data" | "ai" | "advanced" | "account";
 
 interface TabItem {
   key: TabKey;
@@ -140,6 +142,15 @@ export const SettingsPane = ({
             key: "users" as const,
             label: t("users.title"),
             icon: Users,
+            colorClass: "text-emerald-700",
+            bgColorClass: "bg-emerald-50/80",
+            hoverColorClass: "hover:bg-emerald-50/40",
+            iconColorClass: "text-emerald-600",
+          },
+          {
+            key: "admin" as const,
+            label: t("settings.tabs.admin"),
+            icon: ShieldCheck,
             colorClass: "text-emerald-700",
             bgColorClass: "bg-emerald-50/80",
             hoverColorClass: "hover:bg-emerald-50/40",
@@ -220,6 +231,12 @@ export const SettingsPane = ({
         return isOwner ? (
           <SettingsGroup>
             <UserManagementCard demoMode={demoMode} />
+          </SettingsGroup>
+        ) : null;
+      case "admin":
+        return isOwner ? (
+          <SettingsGroup>
+            <InstanceAdminCard />
           </SettingsGroup>
         ) : null;
       case "data":

@@ -24,6 +24,7 @@ const EvernoteImportGuidePane = lazy(() =>
   import("@/components/EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
 const LoginScreen = lazy(() => import("@/components/LoginScreen").then((module) => ({ default: module.LoginScreen })));
+const RegisterScreen = lazy(() => import("@/components/RegisterScreen").then((module) => ({ default: module.RegisterScreen })));
 const WorkspaceApp = lazy(() => import("@/components/WorkspaceApp").then((module) => ({ default: module.WorkspaceApp })));
 const PublicSharePage = lazy(() => import("@/components/PublicSharePage").then((module) => ({ default: module.PublicSharePage })));
 
@@ -52,6 +53,62 @@ const EvernoteMigrationRoute = () => {
         }}
       />
     </Suspense>
+  );
+};
+
+const AuthEntryScreen = ({
+  desktopBridgeAvailable,
+  instanceUrl,
+  loginError,
+  loginPending,
+  onLogin,
+}: {
+  desktopBridgeAvailable: boolean;
+  instanceUrl?: string;
+  loginError: { message: string; diagnosticCode: string; rayId?: string } | null;
+  loginPending: boolean;
+  onLogin: (payload: { instanceUrl?: string; username: string; password: string }) => void;
+}) => {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [registrationConfig, setRegistrationConfig] = useState<{ enabled: boolean; codeRequired: boolean } | null>(null);
+
+  useEffect(() => {
+    if (mode !== "login" || registrationConfig) return;
+    let active = true;
+    api
+      .getRegistrationConfig()
+      .then((data) => {
+        if (active) setRegistrationConfig(data.registration);
+      })
+      .catch(() => {
+        if (active) setRegistrationConfig({ enabled: false, codeRequired: false });
+      });
+    return () => {
+      active = false;
+    };
+  }, [mode, registrationConfig]);
+
+  if (mode === "register") {
+    return (
+      <RegisterScreen
+        codeRequired={registrationConfig?.codeRequired ?? false}
+        onBackToLogin={() => setMode("login")}
+        onSuccess={() => {
+          setMode("login");
+          setRegistrationConfig(null);
+        }}
+      />
+    );
+  }
+
+  return (
+    <LoginScreen
+      error={loginError}
+      instanceUrl={instanceUrl}
+      isSubmitting={loginPending}
+      onRegister={registrationConfig?.enabled && !desktopBridgeAvailable ? () => setMode("register") : undefined}
+      onSubmit={onLogin}
+    />
   );
 };
 
@@ -187,11 +244,12 @@ const AuthenticatedWorkspace = () => {
   if (!session?.authenticated) {
     return (
       <Suspense fallback={<AuthLoadingScreen />}>
-        <LoginScreen
-          error={loginError}
+        <AuthEntryScreen
+          desktopBridgeAvailable={Boolean(desktopBridge?.isAvailable)}
           instanceUrl={desktopBridge?.isAvailable ? configuredDesktopApiBaseUrl : undefined}
-          isSubmitting={loginMutation.isPending}
-          onSubmit={(payload) => loginMutation.mutate(payload)}
+          loginError={loginError}
+          loginPending={loginMutation.isPending}
+          onLogin={(payload) => loginMutation.mutate(payload)}
         />
       </Suspense>
     );

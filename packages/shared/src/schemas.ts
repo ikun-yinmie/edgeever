@@ -192,6 +192,50 @@ export const UserCreateSchema = z.object({
   password: z.string().min(8).max(512),
 });
 
+export const RegisterSchema = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .min(2, "Username must be at least 2 characters.")
+      .max(80)
+      .regex(/^[a-zA-Z0-9_-]+$/, "Username may only contain letters, numbers, dashes and underscores."),
+    displayName: z.string().trim().max(80).optional(),
+    email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
+    password: z.string().min(8, "Password must be at least 8 characters.").max(512),
+    emailCode: z.string().trim().min(1).max(12),
+  })
+  .refine((input) => !input.displayName || !input.displayName.includes(":"), {
+    message: "Display name may not contain colons.",
+    path: ["displayName"],
+  });
+
+export const RegistrationEmailCodeRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
+});
+
+export const InstanceAdminSettingsUpdateSchema = z
+  .object({
+    registrationEnabled: z.boolean().optional(),
+    registrationCodeRequired: z.boolean().optional(),
+    smtpHost: z.string().trim().max(253).nullable().optional(),
+    smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
+    smtpSecure: z.boolean().optional(),
+    smtpUsername: z.string().trim().max(200).nullable().optional(),
+    smtpPassword: z.string().max(512).nullable().optional(),
+    smtpFromAddress: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("SMTP from address must be a valid email.")
+      .max(200)
+      .nullable()
+      .optional(),
+    smtpFromName: z.string().trim().max(80).nullable().optional(),
+    shareMissingMessage: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
 export const UserUpdateSchema = z
   .object({
     displayName: z.string().trim().max(80).nullable().optional(),

@@ -180,6 +180,47 @@ export type UserResponse = {
   user: InstanceUser;
 };
 
+export type RegistrationConfigResponse = {
+  registration: {
+    enabled: boolean;
+    codeRequired: boolean;
+  };
+};
+
+export type InstanceAdminSettings = {
+  registrationEnabled: boolean;
+  registrationCodeRequired: boolean;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpSecure: boolean;
+  smtpUsername: string | null;
+  smtpFromAddress: string | null;
+  smtpFromName: string | null;
+  shareMissingMessage: string | null;
+};
+
+export type InstanceAdminSettingsResponse = {
+  settings: InstanceAdminSettings;
+};
+
+export type InstanceAdminSettingsUpdatePayload = {
+  registrationEnabled?: boolean;
+  registrationCodeRequired?: boolean;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpSecure?: boolean;
+  smtpUsername?: string | null;
+  smtpPassword?: string | null;
+  smtpFromAddress?: string | null;
+  smtpFromName?: string | null;
+  shareMissingMessage?: string | null;
+};
+
+export type RegistrationCodeResponse = {
+  ok: true;
+  expiresInMinutes: number;
+};
+
 export type ListLoginDeviceSessionsResponse = {
   sessions: LoginDeviceSession[];
 };
@@ -1162,6 +1203,36 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     createUser: (payload: { username: string; displayName?: string | null; password: string }) =>
       request<UserResponse>("/api/v1/users", {
         method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    getRegistrationConfig: () =>
+      request<RegistrationConfigResponse>("/api/v1/public/registration"),
+
+    requestRegistrationCode: (payload: { email: string }) =>
+      request<RegistrationCodeResponse>("/api/v1/public/registration/code", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    register: (payload: {
+      username: string;
+      displayName?: string;
+      email: string;
+      password: string;
+      emailCode: string;
+    }) =>
+      request<{ ok: true }>("/api/v1/public/registration/register", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    getInstanceAdminSettings: () =>
+      request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings"),
+
+    updateInstanceAdminSettings: (payload: InstanceAdminSettingsUpdatePayload) =>
+      request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings", {
+        method: "PATCH",
         body: JSON.stringify(payload),
       }),
 
