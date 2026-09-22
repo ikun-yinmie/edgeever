@@ -58,6 +58,14 @@ export const InstanceAdminCard = () => {
     saveMutation.mutate({
       registrationEnabled: draft.registrationEnabled,
       registrationCodeRequired: draft.registrationCodeRequired,
+      registrationInviteRequired: draft.registrationInviteRequired,
+      codeTtlSeconds: draft.codeTtlSeconds,
+      codeResendCooldownSeconds: draft.codeResendCooldownSeconds,
+      codeBindIp: draft.codeBindIp,
+      codeBindDevice: draft.codeBindDevice,
+      abuseGuardEnabled: draft.abuseGuardEnabled,
+      codeIpHourlyLimit: draft.codeIpHourlyLimit,
+      codeIpDailyLimit: draft.codeIpDailyLimit,
       smtpHost: draft.smtpHost,
       smtpPort: draft.smtpPort,
       smtpSecure: draft.smtpSecure,
@@ -103,6 +111,91 @@ export const InstanceAdminCard = () => {
               onCheckedChange={(checked) => update({ registrationCodeRequired: checked })}
             />
           </div>
+          <div className={cn("flex items-center justify-between gap-4 transition", draft.registrationEnabled ? "" : "pointer-events-none opacity-40")}>
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.inviteRequired")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.inviteRequiredHint")}</p>
+            </div>
+            <Switch
+              checked={draft.registrationInviteRequired}
+              onCheckedChange={(checked) => update({ registrationInviteRequired: checked })}
+            />
+          </div>
+        </section>
+
+        <section className={cn("space-y-3 transition", draft.registrationEnabled && draft.registrationCodeRequired ? "" : "pointer-events-none opacity-40")}>
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("adminConsole.codePolicySection")}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("adminConsole.codeTtlSeconds")}>
+              <Input
+                className="h-9"
+                min={30}
+                max={3600}
+                onChange={(event) => update({ codeTtlSeconds: event.target.value ? Number(event.target.value) : draft.codeTtlSeconds })}
+                type="number"
+                value={draft.codeTtlSeconds}
+              />
+            </Field>
+            <Field label={t("adminConsole.codeResendCooldownSeconds")}>
+              <Input
+                className="h-9"
+                min={10}
+                max={3600}
+                onChange={(event) => update({ codeResendCooldownSeconds: event.target.value ? Number(event.target.value) : draft.codeResendCooldownSeconds })}
+                type="number"
+                value={draft.codeResendCooldownSeconds}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-slate-500">{t("adminConsole.codePolicyHint")}</p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.codeBindIp")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.codeBindIpHint")}</p>
+            </div>
+            <Switch checked={draft.codeBindIp} onCheckedChange={(checked) => update({ codeBindIp: checked })} />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.codeBindDevice")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.codeBindDeviceHint")}</p>
+            </div>
+            <Switch checked={draft.codeBindDevice} onCheckedChange={(checked) => update({ codeBindDevice: checked })} />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("adminConsole.abuseSection")}</h3>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.abuseGuardEnabled")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.abuseGuardEnabledHint")}</p>
+            </div>
+            <Switch checked={draft.abuseGuardEnabled} onCheckedChange={(checked) => update({ abuseGuardEnabled: checked })} />
+          </div>
+          <div className={cn("grid gap-3 sm:grid-cols-2 transition", draft.abuseGuardEnabled ? "" : "pointer-events-none opacity-40")}>
+            <Field label={t("adminConsole.codeIpHourlyLimit")}>
+              <Input
+                className="h-9"
+                min={1}
+                max={1000}
+                onChange={(event) => update({ codeIpHourlyLimit: event.target.value ? Number(event.target.value) : draft.codeIpHourlyLimit })}
+                type="number"
+                value={draft.codeIpHourlyLimit}
+              />
+            </Field>
+            <Field label={t("adminConsole.codeIpDailyLimit")}>
+              <Input
+                className="h-9"
+                min={1}
+                max={10000}
+                onChange={(event) => update({ codeIpDailyLimit: event.target.value ? Number(event.target.value) : draft.codeIpDailyLimit })}
+                type="number"
+                value={draft.codeIpDailyLimit}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-slate-500">{t("adminConsole.abuseHint")}</p>
         </section>
 
         <section className={cn("space-y-3 transition", draft.registrationEnabled && draft.registrationCodeRequired ? "" : "pointer-events-none opacity-40")}>

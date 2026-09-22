@@ -8,6 +8,14 @@ export type InstanceSettingsRow = {
   id: string;
   registration_enabled: number;
   registration_code_required: number;
+  registration_invite_required: number;
+  code_ttl_seconds: number;
+  code_resend_cooldown_seconds: number;
+  code_bind_ip: number;
+  code_bind_device: number;
+  abuse_guard_enabled: number;
+  code_ip_hourly_limit: number;
+  code_ip_daily_limit: number;
   smtp_host: string | null;
   smtp_port: number | null;
   smtp_secure: number;
@@ -37,6 +45,14 @@ export type InstanceRegistrationConfig = {
 export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   registrationEnabled: Boolean(row.registration_enabled),
   registrationCodeRequired: Boolean(row.registration_code_required),
+  registrationInviteRequired: Boolean(row.registration_invite_required),
+  codeTtlSeconds: row.code_ttl_seconds,
+  codeResendCooldownSeconds: row.code_resend_cooldown_seconds,
+  codeBindIp: Boolean(row.code_bind_ip),
+  codeBindDevice: Boolean(row.code_bind_device),
+  abuseGuardEnabled: Boolean(row.abuse_guard_enabled),
+  codeIpHourlyLimit: row.code_ip_hourly_limit,
+  codeIpDailyLimit: row.code_ip_daily_limit,
   smtpHost: row.smtp_host,
   smtpPort: row.smtp_port,
   smtpSecure: Boolean(row.smtp_secure),
@@ -47,8 +63,10 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
 });
 
 const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_required,
-  smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password_encrypted,
-  smtp_from_address, smtp_from_name, share_missing_message, updated_at
+  registration_invite_required, code_ttl_seconds, code_resend_cooldown_seconds,
+  code_bind_ip, code_bind_device, abuse_guard_enabled, code_ip_hourly_limit,
+  code_ip_daily_limit, smtp_host, smtp_port, smtp_secure, smtp_username,
+  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, updated_at
   FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`;
 
 export const getInstanceSettingsRow = async (
@@ -60,6 +78,14 @@ export const getInstanceSettingsRow = async (
     id: INSTANCE_SETTINGS_ID,
     registration_enabled: 0,
     registration_code_required: 0,
+    registration_invite_required: 0,
+    code_ttl_seconds: 60,
+    code_resend_cooldown_seconds: 60,
+    code_bind_ip: 0,
+    code_bind_device: 0,
+    abuse_guard_enabled: 1,
+    code_ip_hourly_limit: 10,
+    code_ip_daily_limit: 30,
     smtp_host: null,
     smtp_port: null,
     smtp_secure: 1,

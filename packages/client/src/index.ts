@@ -184,12 +184,46 @@ export type RegistrationConfigResponse = {
   registration: {
     enabled: boolean;
     codeRequired: boolean;
+    inviteRequired: boolean;
+  };
+};
+
+export type RegistrationInvite = {
+  id: string;
+  codeHint: string;
+  note: string | null;
+  maxUses: number;
+  useCount: number;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type ListRegistrationInvitesResponse = {
+  invites: RegistrationInvite[];
+};
+
+export type CreateRegistrationInviteResponse = {
+  invite: {
+    id: string;
+    code: string;
+    codeHint: string;
+    maxUses: number;
+    expiresAt: string | null;
   };
 };
 
 export type InstanceAdminSettings = {
   registrationEnabled: boolean;
   registrationCodeRequired: boolean;
+  registrationInviteRequired: boolean;
+  codeTtlSeconds: number;
+  codeResendCooldownSeconds: number;
+  codeBindIp: boolean;
+  codeBindDevice: boolean;
+  abuseGuardEnabled: boolean;
+  codeIpHourlyLimit: number;
+  codeIpDailyLimit: number;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpSecure: boolean;
@@ -206,6 +240,14 @@ export type InstanceAdminSettingsResponse = {
 export type InstanceAdminSettingsUpdatePayload = {
   registrationEnabled?: boolean;
   registrationCodeRequired?: boolean;
+  registrationInviteRequired?: boolean;
+  codeTtlSeconds?: number;
+  codeResendCooldownSeconds?: number;
+  codeBindIp?: boolean;
+  codeBindDevice?: boolean;
+  abuseGuardEnabled?: boolean;
+  codeIpHourlyLimit?: number;
+  codeIpDailyLimit?: number;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpSecure?: boolean;
@@ -219,6 +261,7 @@ export type InstanceAdminSettingsUpdatePayload = {
 export type RegistrationCodeResponse = {
   ok: true;
   expiresInMinutes: number;
+  cooldownSeconds: number;
 };
 
 export type ListLoginDeviceSessionsResponse = {
@@ -1209,7 +1252,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     getRegistrationConfig: () =>
       request<RegistrationConfigResponse>("/api/v1/public/registration"),
 
-    requestRegistrationCode: (payload: { email: string }) =>
+    requestRegistrationCode: (payload: { email: string; deviceId?: string }) =>
       request<RegistrationCodeResponse>("/api/v1/public/registration/code", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -1221,10 +1264,26 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       email: string;
       password: string;
       emailCode: string;
+      inviteCode?: string;
+      deviceId?: string;
     }) =>
       request<{ ok: true }>("/api/v1/public/registration/register", {
         method: "POST",
         body: JSON.stringify(payload),
+      }),
+
+    listRegistrationInvites: () =>
+      request<ListRegistrationInvitesResponse>("/api/v1/admin/registration/invites"),
+
+    createRegistrationInvite: (payload: { note?: string | null; maxUses?: number; expiresInDays?: number | null }) =>
+      request<CreateRegistrationInviteResponse>("/api/v1/admin/registration/invites", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    revokeRegistrationInvite: (inviteId: string) =>
+      request<{ ok: true }>(`/api/v1/admin/registration/invites/${encodeURIComponent(inviteId)}/revoke`, {
+        method: "POST",
       }),
 
     getInstanceAdminSettings: () =>

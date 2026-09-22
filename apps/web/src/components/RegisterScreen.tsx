@@ -3,23 +3,25 @@ import { UserPlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiRequestError, api } from "@/lib/api";
+import { ApiRequestError, api, getOrCreateClientDeviceId } from "@/lib/api";
 
 interface RegisterScreenProps {
   codeRequired: boolean;
+  inviteRequired: boolean;
   onSuccess: () => void;
   onBackToLogin: () => void;
 }
 
-const RESEND_COOLDOWN_SECONDS = 60;
+const DEFAULT_RESEND_COOLDOWN_SECONDS = 60;
 
-export const RegisterScreen = ({ codeRequired, onSuccess, onBackToLogin }: RegisterScreenProps) => {
+export const RegisterScreen = ({ codeRequired, inviteRequired, onSuccess, onBackToLogin }: RegisterScreenProps) => {
   const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailCode, setEmailCode] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeSent, setCodeSent] = useState(false);
@@ -45,9 +47,12 @@ export const RegisterScreen = ({ codeRequired, onSuccess, onBackToLogin }: Regis
     setSendingCode(true);
     setCodeError(null);
     try {
-      await api.requestRegistrationCode({ email: email.trim() });
+      const result = await api.requestRegistrationCode({
+        email: email.trim(),
+        deviceId: getOrCreateClientDeviceId(),
+      });
       setCodeSent(true);
-      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setCooldown(result.cooldownSeconds > 0 ? result.cooldownSeconds : DEFAULT_RESEND_COOLDOWN_SECONDS);
     } catch (error) {
       setCodeError(mapError(error, t("register.codeSendFailed")));
     } finally {
@@ -57,7 +62,15 @@ export const RegisterScreen = ({ codeRequired, onSuccess, onBackToLogin }: Regis
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!username.trim() || !email.trim() || password.length < 8 || (codeRequired && !emailCode.trim())) return;
+    if (
+      !username.trim() ||
+      !email.trim() ||
+      password.length < 8 ||
+      (codeRequired && !emailCode.trim()) ||
+      (inviteRequired && !inviteCode.trim())
+    ) {
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -67,6 +80,8 @@ export const RegisterScreen = ({ codeRequired, onSuccess, onBackToLogin }: Regis
         email: email.trim(),
         password,
         emailCode: emailCode.trim() || "-",
+        ...(inviteRequired ? { inviteCode: inviteCode.trim() } : {}),
+        deviceId: getOrCreateClientDeviceId(),
       });
       onSuccess();
     } catch (error) {
@@ -157,6 +172,21 @@ export const RegisterScreen = ({ codeRequired, onSuccess, onBackToLogin }: Regis
                 required
                 value={emailCode}
               />
+            </label>
+          ) : null}
+
+          {inviteRequired ? (
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold text-slate-600">{t("register.inviteCode")}</span>
+              <Input
+                autoComplete="off"
+                className="h-10 font-mono tracking-wide"
+                onChange={(event) => setInviteCode(event.target.value)}
+                placeholder="EE-XXXX-XXXX-XXXX"
+                required
+                value={inviteCode}
+              />
+              <span className="block text-xs text-slate-500">{t("register.inviteCodeHint")}</span>
             </label>
           ) : null}
 

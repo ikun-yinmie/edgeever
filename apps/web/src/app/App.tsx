@@ -71,7 +71,7 @@ const AuthEntryScreen = ({
   onLogin: (payload: { instanceUrl?: string; username: string; password: string }) => void;
 }) => {
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [registrationConfig, setRegistrationConfig] = useState<{ enabled: boolean; codeRequired: boolean } | null>(null);
+  const [registrationConfig, setRegistrationConfig] = useState<{ enabled: boolean; codeRequired: boolean; inviteRequired: boolean } | null>(null);
 
   useEffect(() => {
     if (mode !== "login" || registrationConfig) return;
@@ -82,7 +82,7 @@ const AuthEntryScreen = ({
         if (active) setRegistrationConfig(data.registration);
       })
       .catch(() => {
-        if (active) setRegistrationConfig({ enabled: false, codeRequired: false });
+        if (active) setRegistrationConfig({ enabled: false, codeRequired: false, inviteRequired: false });
       });
     return () => {
       active = false;
@@ -93,6 +93,7 @@ const AuthEntryScreen = ({
     return (
       <RegisterScreen
         codeRequired={registrationConfig?.codeRequired ?? false}
+        inviteRequired={registrationConfig?.inviteRequired ?? false}
         onBackToLogin={() => setMode("login")}
         onSuccess={() => {
           setMode("login");

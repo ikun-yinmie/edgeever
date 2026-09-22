@@ -15,6 +15,7 @@ export type {
   InstanceAdminSettingsUpdatePayload,
   InstanceHealth,
   InstanceRelease,
+  RegistrationInvite,
   JsonBackupPage,
   MarkdownExportPage,
   MemoShareResponse,

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { InstanceAdminCard } from "@/components/settings/InstanceAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
+import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
 import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
@@ -90,7 +91,10 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
             {activeTab === "members" ? (
               <UserManagementCard demoMode={false} />
             ) : activeTab === "registration" ? (
-              <InstanceAdminCard />
+              <>
+                <InstanceAdminCard />
+                <RegistrationInvitesCard />
+              </>
             ) : (
               <ObjectStorageCard demoMode={false} />
             )}

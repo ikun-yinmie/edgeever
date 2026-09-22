@@ -204,6 +204,8 @@ export const RegisterSchema = z
     email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
     password: z.string().min(8, "Password must be at least 8 characters.").max(512),
     emailCode: z.string().trim().min(1).max(12),
+    inviteCode: z.string().trim().min(4).max(80).optional(),
+    deviceId: z.string().trim().min(8).max(160).optional(),
   })
   .refine((input) => !input.displayName || !input.displayName.includes(":"), {
     message: "Display name may not contain colons.",
@@ -212,6 +214,13 @@ export const RegisterSchema = z
 
 export const RegistrationEmailCodeRequestSchema = z.object({
   email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
+  deviceId: z.string().trim().min(8).max(160).optional(),
+});
+
+export const RegistrationInviteCreateSchema = z.object({
+  note: z.string().trim().max(200).nullable().optional(),
+  maxUses: z.number().int().min(1).max(1000).default(1),
+  expiresInDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 
 export const InstanceAdminSettingsUpdateSchema = z
@@ -233,6 +242,14 @@ export const InstanceAdminSettingsUpdateSchema = z
       .optional(),
     smtpFromName: z.string().trim().max(80).nullable().optional(),
     shareMissingMessage: z.string().trim().max(500).nullable().optional(),
+    registrationInviteRequired: z.boolean().optional(),
+    codeTtlSeconds: z.number().int().min(30).max(3600).optional(),
+    codeResendCooldownSeconds: z.number().int().min(10).max(3600).optional(),
+    codeBindIp: z.boolean().optional(),
+    codeBindDevice: z.boolean().optional(),
+    abuseGuardEnabled: z.boolean().optional(),
+    codeIpHourlyLimit: z.number().int().min(1).max(1000).optional(),
+    codeIpDailyLimit: z.number().int().min(1).max(10000).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 
@@ -472,3 +489,4 @@ export type AiPromptTemplateCreateInput = z.input<typeof AiPromptTemplateCreateS
 export type AiPromptTemplateUpdateInput = z.infer<typeof AiPromptTemplateUpdateSchema>;
 export type MemoShareUpdateInput = z.infer<typeof MemoShareUpdateSchema>;
 export type PublicShareUnlockInput = z.infer<typeof PublicShareUnlockSchema>;
+export type RegistrationInviteCreateInput = z.input<typeof RegistrationInviteCreateSchema>;
