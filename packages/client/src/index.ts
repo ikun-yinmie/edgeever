@@ -224,6 +224,9 @@ export type InstanceAdminSettings = {
   abuseGuardEnabled: boolean;
   codeIpHourlyLimit: number;
   codeIpDailyLimit: number;
+  emailAllowlistEnabled: boolean;
+  emailAllowlist: string | null;
+  emailBlocklist: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   smtpSecure: boolean;
@@ -248,6 +251,9 @@ export type InstanceAdminSettingsUpdatePayload = {
   abuseGuardEnabled?: boolean;
   codeIpHourlyLimit?: number;
   codeIpDailyLimit?: number;
+  emailAllowlistEnabled?: boolean;
+  emailAllowlist?: string | null;
+  emailBlocklist?: string | null;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpSecure?: boolean;

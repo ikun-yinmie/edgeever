@@ -66,6 +66,9 @@ export const InstanceAdminCard = () => {
       abuseGuardEnabled: draft.abuseGuardEnabled,
       codeIpHourlyLimit: draft.codeIpHourlyLimit,
       codeIpDailyLimit: draft.codeIpDailyLimit,
+      emailAllowlistEnabled: draft.emailAllowlistEnabled,
+      emailAllowlist: draft.emailAllowlist,
+      emailBlocklist: draft.emailBlocklist,
       smtpHost: draft.smtpHost,
       smtpPort: draft.smtpPort,
       smtpSecure: draft.smtpSecure,
@@ -121,6 +124,39 @@ export const InstanceAdminCard = () => {
               onCheckedChange={(checked) => update({ registrationInviteRequired: checked })}
             />
           </div>
+        </section>
+
+        <section className={cn("space-y-3 transition", draft.registrationEnabled ? "" : "pointer-events-none opacity-40")}>
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("adminConsole.emailPolicySection")}</h3>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.emailAllowlistEnabled")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.emailAllowlistEnabledHint")}</p>
+            </div>
+            <Switch
+              checked={draft.emailAllowlistEnabled}
+              onCheckedChange={(checked) => update({ emailAllowlistEnabled: checked })}
+            />
+          </div>
+          <Field label={t("adminConsole.emailAllowlist")}>
+            <textarea
+              className="min-h-[72px] w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
+              maxLength={4000}
+              onChange={(event) => update({ emailAllowlist: event.target.value || null })}
+              placeholder={"qq.com\nfriend@example.com"}
+              value={draft.emailAllowlist ?? ""}
+            />
+          </Field>
+          <Field label={t("adminConsole.emailBlocklist")}>
+            <textarea
+              className="min-h-[72px] w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
+              maxLength={4000}
+              onChange={(event) => update({ emailBlocklist: event.target.value || null })}
+              placeholder={"gmail.com\ngooglemail.com"}
+              value={draft.emailBlocklist ?? ""}
+            />
+          </Field>
+          <p className="text-xs text-slate-500">{t("adminConsole.emailPolicyHint")}</p>
         </section>
 
         <section className={cn("space-y-3 transition", draft.registrationEnabled && draft.registrationCodeRequired ? "" : "pointer-events-none opacity-40")}>

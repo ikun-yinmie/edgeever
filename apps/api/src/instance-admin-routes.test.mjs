@@ -324,6 +324,96 @@ describe("registration invite codes", () => {
   });
 });
 
+describe("registration email policy", () => {
+  test("refuses a blocked domain before any email is delivered", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_code_required: 1, email_blocklist: "gmail.com" });
+
+    const response = await jsonRequest(app, "/api/v1/public/registration/code", { email: "someone@gmail.com" }, environment);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: "email_domain_blocked" } });
+    expect(sqlite.query("SELECT COUNT(*) AS count FROM email_verifications").get().count).toBe(0);
+    sqlite.close();
+  });
+
+  test("refuses an email outside the allowlist", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, {
+      registration_enabled: 1,
+      registration_code_required: 1,
+      email_allowlist_enabled: 1,
+      email_allowlist: "qq.com",
+    });
+
+    const response = await jsonRequest(app, "/api/v1/public/registration/code", { email: "someone@gmail.com" }, environment);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: "email_domain_not_allowed" } });
+    sqlite.close();
+  });
+
+  test("lets an allowlisted domain reach email delivery", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, {
+      registration_enabled: 1,
+      registration_code_required: 1,
+      email_allowlist_enabled: 1,
+      email_allowlist: "qq.com",
+    });
+    await configureSmtp(sqlite);
+
+    const response = await jsonRequest(app, "/api/v1/public/registration/code", { email: "someone@qq.com" }, environment);
+
+    expect(response.status).not.toBe(403);
+    expect(sqlite.query("SELECT COUNT(*) AS count FROM email_verifications").get().count).toBe(1);
+    sqlite.close();
+  });
+
+  test("blocks a disallowed domain at registration time as well", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_code_required: 1, email_blocklist: "gmail.com" });
+    await seedCode(sqlite, { email: "someone@gmail.com", code: "777777" });
+
+    const response = await jsonRequest(
+      app,
+      "/api/v1/public/registration/register",
+      registerPayload({ email: "someone@gmail.com", emailCode: "777777" }),
+      environment,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: "email_domain_blocked" } });
+    expect(sqlite.query("SELECT COUNT(*) AS count FROM users").get().count).toBe(0);
+    sqlite.close();
+  });
+
+  test("normalizes the saved allowlist and blocklist entries", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ emailAllowlist: " QQ.com \n@GMAIL.com, qq.com ", emailBlocklist: " spam.example " }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.settings.emailAllowlist).toBe("qq.com\ngmail.com");
+    expect(body.settings.emailBlocklist).toBe("spam.example");
+    sqlite.close();
+  });
+});
+
 describe("email verification code policy", () => {
   test("stores the configured lifetime and reports the resend cooldown", async () => {
     const { sqlite, environment } = createEnvironment();

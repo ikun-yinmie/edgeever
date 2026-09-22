@@ -250,6 +250,9 @@ export const InstanceAdminSettingsUpdateSchema = z
     abuseGuardEnabled: z.boolean().optional(),
     codeIpHourlyLimit: z.number().int().min(1).max(1000).optional(),
     codeIpDailyLimit: z.number().int().min(1).max(10000).optional(),
+    emailAllowlistEnabled: z.boolean().optional(),
+    emailAllowlist: z.string().max(4000).nullable().optional(),
+    emailBlocklist: z.string().max(4000).nullable().optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 

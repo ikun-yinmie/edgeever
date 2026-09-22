@@ -16,6 +16,9 @@ export type InstanceSettingsRow = {
   abuse_guard_enabled: number;
   code_ip_hourly_limit: number;
   code_ip_daily_limit: number;
+  email_allowlist_enabled: number;
+  email_allowlist: string | null;
+  email_blocklist: string | null;
   smtp_host: string | null;
   smtp_port: number | null;
   smtp_secure: number;
@@ -53,6 +56,9 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   abuseGuardEnabled: Boolean(row.abuse_guard_enabled),
   codeIpHourlyLimit: row.code_ip_hourly_limit,
   codeIpDailyLimit: row.code_ip_daily_limit,
+  emailAllowlistEnabled: Boolean(row.email_allowlist_enabled),
+  emailAllowlist: row.email_allowlist,
+  emailBlocklist: row.email_blocklist,
   smtpHost: row.smtp_host,
   smtpPort: row.smtp_port,
   smtpSecure: Boolean(row.smtp_secure),
@@ -65,7 +71,8 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
 const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_required,
   registration_invite_required, code_ttl_seconds, code_resend_cooldown_seconds,
   code_bind_ip, code_bind_device, abuse_guard_enabled, code_ip_hourly_limit,
-  code_ip_daily_limit, smtp_host, smtp_port, smtp_secure, smtp_username,
+  code_ip_daily_limit, email_allowlist_enabled, email_allowlist, email_blocklist,
+  smtp_host, smtp_port, smtp_secure, smtp_username,
   smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, updated_at
   FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`;
 
@@ -86,6 +93,9 @@ export const getInstanceSettingsRow = async (
     abuse_guard_enabled: 1,
     code_ip_hourly_limit: 10,
     code_ip_daily_limit: 30,
+    email_allowlist_enabled: 0,
+    email_allowlist: null,
+    email_blocklist: null,
     smtp_host: null,
     smtp_port: null,
     smtp_secure: 1,

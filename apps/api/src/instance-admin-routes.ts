@@ -9,6 +9,7 @@ import type { Hono } from "hono";
 import { audit, auditStatement } from "./audit";
 import type { AppContext, AppEnv, AuthContext } from "./api-context";
 import { hashPassword } from "./auth-crypto";
+import { evaluateEmailPolicy, parseEmailPolicyEntries } from "./email-policy";
 import { createId, isoNow } from "./entity-utils";
 import { apiError, badRequest, conflict, forbidden, tooManyRequests, unauthorized } from "./http-errors";
 import { INSTANCE_SETTINGS_ID } from "./instance-settings-service";
@@ -130,6 +131,21 @@ export const registerInstanceAdminRoutes = (
       }
 
       const { email, deviceId } = context.req.valid("json");
+
+      // Email policy runs before delivery so unwanted domains never consume an email.
+      const verdict = evaluateEmailPolicy({
+        email,
+        allowlistEnabled: Boolean(settings.email_allowlist_enabled),
+        allowlist: settings.email_allowlist,
+        blocklist: settings.email_blocklist,
+      });
+      if (verdict === "blocked") {
+        return apiError(context, "email_domain_blocked", "This email domain is not allowed to register.", 403);
+      }
+      if (verdict === "not-allowlisted") {
+        return apiError(context, "email_domain_not_allowed", "This email is not on the registration allowlist.", 403);
+      }
+
       const smtpPassword = await getSmtpPassword(context.env, settings);
       if (!settings.smtp_host || !settings.smtp_from_address || !smtpPassword) {
         return apiError(context, "smtp_not_configured", "Email delivery is not configured by the administrator.", 400);
@@ -223,6 +239,19 @@ export const registerInstanceAdminRoutes = (
 
     const input = context.req.valid("json");
     const ip = getRequestIp(context);
+
+    const verdict = evaluateEmailPolicy({
+      email: input.email,
+      allowlistEnabled: Boolean(settings.email_allowlist_enabled),
+      allowlist: settings.email_allowlist,
+      blocklist: settings.email_blocklist,
+    });
+    if (verdict === "blocked") {
+      return apiError(context, "email_domain_blocked", "This email domain is not allowed to register.", 403);
+    }
+    if (verdict === "not-allowlisted") {
+      return apiError(context, "email_domain_not_allowed", "This email is not on the registration allowlist.", 403);
+    }
 
     // Abuse guard: per-IP registration caps (switchable by the admin).
     if (settings.abuse_guard_enabled && ip) {
@@ -372,6 +401,15 @@ export const registerInstanceAdminRoutes = (
       if (input.abuseGuardEnabled !== undefined) setColumn("abuse_guard_enabled", input.abuseGuardEnabled ? 1 : 0, "abuseGuardEnabled");
       if (input.codeIpHourlyLimit !== undefined) setColumn("code_ip_hourly_limit", input.codeIpHourlyLimit, "codeIpHourlyLimit");
       if (input.codeIpDailyLimit !== undefined) setColumn("code_ip_daily_limit", input.codeIpDailyLimit, "codeIpDailyLimit");
+      if (input.emailAllowlistEnabled !== undefined) setColumn("email_allowlist_enabled", input.emailAllowlistEnabled ? 1 : 0, "emailAllowlistEnabled");
+      if (input.emailAllowlist !== undefined) {
+        const entries = parseEmailPolicyEntries(input.emailAllowlist);
+        setColumn("email_allowlist", entries.length > 0 ? entries.join("\n") : null, "emailAllowlist");
+      }
+      if (input.emailBlocklist !== undefined) {
+        const entries = parseEmailPolicyEntries(input.emailBlocklist);
+        setColumn("email_blocklist", entries.length > 0 ? entries.join("\n") : null, "emailBlocklist");
+      }
       if (input.smtpHost !== undefined) setColumn("smtp_host", input.smtpHost, "smtpHost");
       if (input.smtpPort !== undefined) setColumn("smtp_port", input.smtpPort, "smtpPort");
       if (input.smtpSecure !== undefined) setColumn("smtp_secure", input.smtpSecure ? 1 : 0, "smtpSecure");
