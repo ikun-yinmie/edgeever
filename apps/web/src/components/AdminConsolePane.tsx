@@ -1,28 +1,28 @@
 import { useState } from "react";
-import { ArrowLeft, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, Database, Mail, ShieldCheck, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { InstanceAdminCard } from "@/components/settings/InstanceAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
 import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
-import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "users" | "instance";
+type AdminTabKey = "members" | "registration" | "storage";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTabKey>("users");
+  const [activeTab, setActiveTab] = useState<AdminTabKey>("members");
 
   if (!user || user.role !== "owner") {
     return <Navigate to="/" replace />;
   }
 
   const tabs: { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { key: "users", label: t("users.title"), icon: Users },
-    { key: "instance", label: t("adminConsole.title"), icon: ShieldCheck },
+    { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+    { key: "registration", label: t("adminConsole.navRegistration"), icon: Mail },
+    { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
   ];
 
   return (
@@ -87,13 +87,12 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
               ))}
             </div>
 
-            {activeTab === "users" ? (
+            {activeTab === "members" ? (
               <UserManagementCard demoMode={false} />
+            ) : activeTab === "registration" ? (
+              <InstanceAdminCard />
             ) : (
-              <>
-                <InstanceAdminCard />
-                <ObjectStorageCard demoMode={false} />
-              </>
+              <ObjectStorageCard demoMode={false} />
             )}
           </div>
         </div>
@@ -101,5 +100,3 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     </main>
   );
 };
-
-export { ADMIN_CONSOLE_PATH };
