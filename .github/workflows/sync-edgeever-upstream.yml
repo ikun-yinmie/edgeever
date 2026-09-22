@@ -48,15 +48,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Require a GitHub Fork
+      - name: Check repository origin (fork or independent)
         shell: bash
         run: |
           set -euo pipefail
           is_fork="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.fork')"
           if [ "${is_fork}" != "true" ]; then
-            echo "This deployment repository must be a GitHub Fork of ${UPSTREAM_REPOSITORY}." >&2
-            echo "Create the repository with the EdgeEver Fork flow before enabling upstream updates." >&2
-            exit 1
+            echo "::notice title=Independent repository::${GITHUB_REPOSITORY} is not a GitHub Fork of ${UPSTREAM_REPOSITORY}. Continuing anyway: independent custom repos are supported (docker image builds consume the pushed main branch)."
           fi
 
       - name: Resolve upstream version
