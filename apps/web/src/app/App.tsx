@@ -16,7 +16,7 @@ import {
   saveDesktopApiBaseUrl,
 } from "@/lib/api";
 import { classifyLoginError, getLoginProblemMessageKey } from "@/lib/login-error";
-import { EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
+import { ADMIN_CONSOLE_PATH, EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
 import { isBrowserOffline } from "@/lib/network-status";
 import type { AuthSession } from "@edgeever/shared";
 
@@ -27,6 +27,7 @@ const LoginScreen = lazy(() => import("@/components/LoginScreen").then((module) 
 const RegisterScreen = lazy(() => import("@/components/RegisterScreen").then((module) => ({ default: module.RegisterScreen })));
 const WorkspaceApp = lazy(() => import("@/components/WorkspaceApp").then((module) => ({ default: module.WorkspaceApp })));
 const PublicSharePage = lazy(() => import("@/components/PublicSharePage").then((module) => ({ default: module.PublicSharePage })));
+const AdminConsolePane = lazy(() => import("@/components/AdminConsolePane").then((module) => ({ default: module.AdminConsolePane })));
 
 const AuthLoadingScreen = ({ title = "EdgeEver", detail }: { title?: string; detail?: string }) => (
   <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
@@ -268,6 +269,25 @@ const AuthenticatedWorkspace = () => {
   );
 };
 
+const AdminConsoleRoute = () => {
+  const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: () => api.getSession(),
+    retry: false,
+  });
+
+  if (sessionQuery.isLoading) return <AuthLoadingScreen />;
+  const session = sessionQuery.data;
+  if (!session?.authenticated || !session.user) return <Navigate to="/" replace />;
+
+  return (
+    <Suspense fallback={<AuthLoadingScreen />}>
+      <AdminConsolePane user={session.user} />
+    </Suspense>
+  );
+};
+
 export const App = () => {
   useEffect(() => {
     const bridge = window.edgeeverDesktop;
@@ -282,6 +302,7 @@ export const App = () => {
           <Route path="/share/:token" element={<Suspense fallback={<AuthLoadingScreen />}><PublicSharePage /></Suspense>} />
           <Route path={EVERNOTE_MIGRATION_PATH} element={<EvernoteMigrationRoute />} />
           <Route path="/" element={<AuthenticatedWorkspace />} />
+          <Route path={ADMIN_CONSOLE_PATH} element={<AdminConsoleRoute />} />
           <Route path="/settings" element={<AuthenticatedWorkspace />} />
           <Route path="/plugins" element={<AuthenticatedWorkspace />} />
           <Route path="/plugins/:pluginId" element={<AuthenticatedWorkspace />} />

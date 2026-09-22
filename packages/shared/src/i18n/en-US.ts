@@ -2373,6 +2373,10 @@ export const enUS = {
   },
   adminConsole: {
     title: "Admin Console",
+    pageTitle: "Admin Console",
+    pageSubtitle: "Instance settings and member management (admins only)",
+    backToWorkspace: "Back to workspace",
+    openConsole: "Open the admin console page",
     description: "Manage instance-wide settings: registration, email delivery and public messages.",
     registrationSection: "User registration",
     registrationEnabled: "Allow user registration",

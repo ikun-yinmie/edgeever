@@ -31,6 +31,7 @@ import {
   FileText,
   Network,
   Workflow,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -467,6 +468,8 @@ export const NotebookPane = ({
   onOpenTrash,
   onEmptyTrash,
   onOpenSettings,
+  onOpenAdmin,
+  isOwner,
   onCreateMemo,
   canCreateMemo,
   isCreatingMemo,
@@ -505,6 +508,8 @@ export const NotebookPane = ({
   onOpenTrash: () => void;
   onEmptyTrash: () => void;
   onOpenSettings: () => void;
+  onOpenAdmin?: () => void;
+  isOwner?: boolean;
   onCreateMemo: (kind?: DiagramKind) => void;
   canCreateMemo: boolean;
   isCreatingMemo: boolean;
@@ -911,6 +916,13 @@ export const NotebookPane = ({
                   label={t("notebookPane.trash")}
                   onClick={onOpenTrash}
                 />
+                {isOwner && onOpenAdmin ? (
+                  <SidebarRailButton
+                    icon={<ShieldCheck className="h-4 w-4" />}
+                    label={t("adminConsole.pageTitle")}
+                    onClick={onOpenAdmin}
+                  />
+                ) : null}
                 <SidebarRailButton
                   icon={<CircleUserRound className="h-4 w-4" />}
                   label={t("notebookPane.profile")}
@@ -1146,6 +1158,17 @@ export const NotebookPane = ({
               </span>
               <span className="min-w-0 flex-1 truncate">{t("notebookPane.profile")}</span>
             </button>
+            {isOwner && onOpenAdmin ? (
+              <button
+                onClick={onOpenAdmin}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                type="button"
+                aria-label={t("adminConsole.pageTitle")}
+                title={t("adminConsole.pageTitle")}
+              >
+                <ShieldCheck className="h-4 w-4" />
+              </button>
+            ) : null}
             <DesktopUpdateNotice />
             {onToggleCollapsed ? (
               <SidebarCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} className="hidden lg:inline-flex" />

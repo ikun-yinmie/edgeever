@@ -2371,6 +2371,10 @@ export const zhCN = {
   },
   adminConsole: {
     title: "后台管理",
+    pageTitle: "后台管理",
+    pageSubtitle: "实例级配置与成员管理（仅管理员）",
+    backToWorkspace: "返回工作区",
+    openConsole: "打开后台管理页面",
     description: "管理实例级配置：注册策略、邮件服务与公开提示。",
     registrationSection: "用户注册",
     registrationEnabled: "开放用户注册",

@@ -2373,6 +2373,10 @@ export const ja = {
   },
   adminConsole: {
     title: "管理コンソール",
+    pageTitle: "管理コンソール",
+    pageSubtitle: "インスタンス設定とメンバー管理（管理者のみ）",
+    backToWorkspace: "ワークスペースに戻る",
+    openConsole: "管理コンソールを開く",
     description: "インスタンス全体の設定を管理：登録ポリシー、メール送信、公開メッセージ。",
     registrationSection: "ユーザー登録",
     registrationEnabled: "ユーザー登録を許可",

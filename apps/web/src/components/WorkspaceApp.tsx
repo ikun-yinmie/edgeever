@@ -14,8 +14,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router";
 import type { PluginPanelOpenOptions } from "@edgeever/plugin-api";
 import { RefreshCw, X } from "lucide-react";
+import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
 import { Button } from "@/components/ui/button";
@@ -197,6 +199,7 @@ export const WorkspaceApp = ({
     navigateAiPrompts: navigateWorkspaceAiPrompts,
     navigateExecutionCenter: navigateWorkspaceExecutionCenter,
   } = useWorkspaceRoute();
+  const navigateAdmin = useNavigate();
   const localDataScope = useMemo(
     () => createLocalDataScope(getPersistentDataScopeOrigin(window.location.origin), user?.id),
     [user?.id]
@@ -2318,6 +2321,10 @@ export const WorkspaceApp = ({
     setActivePane("editor");
   };
 
+  const handleOpenAdminConsole = () => {
+    navigateAdmin(ADMIN_CONSOLE_PATH);
+  };
+
   const handleOpenPluginManager = () => {
     clearHiddenMobileSearch();
     navigateWorkspacePlugins();
@@ -2918,6 +2925,8 @@ export const WorkspaceApp = ({
                   onMoveMemos={handleMoveDraggedMemos}
                   onBackToList={handleSelectAllMemos}
                   onLogout={onLogout}
+                  onOpenAdmin={handleOpenAdminConsole}
+                  isOwner={authRequired && user?.role === "owner"}
                   isLoggingOut={isLoggingOut}
                   imageCompressionEnabled={imageCompressionEnabled}
                   onImageCompressionChange={setImageCompressionEnabled}
