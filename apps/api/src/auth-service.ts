@@ -113,11 +113,7 @@ export const tooManyLoginAttempts = (c: Context, retryAfterSeconds: number) => {
 
 export const verifyLogin = async (env: Bindings, username: string, password: string): Promise<UserRow | null> => {
   const normalizedUsername = username.trim();
-  // Members may sign in with their username or their registered email address.
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedUsername);
-  const existingUser = isEmail
-    ? await getUserByEmail(env.storage.db, normalizedUsername.toLowerCase())
-    : await getUserByUsername(env.storage.db, normalizedUsername);
+  const existingUser = await getUserByUsername(env.storage.db, normalizedUsername);
 
   if (existingUser) {
     if (await verifyPassword(password, existingUser.password_hash)) {
@@ -181,16 +177,6 @@ const getUserByUsername = async (db: DatabaseAdapter, username: string) =>
        WHERE username = ? AND is_disabled = 0`
     )
     .bind(username)
-    .first<UserRow>();
-
-const getUserByEmail = async (db: DatabaseAdapter, email: string) =>
-  db
-    .prepare(
-      `SELECT id, username, password_hash, display_name, is_disabled
-       FROM users
-       WHERE email = ? AND is_disabled = 0`
-    )
-    .bind(email)
     .first<UserRow>();
 
 export const getInstanceUser = (db: DatabaseAdapter, userId: string) =>

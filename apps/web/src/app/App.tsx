@@ -16,18 +16,17 @@ import {
   saveDesktopApiBaseUrl,
 } from "@/lib/api";
 import { classifyLoginError, getLoginProblemMessageKey } from "@/lib/login-error";
-import { ADMIN_CONSOLE_PATH, EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
+import { EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
 import { isBrowserOffline } from "@/lib/network-status";
+import { syncPublishedNoteBodyFont } from "@/lib/published-note-body-font";
 import type { AuthSession } from "@edgeever/shared";
 
 const EvernoteImportGuidePane = lazy(() =>
   import("@/components/EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
 const LoginScreen = lazy(() => import("@/components/LoginScreen").then((module) => ({ default: module.LoginScreen })));
-const RegisterScreen = lazy(() => import("@/components/RegisterScreen").then((module) => ({ default: module.RegisterScreen })));
 const WorkspaceApp = lazy(() => import("@/components/WorkspaceApp").then((module) => ({ default: module.WorkspaceApp })));
 const PublicSharePage = lazy(() => import("@/components/PublicSharePage").then((module) => ({ default: module.PublicSharePage })));
-const AdminConsolePane = lazy(() => import("@/components/AdminConsolePane").then((module) => ({ default: module.AdminConsolePane })));
 
 const AuthLoadingScreen = ({ title = "EdgeEver", detail }: { title?: string; detail?: string }) => (
   <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
@@ -54,63 +53,6 @@ const EvernoteMigrationRoute = () => {
         }}
       />
     </Suspense>
-  );
-};
-
-const AuthEntryScreen = ({
-  desktopBridgeAvailable,
-  instanceUrl,
-  loginError,
-  loginPending,
-  onLogin,
-}: {
-  desktopBridgeAvailable: boolean;
-  instanceUrl?: string;
-  loginError: { message: string; diagnosticCode: string; rayId?: string } | null;
-  loginPending: boolean;
-  onLogin: (payload: { instanceUrl?: string; username: string; password: string }) => void;
-}) => {
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [registrationConfig, setRegistrationConfig] = useState<{ enabled: boolean; codeRequired: boolean; inviteRequired: boolean } | null>(null);
-
-  useEffect(() => {
-    if (mode !== "login" || registrationConfig) return;
-    let active = true;
-    api
-      .getRegistrationConfig()
-      .then((data) => {
-        if (active) setRegistrationConfig(data.registration);
-      })
-      .catch(() => {
-        if (active) setRegistrationConfig({ enabled: false, codeRequired: false, inviteRequired: false });
-      });
-    return () => {
-      active = false;
-    };
-  }, [mode, registrationConfig]);
-
-  if (mode === "register") {
-    return (
-      <RegisterScreen
-        codeRequired={registrationConfig?.codeRequired ?? false}
-        inviteRequired={registrationConfig?.inviteRequired ?? false}
-        onBackToLogin={() => setMode("login")}
-        onSuccess={() => {
-          setMode("login");
-          setRegistrationConfig(null);
-        }}
-      />
-    );
-  }
-
-  return (
-    <LoginScreen
-      error={loginError}
-      instanceUrl={instanceUrl}
-      isSubmitting={loginPending}
-      onRegister={registrationConfig?.enabled && !desktopBridgeAvailable ? () => setMode("register") : undefined}
-      onSubmit={onLogin}
-    />
   );
 };
 
@@ -141,6 +83,11 @@ const AuthenticatedWorkspace = () => {
   });
 
   const desktopAccountId = sessionQuery.data?.authenticated ? sessionQuery.data.user?.id ?? null : null;
+
+  useEffect(() => {
+    if (!desktopAccountId) return;
+    void syncPublishedNoteBodyFont();
+  }, [desktopAccountId]);
 
   useEffect(() => {
     if (!desktopBridge?.isAvailable || sessionQuery.isLoading) return;
@@ -246,12 +193,11 @@ const AuthenticatedWorkspace = () => {
   if (!session?.authenticated) {
     return (
       <Suspense fallback={<AuthLoadingScreen />}>
-        <AuthEntryScreen
-          desktopBridgeAvailable={Boolean(desktopBridge?.isAvailable)}
+        <LoginScreen
+          error={loginError}
           instanceUrl={desktopBridge?.isAvailable ? configuredDesktopApiBaseUrl : undefined}
-          loginError={loginError}
-          loginPending={loginMutation.isPending}
-          onLogin={(payload) => loginMutation.mutate(payload)}
+          isSubmitting={loginMutation.isPending}
+          onSubmit={(payload) => loginMutation.mutate(payload)}
         />
       </Suspense>
     );
@@ -270,25 +216,6 @@ const AuthenticatedWorkspace = () => {
   );
 };
 
-const AdminConsoleRoute = () => {
-  const queryClient = useQueryClient();
-  const sessionQuery = useQuery({
-    queryKey: ["auth", "session"],
-    queryFn: () => api.getSession(),
-    retry: false,
-  });
-
-  if (sessionQuery.isLoading) return <AuthLoadingScreen />;
-  const session = sessionQuery.data;
-  if (!session?.authenticated || !session.user) return <Navigate to="/" replace />;
-
-  return (
-    <Suspense fallback={<AuthLoadingScreen />}>
-      <AdminConsolePane user={session.user} />
-    </Suspense>
-  );
-};
-
 export const App = () => {
   useEffect(() => {
     const bridge = window.edgeeverDesktop;
@@ -303,7 +230,6 @@ export const App = () => {
           <Route path="/share/:token" element={<Suspense fallback={<AuthLoadingScreen />}><PublicSharePage /></Suspense>} />
           <Route path={EVERNOTE_MIGRATION_PATH} element={<EvernoteMigrationRoute />} />
           <Route path="/" element={<AuthenticatedWorkspace />} />
-          <Route path={ADMIN_CONSOLE_PATH} element={<AdminConsoleRoute />} />
           <Route path="/settings" element={<AuthenticatedWorkspace />} />
           <Route path="/plugins" element={<AuthenticatedWorkspace />} />
           <Route path="/plugins/:pluginId" element={<AuthenticatedWorkspace />} />

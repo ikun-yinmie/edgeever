@@ -447,8 +447,7 @@ describe("Cloudflare deployment entrypoints", () => {
 
     expect(workflow).toContain("github.repository != 'tianma-if/edgeever'");
     expect(workflow).toContain("UPSTREAM_REPOSITORY: tianma-if/edgeever");
-    // Fork (ikun-yinmie): independent repositories are supported alongside forks.
-    expect(workflow).toContain("Check repository origin (fork or independent)");
+    expect(workflow).toContain("Require a GitHub Fork");
     expect(workflow).toContain(".fork");
     expect(workflow).toContain("EDGE_EVER_UPDATE_CHANNEL");
     expect(workflow).toContain("stable)");
@@ -500,10 +499,7 @@ describe("Cloudflare deployment entrypoints", () => {
     const workflowsDirectory = resolve(repositoryRoot, ".github/workflows");
     const workflowFiles = readdirSync(workflowsDirectory)
       .filter((file) => /\.ya?ml$/.test(file))
-      .filter((file) => file !== "sync-edgeever-upstream.yml")
-      // Fork (ikun-yinmie): the custom image workflow intentionally publishes
-      // this repository's own GHCR image instead of the official one.
-      .filter((file) => file !== "custom-docker-image.yml");
+      .filter((file) => file !== "sync-edgeever-upstream.yml");
 
     for (const file of workflowFiles) {
       const workflow = readRepositoryFile(`.github/workflows/${file}`);

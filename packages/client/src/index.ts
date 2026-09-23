@@ -180,113 +180,6 @@ export type UserResponse = {
   user: InstanceUser;
 };
 
-export type RegistrationConfigResponse = {
-  registration: {
-    enabled: boolean;
-    codeRequired: boolean;
-    inviteRequired: boolean;
-  };
-};
-
-export type RegistrationInviteOwner = {
-  id: string;
-  username: string | null;
-  displayName: string | null;
-};
-
-export type RegistrationInvite = {
-  id: string;
-  /** Null for codes created before codes became re-copyable. */
-  code: string | null;
-  codeHint: string;
-  note: string | null;
-  maxUses: number;
-  useCount: number;
-  expiresAt: string | null;
-  revokedAt: string | null;
-  source: "admin" | "user";
-  owner: RegistrationInviteOwner | null;
-  usedBy: RegistrationInviteOwner | null;
-  usedAt: string | null;
-  createdAt: string;
-};
-
-export type ListRegistrationInvitesResponse = {
-  invites: RegistrationInvite[];
-};
-
-export type CreateRegistrationInviteResponse = {
-  invite: {
-    id: string;
-    code: string;
-    codeHint: string;
-    maxUses: number;
-    expiresAt: string | null;
-  };
-};
-
-export type MyRegistrationInviteResponse = {
-  invite: RegistrationInvite | null;
-  canCreate: boolean;
-};
-
-export type InstanceAdminSettings = {
-  registrationEnabled: boolean;
-  registrationCodeRequired: boolean;
-  registrationInviteRequired: boolean;
-  codeTtlSeconds: number;
-  codeResendCooldownSeconds: number;
-  codeBindIp: boolean;
-  codeBindDevice: boolean;
-  abuseGuardEnabled: boolean;
-  codeIpHourlyLimit: number;
-  codeIpDailyLimit: number;
-  emailAllowlistEnabled: boolean;
-  emailAllowlist: string | null;
-  emailBlocklist: string | null;
-  smtpHost: string | null;
-  smtpPort: number | null;
-  smtpSecure: boolean;
-  smtpUsername: string | null;
-  smtpFromAddress: string | null;
-  smtpFromName: string | null;
-  shareMissingMessage: string | null;
-};
-
-export type InstanceAdminSettingsResponse = {
-  settings: InstanceAdminSettings;
-};
-
-export type InstanceAdminSettingsUpdatePayload = {
-  registrationEnabled?: boolean;
-  registrationCodeRequired?: boolean;
-  registrationInviteRequired?: boolean;
-  codeTtlSeconds?: number;
-  codeResendCooldownSeconds?: number;
-  codeBindIp?: boolean;
-  codeBindDevice?: boolean;
-  abuseGuardEnabled?: boolean;
-  codeIpHourlyLimit?: number;
-  codeIpDailyLimit?: number;
-  emailAllowlistEnabled?: boolean;
-  emailAllowlist?: string | null;
-  emailBlocklist?: string | null;
-  smtpHost?: string | null;
-  smtpPort?: number | null;
-  smtpSecure?: boolean;
-  smtpUsername?: string | null;
-  smtpPassword?: string | null;
-  smtpFromAddress?: string | null;
-  smtpFromName?: string | null;
-  shareMissingMessage?: string | null;
-};
-
-export type RegistrationCodeResponse = {
-  ok: true;
-  expiresInMinutes: number;
-  cooldownSeconds: number;
-};
-
 export type ListLoginDeviceSessionsResponse = {
   sessions: LoginDeviceSession[];
 };
@@ -910,6 +803,12 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     getPublicMemoShare: (token: string) =>
       request<PublicMemoShareResponse>(`/api/public/shares/${encodeURIComponent(token)}`),
 
+    updatePublishedNoteBodyFont: (bodyFont: PublicMemoShare["bodyFont"]) =>
+      request<{ bodyFont: PublicMemoShare["bodyFont"] }>("/api/v1/me/note-body-font", {
+        method: "PUT",
+        body: JSON.stringify({ bodyFont }),
+      }),
+
     unlockPublicMemoShare: (token: string, password: string) =>
       request<{ ok: true }>(`/api/public/shares/${encodeURIComponent(token)}/unlock`, {
         method: "POST",
@@ -1264,14 +1163,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       await proxyGenerate();
     },
 
-    listUsers: (options?: { includeDeleted?: boolean }) =>
-      request<ListUsersResponse>(`/api/v1/users${options?.includeDeleted ? "?includeDeleted=1" : ""}`),
-
-    bulkUpdateUsers: (payload: { ids: string[]; isDisabled?: boolean; isDeleted?: boolean }) =>
-      request<{ ok: true; updated: number; skipped: string[] }>("/api/v1/users/bulk", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
+    listUsers: () => request<ListUsersResponse>("/api/v1/users"),
 
     createUser: (payload: { username: string; displayName?: string | null; password: string }) =>
       request<UserResponse>("/api/v1/users", {
@@ -1279,80 +1171,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         body: JSON.stringify(payload),
       }),
 
-    getRegistrationConfig: () =>
-      request<RegistrationConfigResponse>("/api/v1/public/registration"),
-
-    requestRegistrationCode: (payload: { email: string; deviceId?: string }) =>
-      request<RegistrationCodeResponse>("/api/v1/public/registration/code", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-    register: (payload: {
-      username: string;
-      displayName?: string;
-      email: string;
-      password: string;
-      emailCode: string;
-      inviteCode?: string;
-      deviceId?: string;
-    }) =>
-      request<{ ok: true }>("/api/v1/public/registration/register", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-    listRegistrationInvites: () =>
-      request<ListRegistrationInvitesResponse>("/api/v1/admin/registration/invites"),
-
-    createRegistrationInvite: (payload: { note?: string | null; maxUses?: number; expiresInDays?: number | null }) =>
-      request<CreateRegistrationInviteResponse>("/api/v1/admin/registration/invites", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-
-    revokeRegistrationInvite: (inviteId: string) =>
-      request<{ ok: true }>(`/api/v1/admin/registration/invites/${encodeURIComponent(inviteId)}/revoke`, {
-        method: "POST",
-      }),
-
-    restoreRegistrationInvite: (inviteId: string) =>
-      request<{ ok: true }>(`/api/v1/admin/registration/invites/${encodeURIComponent(inviteId)}/restore`, {
-        method: "POST",
-      }),
-
-    deleteRegistrationInvites: (ids: string[]) =>
-      request<{ ok: true; deleted: number }>("/api/v1/admin/registration/invites/delete", {
-        method: "POST",
-        body: JSON.stringify({ ids }),
-      }),
-
-    getMyRegistrationInvite: () => request<MyRegistrationInviteResponse>("/api/v1/me/invite-code"),
-
-    createMyRegistrationInvite: () =>
-      request<MyRegistrationInviteResponse>("/api/v1/me/invite-code", {
-        method: "POST",
-      }),
-
-    getInstanceAdminSettings: () =>
-      request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings"),
-
-    updateInstanceAdminSettings: (payload: InstanceAdminSettingsUpdatePayload) =>
-      request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings", {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      }),
-
-    updateUser: (
-      userId: string,
-      payload: {
-        displayName?: string | null;
-        password?: string;
-        isDisabled?: boolean;
-        isDeleted?: boolean;
-        role?: "owner" | "member";
-      },
-    ) =>
+    updateUser: (userId: string, payload: { displayName?: string | null; password?: string; isDisabled?: boolean }) =>
       request<UserResponse>(`/api/v1/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),

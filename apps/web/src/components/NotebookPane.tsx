@@ -30,8 +30,8 @@ import {
   RotateCcw,
   FileText,
   Network,
+  TableProperties,
   Workflow,
-  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NotebookTreeItem } from "./NotebookTreeItem";
 import { cn } from "@/lib/utils";
-import type { Notebook, AuthUser, DiagramKind } from "@edgeever/shared";
+import type { Notebook, AuthUser, NoteCreateKind } from "@edgeever/shared";
 import type { NotebookNode, NotebookDropPosition, NotebookSortMode } from "@/lib/app-helpers";
 import type { SyncQueueSummary } from "@/lib/sync-queue";
 import {
@@ -301,26 +301,33 @@ const SidebarRailButton = ({
   </Tooltip>
 );
 
-const CreateMemoTypeItems = ({ onCreateMemo }: { onCreateMemo: (kind?: DiagramKind) => void }) => {
+const CreateMemoTypeItems = ({ onCreateMemo }: { onCreateMemo: (kind?: NoteCreateKind) => void }) => {
   const { t } = useTranslation();
 
   return (
     <>
-      <DropdownMenuItem onSelect={() => onCreateMemo()}>
-        <FileText className="h-4 w-4" />
-        {t("diagram.normalNote")}
+      <DropdownMenuItem className="gap-2" onSelect={() => onCreateMemo()}>
+        <FileText className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{t("diagram.normalNote")}</span>
       </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => onCreateMemo("mind-map")}>
-        <Network className="h-4 w-4" />
-        {t("diagram.mindMap")}
+      <DropdownMenuItem className="gap-2" onSelect={() => onCreateMemo("mind-map")}>
+        <Network className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{t("diagram.mindMap")}</span>
       </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => onCreateMemo("flowchart")}>
-        <Workflow className="h-4 w-4" />
-        {t("diagram.flowchart")}
+      <DropdownMenuItem className="gap-2" onSelect={() => onCreateMemo("flowchart")}>
+        <Workflow className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{t("diagram.flowchart")}</span>
       </DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => onCreateMemo("architecture")}>
-        <Boxes className="h-4 w-4" />
-        {t("diagram.architecture")}
+      <DropdownMenuItem className="gap-2" onSelect={() => onCreateMemo("architecture")}>
+        <Boxes className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{t("diagram.architecture")}</span>
+      </DropdownMenuItem>
+      <DropdownMenuItem className="gap-2" onSelect={() => onCreateMemo("table")}>
+        <TableProperties className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{t("structuredTable.name")}</span>
+        <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200/80 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-emerald-700">
+          Beta
+        </span>
       </DropdownMenuItem>
     </>
   );
@@ -468,8 +475,6 @@ export const NotebookPane = ({
   onOpenTrash,
   onEmptyTrash,
   onOpenSettings,
-  onOpenAdmin,
-  isOwner,
   onCreateMemo,
   canCreateMemo,
   isCreatingMemo,
@@ -508,9 +513,7 @@ export const NotebookPane = ({
   onOpenTrash: () => void;
   onEmptyTrash: () => void;
   onOpenSettings: () => void;
-  onOpenAdmin?: () => void;
-  isOwner?: boolean;
-  onCreateMemo: (kind?: DiagramKind) => void;
+  onCreateMemo: (kind?: NoteCreateKind) => void;
   canCreateMemo: boolean;
   isCreatingMemo: boolean;
   syncSummary: SyncQueueSummary;
@@ -916,13 +919,6 @@ export const NotebookPane = ({
                   label={t("notebookPane.trash")}
                   onClick={onOpenTrash}
                 />
-                {isOwner && onOpenAdmin ? (
-                  <SidebarRailButton
-                    icon={<ShieldCheck className="h-4 w-4" />}
-                    label={t("adminConsole.pageTitle")}
-                    onClick={onOpenAdmin}
-                  />
-                ) : null}
                 <SidebarRailButton
                   icon={<CircleUserRound className="h-4 w-4" />}
                   label={t("notebookPane.profile")}
@@ -1158,17 +1154,6 @@ export const NotebookPane = ({
               </span>
               <span className="min-w-0 flex-1 truncate">{t("notebookPane.profile")}</span>
             </button>
-            {isOwner && onOpenAdmin ? (
-              <button
-                onClick={onOpenAdmin}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
-                type="button"
-                aria-label={t("adminConsole.pageTitle")}
-                title={t("adminConsole.pageTitle")}
-              >
-                <ShieldCheck className="h-4 w-4" />
-              </button>
-            ) : null}
             <DesktopUpdateNotice />
             {onToggleCollapsed ? (
               <SidebarCollapseButton collapsed={collapsed} onToggle={onToggleCollapsed} className="hidden lg:inline-flex" />

@@ -5,14 +5,13 @@ import {
   Info,
   LayoutTemplate,
   Shield,
-  ShieldCheck,
   SlidersHorizontal,
-  ArrowUpRight,
   Sparkles,
   User,
+  Users,
+  Wrench,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
 import { SystemInfoDialog } from "@/components/SystemInfoDialog";
@@ -22,7 +21,6 @@ import type { EditorContentAlignment, ShortcutSettings } from "@/lib/app-helpers
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
-import { MyInviteCard } from "./settings/MyInviteCard";
 import { DataExportCard } from "./settings/DataExportCard";
 import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
@@ -32,7 +30,7 @@ import { ProductHuntLink } from "./settings/ProductHuntLink";
 import { McpConfigCard } from "./settings/McpConfigCard";
 import { PreferenceCard } from "./settings/PreferenceCard";
 import { PasswordCard } from "./settings/PasswordCard";
-import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
+import { UserManagementCard } from "./settings/UserManagementCard";
 import { ObjectStorageCard } from "./settings/ObjectStorageCard";
 import { AiModelCard } from "./settings/AiModelCard";
 import { AiTagSuggestionPromptCard } from "./settings/AiTagSuggestionPromptCard";
@@ -69,7 +67,7 @@ const SettingsGroup = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-type TabKey = "general" | "data" | "ai" | "account";
+type TabKey = "general" | "users" | "data" | "ai" | "advanced" | "account";
 
 interface TabItem {
   key: TabKey;
@@ -102,7 +100,6 @@ export const SettingsPane = ({
   onOpenExecutionCenter,
 }: SettingsPaneProps) => {
   const { t } = useTranslation();
-  const navigateAdmin = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>("general");
   const [activeMobileTab, setActiveMobileTab] = useState<TabKey | null>(null);
   const [systemInfoOpen, setSystemInfoOpen] = useState(false);
@@ -132,6 +129,28 @@ export const SettingsPane = ({
       key: "data",
       label: t("settings.tabs.data"),
       icon: Database,
+      colorClass: "text-emerald-700",
+      bgColorClass: "bg-emerald-50/80",
+      hoverColorClass: "hover:bg-emerald-50/40",
+      iconColorClass: "text-emerald-600",
+    },
+    ...(isOwner
+      ? [
+          {
+            key: "users" as const,
+            label: t("users.title"),
+            icon: Users,
+            colorClass: "text-emerald-700",
+            bgColorClass: "bg-emerald-50/80",
+            hoverColorClass: "hover:bg-emerald-50/40",
+            iconColorClass: "text-emerald-600",
+          },
+        ]
+      : []),
+    {
+      key: "advanced",
+      label: t("settings.tabs.advanced"),
+      icon: Wrench,
       colorClass: "text-emerald-700",
       bgColorClass: "bg-emerald-50/80",
       hoverColorClass: "hover:bg-emerald-50/40",
@@ -193,21 +212,16 @@ export const SettingsPane = ({
               editorContentAlignment={editorContentAlignment}
               onEditorContentAlignmentChange={onEditorContentAlignmentChange}
             />
-            {isOwner ? (
-              <button
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-emerald-700 transition hover:bg-emerald-50/50"
-                onClick={() => navigateAdmin(ADMIN_CONSOLE_PATH)}
-                type="button"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span className="flex-1">{t("adminConsole.openConsole")}</span>
-                <ArrowUpRight className="h-4 w-4 text-slate-400" />
-              </button>
-            ) : null}
             <FeedbackLink className="hidden lg:flex" />
             <ProductHuntLink className="hidden lg:flex" />
           </SettingsGroup>
         );
+      case "users":
+        return isOwner ? (
+          <SettingsGroup>
+            <UserManagementCard demoMode={demoMode} />
+          </SettingsGroup>
+        ) : null;
       case "data":
         return (
           <SettingsGroup>
@@ -220,7 +234,13 @@ export const SettingsPane = ({
           <SettingsGroup>
             <AiModelCard />
             <McpConfigCard />
+          </SettingsGroup>
+        );
+      case "advanced":
+        return (
+          <SettingsGroup>
             <AiTagSuggestionPromptCard />
+            {isOwner ? <ObjectStorageCard demoMode={demoMode} /> : null}
             {canClearLocalData ? <DesktopLocalDataCard /> : null}
           </SettingsGroup>
         );
@@ -228,7 +248,6 @@ export const SettingsPane = ({
         return (
           <SettingsGroup>
             <AccountInfoCard user={user} />
-            <MyInviteCard />
             <PasswordCard authRequired={authRequired} demoMode={demoMode} />
             {demoMode ? null : (
               <LoginDevicesCard

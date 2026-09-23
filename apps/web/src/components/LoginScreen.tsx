@@ -10,7 +10,6 @@ interface LoginScreenProps {
   error: { message: string; diagnosticCode: string; rayId?: string } | null;
   instanceUrl?: string;
   isSubmitting: boolean;
-  onRegister?: () => void;
   onSubmit: (payload: { instanceUrl?: string; username: string; password: string }) => void;
 }
 
@@ -26,7 +25,7 @@ const getDefaultLoginCredentials = () => {
   return isDemoHost ? DEMO_LOGIN_CREDENTIALS : { username: "admin", password: "" };
 };
 
-export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitting, onRegister, onSubmit }: LoginScreenProps) => {
+export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitting, onSubmit }: LoginScreenProps) => {
   const { t } = useTranslation();
   const [instanceUrl, setInstanceUrl] = useState(initialInstanceUrl ?? "");
   const [username, setUsername] = useState(() => getDefaultLoginCredentials().username);
@@ -131,16 +130,6 @@ export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitti
             <LockKeyhole className="h-4 w-4 mr-1" />
             {isSubmitting ? t("login.submitting") : t("login.submit")}
           </Button>
-
-          {onRegister ? (
-            <button
-              className="w-full text-center text-xs font-medium text-emerald-700 transition hover:text-emerald-800"
-              onClick={onRegister}
-              type="button"
-            >
-              {t("register.goToRegister")}
-            </button>
-          ) : null}
         </form>
       </section>
     </main>

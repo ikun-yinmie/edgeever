@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, KeyRound, Search, ShieldCheck, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
+import { KeyRound, UserPlus, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { InstanceUser } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,8 @@ import {
   SETTINGS_CARD_HEADER_CLASSNAME,
   SETTINGS_CARD_ICON_CLASSNAME,
   SETTINGS_CARD_TITLE_CLASSNAME,
+  SETTINGS_ITEM_TITLE_CLASSNAME,
 } from "./settings-ui";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -20,15 +20,9 @@ import { cn } from "@/lib/utils";
 
 interface UserManagementCardProps {
   demoMode: boolean;
-  currentUserId?: string | null;
 }
 
-type MemberStatusFilter = "all" | "enabled" | "disabled" | "archived";
-type MemberSortKey = "createdAt" | "lastLoginAt" | "username";
-
-const PAGE_SIZE = 20;
-
-export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManagementCardProps) => {
+export const UserManagementCard = ({ demoMode }: UserManagementCardProps) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -37,19 +31,9 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [resetPassword, setResetPassword] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("all");
-  const [sortKey, setSortKey] = useState<MemberSortKey>("createdAt");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
 
-  const usersQuery = useQuery({
-    queryKey: ["users"],
-    queryFn: () => api.listUsers({ includeDeleted: true }),
-  });
-  const users = useMemo(() => usersQuery.data?.users ?? [], [usersQuery.data]);
+  const usersQuery = useQuery({ queryKey: ["users"], queryFn: api.listUsers });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["users"] });
-
   const createMutation = useMutation({
     mutationFn: api.createUser,
     onSuccess: () => {
@@ -61,67 +45,10 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
     },
   });
   const updateMutation = useMutation({
-    mutationFn: ({
-      userId,
-      input,
-    }: {
-      userId: string;
-      input: { password?: string; isDisabled?: boolean; isDeleted?: boolean; role?: "owner" | "member" };
-    }) => api.updateUser(userId, input),
+    mutationFn: ({ userId, input }: { userId: string; input: { password?: string; isDisabled?: boolean } }) =>
+      api.updateUser(userId, input),
     onSuccess: () => void refresh(),
   });
-  const bulkMutation = useMutation({
-    mutationFn: (input: { ids: string[]; isDisabled?: boolean; isDeleted?: boolean }) => api.bulkUpdateUsers(input),
-    onSuccess: () => {
-      setSelectedIds([]);
-      void refresh();
-    },
-  });
-
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const matched = users.filter((user) => {
-      if (statusFilter === "archived" && !user.isDeleted) return false;
-      if (statusFilter !== "archived" && user.isDeleted) return false;
-      if (statusFilter === "enabled" && user.isDisabled) return false;
-      if (statusFilter === "disabled" && !user.isDisabled) return false;
-      if (!needle) return true;
-      return [user.username, user.displayName ?? "", user.email ?? ""]
-        .some((value) => value.toLowerCase().includes(needle));
-    });
-    return matched.sort((left, right) => {
-      if (left.role !== right.role) return left.role === "owner" ? -1 : 1;
-      if (sortKey === "username") return left.username.localeCompare(right.username);
-      if (sortKey === "lastLoginAt") {
-        return (right.lastLoginAt ? Date.parse(right.lastLoginAt) : 0) - (left.lastLoginAt ? Date.parse(left.lastLoginAt) : 0);
-      }
-      return Date.parse(right.createdAt) - Date.parse(left.createdAt);
-    });
-  }, [users, search, statusFilter, sortKey]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter, sortKey]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const pageIds = pageItems.filter((user) => user.role !== "owner").map((user) => user.id);
-  const selectablePageIds = pageIds;
-  const selectedOnPage = selectedIds.filter((id) => selectablePageIds.includes(id));
-  const allOnPageSelected = selectablePageIds.length > 0 && selectedOnPage.length === selectablePageIds.length;
-  const bulkBusy = bulkMutation.isPending || updateMutation.isPending;
-
-  const toggleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? selectablePageIds : []);
-  };
-  const toggleSelect = (userId: string, checked: boolean) => {
-    setSelectedIds((current) =>
-      checked ? [...new Set([...current, userId])] : current.filter((id) => id !== userId),
-    );
-  };
 
   const handleCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -148,21 +75,9 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
     if (!resetUser) return;
     updateMutation.mutate(
       { userId: resetUser.id, input: { password: resetPassword } },
-      {
-        onSuccess: () => {
-          setResetUser(null);
-          setResetPassword("");
-        },
-      },
+      { onSuccess: () => { setResetUser(null); setResetPassword(""); } },
     );
   };
-
-  const statusFilters: { key: MemberStatusFilter; label: string }[] = [
-    { key: "all", label: t("users.filterAll") },
-    { key: "enabled", label: t("users.enabled") },
-    { key: "disabled", label: t("users.disabled") },
-    { key: "archived", label: t("users.archived") },
-  ];
 
   return (
     <>
@@ -174,296 +89,41 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                 <Users className={SETTINGS_CARD_ICON_CLASSNAME} />
                 {t("users.title")}
               </CardTitle>
-              <CardDescription className={SETTINGS_CARD_DESCRIPTION_CLASSNAME}>
-                {t("users.descriptionList")}
-              </CardDescription>
+              <CardDescription className={SETTINGS_CARD_DESCRIPTION_CLASSNAME}>{t("users.description")}</CardDescription>
             </div>
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <UserPlus className="h-4 w-4" /> {t("users.create")}
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 p-4 pt-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[12rem] flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <Input
-                className="h-9 pl-8"
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("users.searchPlaceholder")}
-                value={search}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-1">
-              {statusFilters.map((filter) => (
-                <button
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-xs font-medium transition",
-                    statusFilter === filter.key
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-slate-200 bg-card text-slate-600 hover:bg-slate-50",
-                  )}
-                  key={filter.key}
-                  onClick={() => setStatusFilter(filter.key)}
-                  type="button"
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-slate-500">
-              {selectedIds.length > 0
-                ? t("users.selectedCount", { count: selectedIds.length })
-                : t("users.bulkHint")}
-            </span>
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <Button
-                className="h-8"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => bulkMutation.mutate({ ids: selectedIds, isDisabled: false })}
-                size="sm"
-                variant="outline"
-              >
-                {t("users.bulkEnable")}
-              </Button>
-              <Button
-                className="h-8"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => bulkMutation.mutate({ ids: selectedIds, isDisabled: true })}
-                size="sm"
-                variant="outline"
-              >
-                {t("users.bulkDisable")}
-              </Button>
-              <Button
-                className="h-8"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => bulkMutation.mutate({ ids: selectedIds, isDeleted: true })}
-                size="sm"
-                variant="outline"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {t("users.bulkArchive")}
-              </Button>
-              <Button
-                className="h-8"
-                disabled={selectedIds.length === 0 || bulkBusy}
-                onClick={() => bulkMutation.mutate({ ids: selectedIds, isDeleted: false })}
-                size="sm"
-                variant="outline"
-              >
-                <ArchiveRestore className="h-3.5 w-3.5" />
-                {t("users.bulkRestore")}
-              </Button>
-            </div>
-          </div>
-
-          {usersQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{t("users.loading")}</p>
-          ) : pageItems.length === 0 ? (
-            <p className="text-sm text-slate-500">{t("users.empty")}</p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[52rem] border-collapse text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
-                  <tr>
-                    <th className="w-10 px-3 py-2.5">
-                      <Checkbox
-                        aria-label={t("users.selectAll")}
-                        checked={allOnPageSelected}
-                        disabled={selectablePageIds.length === 0}
-                        onCheckedChange={(checked) => toggleSelectAll(checked === true)}
-                      />
-                    </th>
-                    <th className="px-3 py-2.5 text-left">
-                      <button className="font-semibold" onClick={() => setSortKey("username")} type="button">
-                        {t("users.columnMember")}
-                      </button>
-                    </th>
-                    <th className="px-3 py-2.5 text-left">{t("users.columnRole")}</th>
-                    <th className="px-3 py-2.5 text-left">{t("users.columnStatus")}</th>
-                    <th className="px-3 py-2.5 text-left">
-                      <button className="font-semibold" onClick={() => setSortKey("lastLoginAt")} type="button">
-                        {t("users.columnLastLogin")}
-                      </button>
-                    </th>
-                    <th className="px-3 py-2.5 text-left">
-                      <button className="font-semibold" onClick={() => setSortKey("createdAt")} type="button">
-                        {t("users.columnCreatedAt")}
-                      </button>
-                    </th>
-                    <th className="px-3 py-2.5 text-right">{t("users.columnActions")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pageItems.map((user) => {
-                    const isOwner = user.role === "owner";
-                    return (
-                      <tr key={user.id} className={cn("align-middle", user.isDeleted && "bg-slate-50/60")}>
-                        <td className="px-3 py-3">
-                          <Checkbox
-                            aria-label={user.username}
-                            checked={selectedIds.includes(user.id)}
-                            disabled={isOwner}
-                            onCheckedChange={(checked) => toggleSelect(user.id, checked === true)}
-                          />
-                        </td>
-                        <td className="px-3 py-3">
-                          <p className="truncate text-sm font-medium text-slate-900">
-                            {user.displayName || user.username}
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
-                            @{user.username}
-                            {user.email ? ` · ${user.email}` : ""}
-                          </p>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">{t(`users.roles.${user.role}`)}</td>
-                        <td className="px-3 py-3">
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                              user.isDeleted
-                                ? "border-slate-200 bg-slate-50 text-slate-600"
-                                : user.isDisabled
-                                  ? "border-amber-200 bg-amber-50 text-amber-800"
-                                  : "border-emerald-200 bg-emerald-50 text-emerald-800",
-                            )}
-                          >
-                            {user.isDeleted
-                              ? t("users.archived")
-                              : user.isDisabled
-                                ? t("users.disabled")
-                                : t("users.enabled")}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
-                          {user.lastLoginAt
-                            ? new Date(user.lastLoginAt).toLocaleString()
-                            : t("users.neverLoggedIn")}
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
-                          {new Date(user.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            {demoMode && isOwner ? null : (
-                              <Button
-                                className="h-8"
-                                onClick={() => setResetUser(user)}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                <KeyRound className="h-3.5 w-3.5" />
-                                {t("users.resetPassword")}
-                              </Button>
-                            )}
-                            {isOwner ? null : (
-                              <>
-                                <label className="flex items-center gap-2 text-xs text-slate-600">
-                                  {t("users.enabled")}
-                                  <Switch
-                                    checked={!user.isDisabled}
-                                    disabled={bulkBusy}
-                                    onCheckedChange={(checked) =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDisabled: !checked } })
-                                    }
-                                  />
-                                </label>
-                                {user.role === "member" ? (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() => updateMutation.mutate({ userId: user.id, input: { role: "owner" } })}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                    {t("users.makeAdmin")}
-                                  </Button>
-                                ) : user.id === currentUserId ? null : (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() => updateMutation.mutate({ userId: user.id, input: { role: "member" } })}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ShieldOff className="h-3.5 w-3.5" />
-                                    {t("users.removeAdmin")}
-                                  </Button>
-                                )}
-                                {user.isDeleted ? (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDeleted: false } })
-                                    }
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ArchiveRestore className="h-3.5 w-3.5" />
-                                    {t("users.restore")}
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                                    disabled={bulkBusy}
-                                    onClick={() =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDeleted: true } })
-                                    }
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    {t("users.archive")}
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">
-              {t("users.totalCount", { count: filtered.length })}
-              {totalPages > 1 ? ` · ${t("users.pageInfo", { page, pages: totalPages })}` : ""}
-            </span>
-            {totalPages > 1 ? (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  className="h-8"
-                  disabled={page <= 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  size="sm"
-                  variant="outline"
-                >
-                  {t("users.pagePrev")}
-                </Button>
-                <Button
-                  className="h-8"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                  size="sm"
-                  variant="outline"
-                >
-                  {t("users.pageNext")}
-                </Button>
+        <CardContent className="grid gap-2 p-4 pt-0">
+          {usersQuery.isLoading ? <p className="text-sm text-slate-500">{t("users.loading")}</p> : null}
+          {usersQuery.data?.users.map((user) => (
+            <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-card/40 p-3">
+              <div className="min-w-0">
+                <p className={cn("truncate", SETTINGS_ITEM_TITLE_CLASSNAME)}>{user.displayName || user.username}</p>
+                <p className="truncate text-xs text-slate-500">@{user.username} · {t(`users.roles.${user.role}`)}</p>
               </div>
-            ) : null}
-          </div>
-
-          {usersQuery.isError || createMutation.isError || updateMutation.isError || bulkMutation.isError ? (
+              <div className="flex items-center gap-3">
+                {demoMode && user.role === "owner" ? null : (
+                  <Button size="sm" variant="outline" onClick={() => setResetUser(user)}>
+                    <KeyRound className="h-3.5 w-3.5" /> {t("users.resetPassword")}
+                  </Button>
+                )}
+                {user.role !== "owner" ? (
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    {user.isDisabled ? t("users.disabled") : t("users.enabled")}
+                    <Switch
+                      checked={!user.isDisabled}
+                      disabled={updateMutation.isPending}
+                      onCheckedChange={(checked) => updateMutation.mutate({ userId: user.id, input: { isDisabled: !checked } })}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </div>
+          ))}
+          {usersQuery.isError || createMutation.isError || updateMutation.isError ? (
             <p className="text-xs font-medium text-rose-600">{t("users.failed")}</p>
           ) : null}
         </CardContent>

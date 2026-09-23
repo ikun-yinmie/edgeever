@@ -41,6 +41,3 @@ export const unauthorized = (c: Context, message: string) =>
 
 export const forbidden = (c: Context, message: string) =>
   apiError(c, "forbidden", message, 403);
-
-export const tooManyRequests = (c: Context, message: string) =>
-  apiError(c, "rate_limited", message, 429);

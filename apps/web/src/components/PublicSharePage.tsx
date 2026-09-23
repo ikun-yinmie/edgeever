@@ -17,8 +17,10 @@ import {
   parseImageWidth,
   getImageReferrerPolicy,
   createEdgeEverDocumentExtensions,
+  parsePublishedNoteBodyFont,
   type PublicMemoShare,
 } from "@edgeever/shared";
+import { applyEditorBodyFontPreference } from "@/lib/editor-body-font";
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
@@ -192,6 +194,20 @@ export const PublicSharePage = () => {
   });
   const share = shareQuery.data?.share;
   const passwordRequired = isSharePasswordError(shareQuery.error, "share_password_required");
+  const publishedBodyFont = share ? parsePublishedNoteBodyFont(share.bodyFont) : undefined;
+
+  useEffect(() => {
+    if (publishedBodyFont === undefined) return undefined;
+    if (!publishedBodyFont) {
+      delete document.documentElement.dataset.editorBodyFont;
+      document.documentElement.style.removeProperty("--editor-body-font-family");
+    } else {
+      applyEditorBodyFontPreference({ choice: publishedBodyFont, customFamily: "" });
+    }
+    return () => {
+      applyEditorBodyFontPreference();
+    };
+  }, [publishedBodyFont]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -229,17 +245,12 @@ export const PublicSharePage = () => {
   }
 
   if (!share) {
-    // Prefer the owner-customized message returned by the API when present.
-    const customMessage =
-      shareQuery.error instanceof ApiRequestError && shareQuery.error.code === "not_found"
-        ? (shareQuery.error.message || "").trim()
-        : "";
     return (
       <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-5">
         <section className="max-w-md rounded-2xl border border-slate-200 bg-card p-8 text-center shadow-sm">
           <FileText className="mx-auto h-9 w-9 text-slate-400" />
           <h1 className="mt-4 text-xl font-semibold text-slate-900">{t("sharing.publicUnavailable")}</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{customMessage || t("sharing.publicUnavailableHint")}</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{t("sharing.publicUnavailableHint")}</p>
         </section>
       </main>
     );

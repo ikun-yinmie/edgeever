@@ -192,94 +192,13 @@ export const UserCreateSchema = z.object({
   password: z.string().min(8).max(512),
 });
 
-export const RegisterSchema = z
-  .object({
-    username: z
-      .string()
-      .trim()
-      .min(2, "Username must be at least 2 characters.")
-      .max(80)
-      .regex(/^[a-zA-Z0-9_-]+$/, "Username may only contain letters, numbers, dashes and underscores."),
-    displayName: z.string().trim().max(80).optional(),
-    email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
-    password: z.string().min(8, "Password must be at least 8 characters.").max(512),
-    emailCode: z.string().trim().min(1).max(12),
-    inviteCode: z.string().trim().min(4).max(80).optional(),
-    deviceId: z.string().trim().min(8).max(160).optional(),
-  })
-  .refine((input) => !input.displayName || !input.displayName.includes(":"), {
-    message: "Display name may not contain colons.",
-    path: ["displayName"],
-  });
-
-export const RegistrationEmailCodeRequestSchema = z.object({
-  email: z.string().trim().toLowerCase().email("A valid email address is required.").max(200),
-  deviceId: z.string().trim().min(8).max(160).optional(),
-});
-
-export const RegistrationInviteCreateSchema = z.object({
-  note: z.string().trim().max(200).nullable().optional(),
-  maxUses: z.number().int().min(1).max(1000).default(1),
-  expiresInDays: z.number().int().min(1).max(365).nullable().optional(),
-});
-
-export const RegistrationInviteDeleteSchema = z.object({
-  ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
-});
-
-export const InstanceAdminSettingsUpdateSchema = z
-  .object({
-    registrationEnabled: z.boolean().optional(),
-    registrationCodeRequired: z.boolean().optional(),
-    smtpHost: z.string().trim().max(253).nullable().optional(),
-    smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
-    smtpSecure: z.boolean().optional(),
-    smtpUsername: z.string().trim().max(200).nullable().optional(),
-    smtpPassword: z.string().max(512).nullable().optional(),
-    smtpFromAddress: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .email("SMTP from address must be a valid email.")
-      .max(200)
-      .nullable()
-      .optional(),
-    smtpFromName: z.string().trim().max(80).nullable().optional(),
-    shareMissingMessage: z.string().trim().max(500).nullable().optional(),
-    registrationInviteRequired: z.boolean().optional(),
-    codeTtlSeconds: z.number().int().min(30).max(3600).optional(),
-    codeResendCooldownSeconds: z.number().int().min(10).max(3600).optional(),
-    codeBindIp: z.boolean().optional(),
-    codeBindDevice: z.boolean().optional(),
-    abuseGuardEnabled: z.boolean().optional(),
-    codeIpHourlyLimit: z.number().int().min(1).max(1000).optional(),
-    codeIpDailyLimit: z.number().int().min(1).max(10000).optional(),
-    emailAllowlistEnabled: z.boolean().optional(),
-    emailAllowlist: z.string().max(4000).nullable().optional(),
-    emailBlocklist: z.string().max(4000).nullable().optional(),
-  })
-  .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
-
 export const UserUpdateSchema = z
   .object({
     displayName: z.string().trim().max(80).nullable().optional(),
     password: z.string().min(8).max(512).optional(),
     isDisabled: z.boolean().optional(),
-    isDeleted: z.boolean().optional(),
-    role: z.enum(["owner", "member"]).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
-
-export const UserBulkUpdateSchema = z
-  .object({
-    ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
-    isDisabled: z.boolean().optional(),
-    isDeleted: z.boolean().optional(),
-  })
-  .refine(
-    (input) => input.isDisabled !== undefined || input.isDeleted !== undefined,
-    "At least one change is required.",
-  );
 
 export const ApiTokenCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -467,6 +386,10 @@ export const MemoShareUpdateSchema = z.object({
   passwordProtected: z.boolean(),
 });
 
+export const NoteBodyFontUpdateSchema = z.object({
+  bodyFont: z.enum(["wenkai", "wenkai-screen", "source-han-serif", "source-han-sans", "source-serif"]).nullable(),
+});
+
 export const PublicShareUnlockSchema = z.object({
   password: z.string().min(1).max(64),
 });
@@ -509,6 +432,3 @@ export type AiPromptTemplateCreateInput = z.input<typeof AiPromptTemplateCreateS
 export type AiPromptTemplateUpdateInput = z.infer<typeof AiPromptTemplateUpdateSchema>;
 export type MemoShareUpdateInput = z.infer<typeof MemoShareUpdateSchema>;
 export type PublicShareUnlockInput = z.infer<typeof PublicShareUnlockSchema>;
-export type RegistrationInviteCreateInput = z.input<typeof RegistrationInviteCreateSchema>;
-export type RegistrationInviteDeleteInput = z.infer<typeof RegistrationInviteDeleteSchema>;
-export type UserBulkUpdateInput = z.infer<typeof UserBulkUpdateSchema>;

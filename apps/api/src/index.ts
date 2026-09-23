@@ -118,9 +118,8 @@ import {
 
 export { createMemoEditSession, mergeMemosRecord, updateMemoRecord };
 import { listMemos } from "./memo-list-service";
-import { registerInstanceAdminRoutes } from "./instance-admin-routes";
-import { registerUserRoutes,
-
+import {
+  registerUserRoutes,
 } from "./user-routes";
 import { registerNotebookRoutes } from "./notebook-routes";
 import { registerMemoShareRoutes, registerPublicShareRoutes } from "./share-routes";
@@ -265,9 +264,6 @@ registerAuthRoutes(app, {
 registerUserRoutes(app, {
   authenticateRequest: (...args) => authenticateRequest(...args),
   getInstanceUser: (...args) => getInstanceUser(...args),
-});
-registerInstanceAdminRoutes(app, {
-  authenticateRequest: (...args) => authenticateRequest(...args),
 });
 
 app.use("/api/v1/*", async (c, next) => {

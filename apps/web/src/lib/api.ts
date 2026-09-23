@@ -11,11 +11,8 @@ export { ApiRequestError };
 export type {
   AiProviderCreatePayload,
   AiProviderUpdatePayload,
-  InstanceAdminSettings,
-  InstanceAdminSettingsUpdatePayload,
   InstanceHealth,
   InstanceRelease,
-  RegistrationInvite,
   JsonBackupPage,
   MarkdownExportPage,
   MemoShareResponse,
