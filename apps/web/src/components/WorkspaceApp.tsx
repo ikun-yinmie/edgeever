@@ -3460,6 +3460,10 @@ export const WorkspaceApp = ({
           notebooks={notebooks}
           selectedNotebookId={selectedNotebookId}
           onClose={() => setMobileNotebookPickerOpen(false)}
+          onOpenShared={() => {
+            setMobileNotebookPickerOpen(false);
+            handleOpenShared();
+          }}
           onSelectAll={handleSelectAllMemos}
           onSelect={handleSelectNotebook}
         />

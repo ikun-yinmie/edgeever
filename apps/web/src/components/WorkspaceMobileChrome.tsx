@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Boxes, ChevronDown, ChevronRight, FileText, Home, Network, Plus, Search, UserRound, Workflow, X } from "lucide-react";
+import { Boxes, ChevronDown, ChevronRight, FileText, Home, Network, Plus, Search, UserRound, Users, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -102,6 +102,7 @@ export const MobileNotebookPicker = ({
   notebooks,
   selectedNotebookId,
   onClose,
+  onOpenShared,
   onSelectAll,
   onSelect,
 }: {
@@ -109,6 +110,7 @@ export const MobileNotebookPicker = ({
   notebooks: Notebook[];
   selectedNotebookId: string | null;
   onClose: () => void;
+  onOpenShared?: () => void;
   onSelectAll: () => void;
   onSelect: (notebookId: string) => void;
 }) => {
@@ -228,6 +230,17 @@ export const MobileNotebookPicker = ({
           >
             <span className="min-w-0 flex-1 truncate text-base">{t("mobileNotebookPicker.allMemos")}</span>
           </button>
+          {onOpenShared ? (
+            <button
+              className="mb-1 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+              type="button"
+              aria-label={t("sharedPane.title")}
+              onClick={onOpenShared}
+            >
+              <Users className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="min-w-0 flex-1 truncate text-base">{t("sharedPane.title")}</span>
+            </button>
+          ) : null}
           {filteredTree.length > 0 ? (
             <>
               <div className="mb-1 flex h-8 items-center justify-between px-3 text-xs font-semibold text-slate-400">
