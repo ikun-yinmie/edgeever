@@ -118,6 +118,7 @@ import {
 
 export { createMemoEditSession, mergeMemosRecord, updateMemoRecord };
 import { listMemos } from "./memo-list-service";
+import { registerGroupRoutes } from "./group-routes";
 import { registerInstanceAdminRoutes } from "./instance-admin-routes";
 import { registerUserRoutes,
 
@@ -267,6 +268,10 @@ registerUserRoutes(app, {
   getInstanceUser: (...args) => getInstanceUser(...args),
 });
 registerInstanceAdminRoutes(app, {
+  authenticateRequest: (...args) => authenticateRequest(...args),
+});
+
+registerGroupRoutes(app, {
   authenticateRequest: (...args) => authenticateRequest(...args),
 });
 

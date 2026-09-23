@@ -14,12 +14,44 @@ const agentAuth = {
   role: "member",
 };
 
-const environment = {
+// Memo routes resolve which workspace owns a note before delegating, so the stub
+// database answers that ownership lookup and reports no group shares. These
+// contract tests then stay focused on delegation for notes you own.
+const ownedMemo = { id: "memo_1", workspace_id: "ws_1", notebook_id: "nb_1", is_deleted: 0 };
+
+const createStubDatabase = (memo = ownedMemo) => ({
+  prepare: (sql) => {
+    const statement = {
+      sql,
+      bindings: [],
+      bind(...bindings) {
+        statement.bindings = bindings;
+        return statement;
+      },
+      async first() {
+        if (sql.includes("FROM memos WHERE id = ?")) return memo;
+        return null;
+      },
+      async all() {
+        return { results: [], success: true };
+      },
+      async run() {
+        return { success: true };
+      },
+    };
+    return statement;
+  },
+  batch: async () => [],
+});
+
+const createEnvironment = (memo) => ({
   storage: {
-    db: {},
+    db: createStubDatabase(memo),
     resources: {},
   },
-};
+});
+
+const environment = createEnvironment();
 
 const createDependencies = (overrides = {}) => ({
   clampNumber: (value, min, max) => Math.min(Math.max(value, min), max),

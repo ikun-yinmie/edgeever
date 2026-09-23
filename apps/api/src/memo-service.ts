@@ -371,8 +371,14 @@ export const getMemoDetail = async (db: DatabaseAdapter, workspaceId: string, id
   return row ? mapMemoDetail(row) : null;
 };
 
-export const createMemoEditSession = async (c: AppContext, memoId: string): Promise<MemoEditSession | null> => {
-  const current = await getMemoDetailRow(c.env.storage.db, getWorkspaceId(c), memoId);
+export const createMemoEditSession = async (
+  c: AppContext,
+  memoId: string,
+  // Group shares let a member edit a note that lives in another workspace, so
+  // the caller may resolve the owning workspace before creating the session.
+  workspaceIdOverride?: string,
+): Promise<MemoEditSession | null> => {
+  const current = await getMemoDetailRow(c.env.storage.db, workspaceIdOverride ?? getWorkspaceId(c), memoId);
   if (!current) return null;
 
   const actor = getAuditActor(c);

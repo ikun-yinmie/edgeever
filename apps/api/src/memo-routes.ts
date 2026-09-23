@@ -15,6 +15,7 @@ import type { AppContext, AppEnv, AuditActor, Bindings } from "./api-context";
 import { AppError } from "./app-error";
 import { apiError, notFound } from "./http-errors";
 import type { ListMemosInput, ListMemosResult } from "./memo-list-service";
+import { resolveMemoAccess, type SharedAccess } from "./group-service";
 import { getActorLabel, getAuditActor, getWorkspaceId, requireScopes } from "./request-auth";
 import type { DatabaseAdapter } from "./storage-contract";
 
@@ -34,7 +35,11 @@ type MemoRouteDependencies = {
     actor: AuditActor,
     actorLabel: string,
   ) => Promise<MemoDetail>;
-  createMemoEditSession: (context: AppContext, memoId: string) => Promise<MemoEditSession | null>;
+  createMemoEditSession: (
+    context: AppContext,
+    memoId: string,
+    workspaceId?: string,
+  ) => Promise<MemoEditSession | null>;
   deleteMemo: (
     environment: Bindings,
     workspaceId: string,
@@ -113,6 +118,24 @@ const handleAppError = (context: AppContext, error: unknown) => {
   throw error;
 };
 
+// Notes shared into a group live in the author's workspace, so every memo route
+// resolves the workspace the memo really belongs to and checks the share grant
+// separately. Owners keep the exact behaviour they had before.
+const resolveMemoScope = async (
+  context: AppContext,
+  memoId: string,
+): Promise<{ access: SharedAccess } | { response: Response }> => {
+  const auth = context.get("auth");
+  const access = await resolveMemoAccess(context.env.storage.db, {
+    userId: auth?.actorId ?? "",
+    ownWorkspaceId: getWorkspaceId(context),
+    memoId,
+  });
+  if (!access) return { response: notFound(context, "Memo not found") };
+  if (!access.canRead) return { response: notFound(context, "Memo not found") };
+  return { access };
+};
+
 export const registerMemoRoutes = (
   app: Hono<AppEnv>,
   dependencies: MemoRouteDependencies,
@@ -157,11 +180,14 @@ export const registerMemoRoutes = (
     const denied = requireScopes(context, "read:memos");
     if (denied) return denied;
 
+    const scope = await resolveMemoScope(context, context.req.param("id"));
+    if ("response" in scope) return scope.response;
+
     const memo = await dependencies.getMemoDetail(
       context.env.storage.db,
-      getWorkspaceId(context),
+      scope.access.workspaceId,
       context.req.param("id"),
-      context.req.query("includeDeleted") === "1",
+      context.req.query("includeDeleted") === "1" && scope.access.isOwner,
     );
     return memo ? context.json({ memo }) : notFound(context, "Memo not found");
   });
@@ -170,7 +196,17 @@ export const registerMemoRoutes = (
     const denied = requireScopes(context, "write:memos");
     if (denied) return denied;
 
-    const editSession = await dependencies.createMemoEditSession(context, context.req.param("id"));
+    const scope = await resolveMemoScope(context, context.req.param("id"));
+    if ("response" in scope) return scope.response;
+    if (!scope.access.canEdit) {
+      return apiError(context, "shared_read_only", "This note is shared with you for reading only.", 403);
+    }
+
+    const editSession = await dependencies.createMemoEditSession(
+      context,
+      context.req.param("id"),
+      scope.access.workspaceId,
+    );
     return editSession
       ? context.json({ editSession })
       : notFound(context, "Memo not found");
@@ -232,9 +268,12 @@ export const registerMemoRoutes = (
     if (denied) return denied;
 
     try {
+      const scope = await resolveMemoScope(context, context.req.param("id"));
+      if ("response" in scope) return scope.response;
+
       const revisions = await dependencies.listMemoRevisions(
         context.env.storage.db,
-        getWorkspaceId(context),
+        scope.access.workspaceId,
         context.req.param("id"),
         dependencies.clampNumber(Number(context.req.query("limit") ?? 50), 1, 100),
       );
@@ -264,11 +303,21 @@ export const registerMemoRoutes = (
   });
 
   const updateMemo = async (context: AppContext, memoId: string, input: MemoUpdateInput) => {
+    const scope = await resolveMemoScope(context, memoId);
+    if ("response" in scope) return scope.response;
+    if (!scope.access.canEdit) {
+      return apiError(context, "shared_read_only", "This note is shared with you for reading only.", 403);
+    }
+
+    // A shared editor writes the note body; moving someone else's note into
+    // another notebook stays with the author.
+    const effectiveInput = scope.access.isOwner ? input : { ...input, notebookId: undefined };
+
     const result = await dependencies.updateMemo(
       context.env.storage.db,
-      getWorkspaceId(context),
+      scope.access.workspaceId,
       memoId,
-      input,
+      effectiveInput,
       getAuditActor(context),
       getActorLabel(context),
       true,

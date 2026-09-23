@@ -270,6 +270,38 @@ export const UserUpdateSchema = z
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 
+export const GroupCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(500).nullable().optional(),
+});
+
+export const GroupUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
+export const GroupMembersAddSchema = z.object({
+  userIds: z.array(z.string().trim().min(1).max(80)).min(1).max(200),
+});
+
+export const GroupShareCreateSchema = z.object({
+  targetType: z.enum(["notebook", "memo"]),
+  targetId: z.string().trim().min(1).max(80),
+  editMode: z.enum(["author", "group"]).default("author"),
+  editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).default([]),
+  note: z.string().trim().max(200).nullable().optional(),
+});
+
+export const GroupShareUpdateSchema = z
+  .object({
+    editMode: z.enum(["author", "group"]).optional(),
+    editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).optional(),
+    note: z.string().trim().max(200).nullable().optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
 export const UserBulkUpdateSchema = z
   .object({
     ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
@@ -512,3 +544,8 @@ export type PublicShareUnlockInput = z.infer<typeof PublicShareUnlockSchema>;
 export type RegistrationInviteCreateInput = z.input<typeof RegistrationInviteCreateSchema>;
 export type RegistrationInviteDeleteInput = z.infer<typeof RegistrationInviteDeleteSchema>;
 export type UserBulkUpdateInput = z.infer<typeof UserBulkUpdateSchema>;
+export type GroupCreateInput = z.infer<typeof GroupCreateSchema>;
+export type GroupUpdateInput = z.infer<typeof GroupUpdateSchema>;
+export type GroupMembersAddInput = z.infer<typeof GroupMembersAddSchema>;
+export type GroupShareCreateInput = z.infer<typeof GroupShareCreateSchema>;
+export type GroupShareUpdateInput = z.infer<typeof GroupShareUpdateSchema>;
