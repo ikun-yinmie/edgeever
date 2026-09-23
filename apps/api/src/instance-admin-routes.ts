@@ -2,6 +2,7 @@ import {
   InstanceAdminSettingsUpdateSchema,
   RegistrationEmailCodeRequestSchema,
   RegistrationInviteCreateSchema,
+  RegistrationInviteDeleteSchema,
   RegisterSchema,
 } from "@edgeever/shared";
 import { zValidator } from "@hono/zod-validator";
@@ -14,7 +15,7 @@ import { createId, isoNow } from "./entity-utils";
 import { apiError, badRequest, conflict, forbidden, tooManyRequests, unauthorized } from "./http-errors";
 import { INSTANCE_SETTINGS_ID } from "./instance-settings-service";
 import { resolvePrimaryObjectStorageEncryptionKey } from "./object-storage";
-import { encryptSecret } from "./secret-encryption";
+import { decryptSecret, encryptSecret } from "./secret-encryption";
 import {
   getInstanceSettingsRow,
   getSmtpPassword,
@@ -68,31 +69,139 @@ type RegistrationRouteDependencies = {
 type InviteRow = {
   id: string;
   code_hash: string;
-  use_count: number;
+  code_hint: string;
+  code_encrypted: string | null;
+  note: string | null;
   max_uses: number;
+  use_count: number;
   expires_at: string | null;
   revoked_at: string | null;
+  source: string;
+  owner_user_id: string | null;
+  used_by_user_id: string | null;
+  used_at: string | null;
+  created_at: string;
 };
 
-const consumeInviteCode = async (
+type InviteQueryRow = InviteRow & {
+  owner_username: string | null;
+  owner_display_name: string | null;
+  used_username: string | null;
+  used_display_name: string | null;
+};
+
+type InviteOwner = { id: string; username: string | null; displayName: string | null };
+
+const INVITE_SELECT = `SELECT i.id, i.code_hash, i.code_hint, i.code_encrypted, i.note, i.max_uses,
+  i.use_count, i.expires_at, i.revoked_at, i.source, i.owner_user_id, i.used_by_user_id,
+  i.used_at, i.created_at,
+  owner.username AS owner_username, owner.display_name AS owner_display_name,
+  used.username AS used_username, used.display_name AS used_display_name
+  FROM registration_invites i
+  LEFT JOIN users owner ON owner.id = i.owner_user_id
+  LEFT JOIN users used ON used.id = i.used_by_user_id`;
+
+type InviteEnvironment = AppEnv["Bindings"];
+
+// Invite codes are stored encrypted so they can be copied again at any time.
+// Rows created before migration 0057 only hold a hash and stay unreadable.
+const readInviteCode = async (row: Pick<InviteRow, "code_encrypted">, environment: InviteEnvironment) => {
+  if (!row.code_encrypted) return null;
+  const masterKey = resolvePrimaryObjectStorageEncryptionKey(environment);
+  if (!masterKey) return null;
+  try {
+    return await decryptSecret(row.code_encrypted, masterKey);
+  } catch {
+    return null;
+  }
+};
+
+const mapInviteRow = async (row: InviteQueryRow, environment: InviteEnvironment) => {
+  const owner: InviteOwner | null = row.owner_user_id
+    ? { id: row.owner_user_id, username: row.owner_username, displayName: row.owner_display_name }
+    : null;
+  const usedBy: InviteOwner | null = row.used_by_user_id
+    ? { id: row.used_by_user_id, username: row.used_username, displayName: row.used_display_name }
+    : null;
+  return {
+    id: row.id,
+    code: await readInviteCode(row, environment),
+    codeHint: row.code_hint,
+    note: row.note,
+    maxUses: row.max_uses,
+    useCount: row.use_count,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    source: row.source === "user" ? "user" : "admin",
+    owner,
+    usedBy,
+    usedAt: row.used_at,
+    createdAt: row.created_at,
+  };
+};
+
+const generateInviteSecret = async (
+  environment: InviteEnvironment,
+  options: { maxUses: number; expiresInDays?: number | null; note?: string | null; source: "admin" | "user"; ownerUserId: string | null; createdBy: string | null },
+) => {
+  const masterKey = resolvePrimaryObjectStorageEncryptionKey(environment);
+  if (!masterKey) return null;
+  const code = generateInviteCode();
+  return {
+    id: createId("inv"),
+    code,
+    codeHash: await sha256(`invite:${code}`),
+    codeEncrypted: await encryptSecret(code, masterKey),
+    codeHint: `${code.slice(0, 5)}…${code.slice(-4)}`,
+    note: options.note ?? null,
+    maxUses: options.maxUses,
+    source: options.source,
+    ownerUserId: options.ownerUserId,
+    createdBy: options.createdBy,
+    expiresAt: options.expiresInDays
+      ? new Date(Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+      : null,
+  };
+};
+
+const insertInviteStatement = (
   database: DatabaseAdapter,
-  code: string,
-  statements: PreparedStatementAdapter[],
-): Promise<boolean> => {
+  secret: NonNullable<Awaited<ReturnType<typeof generateInviteSecret>>>,
+  createdAt: string,
+) =>
+  database
+    .prepare(
+      `INSERT INTO registration_invites
+         (id, code_hash, code_hint, code_encrypted, note, max_uses, use_count, expires_at,
+          source, owner_user_id, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      secret.id,
+      secret.codeHash,
+      secret.codeHint,
+      secret.codeEncrypted,
+      secret.note,
+      secret.maxUses,
+      secret.expiresAt,
+      secret.source,
+      secret.ownerUserId,
+      secret.createdBy,
+      createdAt,
+    );
+
+const findUsableInvite = async (database: DatabaseAdapter, code: string): Promise<InviteRow | null> => {
   const normalized = code.trim().toUpperCase();
   const codeHash = await sha256(`invite:${normalized}`);
   const invite = await database
     .prepare(`SELECT id, code_hash, use_count, max_uses, expires_at, revoked_at FROM registration_invites WHERE code_hash = ?`)
     .bind(codeHash)
     .first<InviteRow>();
-  if (!invite) return false;
-  if (invite.revoked_at) return false;
-  if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) return false;
-  if (invite.use_count >= invite.max_uses) return false;
-  statements.push(
-    database.prepare(`UPDATE registration_invites SET use_count = use_count + 1 WHERE id = ? AND use_count < max_uses`).bind(invite.id),
-  );
-  return true;
+  if (!invite) return null;
+  if (invite.revoked_at) return null;
+  if (invite.expires_at && Date.parse(invite.expires_at) < Date.now()) return null;
+  if (invite.use_count >= invite.max_uses) return null;
+  return invite;
 };
 
 export const registerInstanceAdminRoutes = (
@@ -300,15 +409,25 @@ export const registerInstanceAdminRoutes = (
     }
 
     // Invite code gate: consume a valid invite when required.
+    const userId = createId("usr");
+    const now = isoNow();
     const inviteStatements: PreparedStatementAdapter[] = [];
     if (settings.registration_invite_required) {
       if (!input.inviteCode) {
         return apiError(context, "invite_required", "An invite code is required to register.", 403);
       }
-      const consumed = await consumeInviteCode(database, input.inviteCode, inviteStatements);
-      if (!consumed) {
+      const invite = await findUsableInvite(database, input.inviteCode);
+      if (!invite) {
         return apiError(context, "invite_invalid", "This invite code is invalid, used up or expired.", 403);
       }
+      inviteStatements.push(
+        database
+          .prepare(
+            `UPDATE registration_invites SET use_count = use_count + 1, used_by_user_id = ?, used_at = ?
+             WHERE id = ? AND use_count < max_uses`,
+          )
+          .bind(userId, now, invite.id),
+      );
     }
 
     const username = input.username.toLowerCase();
@@ -320,9 +439,7 @@ export const registerInstanceAdminRoutes = (
       return conflict(context, "username_or_email_exists", "Username or email already registered.");
     }
 
-    const userId = createId("usr");
     const workspaceId = createId("ws");
-    const now = isoNow();
     const passwordHash = await hashPassword(input.password);
     const displayName = input.displayName || input.username;
     const notebooks = createDefaultNotebookRows(workspaceId);
@@ -446,39 +563,21 @@ export const registerInstanceAdminRoutes = (
     },
   );
 
-  // Invite codes: list / create / revoke.
+  // Invite codes: list / create / revoke / restore / delete.
+
+  const MAX_LISTED_INVITES = 500;
 
   app.get("/api/v1/admin/registration/invites", async (context) => {
     const denied = await requireOwnerRequest(context);
     if (denied) return denied;
     const database = context.env.storage.db;
     const result = await database
-      .prepare(
-        `SELECT id, code_hint, note, max_uses, use_count, expires_at, revoked_at, created_at
-         FROM registration_invites ORDER BY created_at DESC LIMIT 200`,
-      )
-      .all<{
-        id: string;
-        code_hint: string;
-        note: string | null;
-        max_uses: number;
-        use_count: number;
-        expires_at: string | null;
-        revoked_at: string | null;
-        created_at: string;
-      }>();
-    return context.json({
-      invites: (result.results ?? []).map((row) => ({
-        id: row.id,
-        codeHint: row.code_hint,
-        note: row.note,
-        maxUses: row.max_uses,
-        useCount: row.use_count,
-        expiresAt: row.expires_at,
-        revokedAt: row.revoked_at,
-        createdAt: row.created_at,
-      })),
-    });
+      .prepare(`${INVITE_SELECT} ORDER BY i.created_at DESC LIMIT ${MAX_LISTED_INVITES}`)
+      .all<InviteQueryRow>();
+    const invites = await Promise.all(
+      (result.results ?? []).map((row) => mapInviteRow(row, context.env)),
+    );
+    return context.json({ invites });
   });
 
   app.post("/api/v1/admin/registration/invites", zValidator("json", RegistrationInviteCreateSchema), async (context) => {
@@ -486,30 +585,41 @@ export const registerInstanceAdminRoutes = (
     if (denied) return denied;
     const input = context.req.valid("json");
     const database = context.env.storage.db;
+    const actorId = context.get("auth")!.actorId;
 
-    const code = generateInviteCode();
-    const codeHash = await sha256(`invite:${code}`);
-    const id = createId("inv");
-    const now = isoNow();
-    const expiresAt = input.expiresInDays
-      ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
-      : null;
-    const codeHint = `${code.slice(0, 5)}…${code.slice(-4)}`;
+    const secret = await generateInviteSecret(context.env, {
+      maxUses: input.maxUses,
+      expiresInDays: input.expiresInDays ?? null,
+      note: input.note ?? null,
+      source: "admin",
+      ownerUserId: null,
+      createdBy: actorId,
+    });
+    if (!secret) {
+      return apiError(context, "encryption_key_unavailable", "Credentials encryption key is not available.", 500);
+    }
 
     await database.batch([
-      database.prepare(
-        `INSERT INTO registration_invites (id, code_hash, code_hint, note, max_uses, use_count, expires_at, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
-      ).bind(id, codeHash, codeHint, input.note ?? null, input.maxUses, expiresAt, context.get("auth")!.actorId, now),
-      auditStatement(database, "user", context.get("auth")!.actorId, "registration_invite.create", "registration_invite", id, {
-        codeHint,
-        maxUses: input.maxUses,
+      insertInviteStatement(database, secret, isoNow()),
+      auditStatement(database, "user", actorId, "registration_invite.create", "registration_invite", secret.id, {
+        codeHint: secret.codeHint,
+        maxUses: secret.maxUses,
         expiresInDays: input.expiresInDays ?? null,
       }),
     ]);
 
-    // The plaintext code is returned exactly once, at creation time.
-    return context.json({ invite: { id, code, codeHint, maxUses: input.maxUses, expiresAt } }, 201);
+    return context.json(
+      {
+        invite: {
+          id: secret.id,
+          code: secret.code,
+          codeHint: secret.codeHint,
+          maxUses: secret.maxUses,
+          expiresAt: secret.expiresAt,
+        },
+      },
+      201,
+    );
   });
 
   app.post("/api/v1/admin/registration/invites/:inviteId/revoke", async (context) => {
@@ -531,8 +641,137 @@ export const registerInstanceAdminRoutes = (
     return context.json({ ok: true });
   });
 
-  // Demo mode keeps the whole surface closed.
+  // Parking an invite in the revoked list keeps it copyable and recoverable.
+  app.post("/api/v1/admin/registration/invites/:inviteId/restore", async (context) => {
+    const denied = await requireOwnerRequest(context);
+    if (denied) return denied;
+    const database = context.env.storage.db;
+    const inviteId = context.req.param("inviteId");
+    const invite = await database
+      .prepare(`SELECT id, revoked_at FROM registration_invites WHERE id = ?`)
+      .bind(inviteId)
+      .first<{ id: string; revoked_at: string | null }>();
+    if (!invite) return notFoundResponse(context);
+    if (invite.revoked_at) {
+      await database.batch([
+        database.prepare(`UPDATE registration_invites SET revoked_at = NULL WHERE id = ?`).bind(inviteId),
+        auditStatement(database, "user", context.get("auth")!.actorId, "registration_invite.restore", "registration_invite", inviteId, {}),
+      ]);
+    }
+    return context.json({ ok: true });
+  });
+
+  app.post(
+    "/api/v1/admin/registration/invites/delete",
+    zValidator("json", RegistrationInviteDeleteSchema),
+    async (context) => {
+      const denied = await requireOwnerRequest(context);
+      if (denied) return denied;
+      const database = context.env.storage.db;
+      const actorId = context.get("auth")!.actorId;
+      const { ids } = context.req.valid("json");
+      const placeholders = ids.map(() => "?").join(", ");
+      await database.batch([
+        database
+          .prepare(`DELETE FROM registration_invites WHERE id IN (${placeholders})`)
+          .bind(...ids),
+        auditStatement(database, "user", actorId, "registration_invite.delete", "registration_invite", ids.join(","), {
+          count: ids.length,
+        }),
+      ]);
+      return context.json({ ok: true, deleted: ids.length });
+    },
+  );
+
+  // --- Member self-service: everyone may hold one single-use invite code ---
+
+  const requireMemberRequest = async (context: AppContext) => {
+    const auth = await dependencies.authenticateRequest(context, true);
+    if (!auth) return unauthorizedResponse(context);
+    context.set("auth", auth);
+    return null;
+  };
+
+  const loadOwnInvite = async (database: DatabaseAdapter, userId: string) =>
+    database
+      .prepare(`${INVITE_SELECT} WHERE i.owner_user_id = ? AND i.source = 'user' ORDER BY i.created_at DESC LIMIT 1`)
+      .bind(userId)
+      .first<InviteQueryRow>();
+
+  app.get("/api/v1/me/invite-code", async (context) => {
+    const denied = await requireMemberRequest(context);
+    if (denied) return denied;
+    const userId = context.get("auth")!.actorId;
+    if (!userId) return unauthorizedResponse(context);
+    const invite = await loadOwnInvite(context.env.storage.db, userId);
+    return context.json({
+      invite: invite ? await mapInviteRow(invite, context.env) : null,
+      canCreate: !invite,
+    });
+  });
+
+  app.post("/api/v1/me/invite-code", async (context) => {
+    const denied = await requireMemberRequest(context);
+    if (denied) return denied;
+    const auth = context.get("auth")!;
+    const userId = auth.actorId;
+    if (!userId) return unauthorizedResponse(context);
+    const database = context.env.storage.db;
+
+    const existing = await loadOwnInvite(database, userId);
+    if (existing) {
+      // Still unused: hand the same code back so the member can copy it again.
+      if (!existing.revoked_at && existing.use_count < existing.max_uses) {
+        return context.json({ invite: await mapInviteRow(existing, context.env), canCreate: false });
+      }
+      // Single use is locked in: a consumed code is never replaced silently.
+      return conflict(context, "invite_already_used", "Your invite code has already been used. Ask an administrator to reset it.");
+    }
+
+    const secret = await generateInviteSecret(context.env, {
+      maxUses: 1,
+      expiresInDays: null,
+      note: null,
+      source: "user",
+      ownerUserId: userId,
+      createdBy: userId,
+    });
+    if (!secret) {
+      return apiError(context, "encryption_key_unavailable", "Credentials encryption key is not available.", 500);
+    }
+
+    const now = isoNow();
+    await database.batch([
+      insertInviteStatement(database, secret, now),
+      auditStatement(database, "user", userId, "registration_invite.self_create", "registration_invite", secret.id, {
+        codeHint: secret.codeHint,
+      }),
+    ]);
+
+    return context.json(
+      {
+        invite: {
+          id: secret.id,
+          code: secret.code,
+          codeHint: secret.codeHint,
+          note: null,
+          maxUses: 1,
+          useCount: 0,
+          expiresAt: null,
+          revokedAt: null,
+          source: "user",
+          owner: { id: userId, username: auth.username, displayName: auth.displayName },
+          usedBy: null,
+          usedAt: null,
+          createdAt: now,
+        },
+        canCreate: false,
+      },
+      201,
+    );
+  });
 };
+
 
 
 const unauthorizedResponse = (context: AppContext) => unauthorized(context, "Authentication required.");

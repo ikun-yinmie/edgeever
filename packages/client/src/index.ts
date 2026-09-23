@@ -188,14 +188,26 @@ export type RegistrationConfigResponse = {
   };
 };
 
+export type RegistrationInviteOwner = {
+  id: string;
+  username: string | null;
+  displayName: string | null;
+};
+
 export type RegistrationInvite = {
   id: string;
+  /** Null for codes created before codes became re-copyable. */
+  code: string | null;
   codeHint: string;
   note: string | null;
   maxUses: number;
   useCount: number;
   expiresAt: string | null;
   revokedAt: string | null;
+  source: "admin" | "user";
+  owner: RegistrationInviteOwner | null;
+  usedBy: RegistrationInviteOwner | null;
+  usedAt: string | null;
   createdAt: string;
 };
 
@@ -211,6 +223,11 @@ export type CreateRegistrationInviteResponse = {
     maxUses: number;
     expiresAt: string | null;
   };
+};
+
+export type MyRegistrationInviteResponse = {
+  invite: RegistrationInvite | null;
+  canCreate: boolean;
 };
 
 export type InstanceAdminSettings = {
@@ -1247,7 +1264,14 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       await proxyGenerate();
     },
 
-    listUsers: () => request<ListUsersResponse>("/api/v1/users"),
+    listUsers: (options?: { includeDeleted?: boolean }) =>
+      request<ListUsersResponse>(`/api/v1/users${options?.includeDeleted ? "?includeDeleted=1" : ""}`),
+
+    bulkUpdateUsers: (payload: { ids: string[]; isDisabled?: boolean; isDeleted?: boolean }) =>
+      request<{ ok: true; updated: number; skipped: string[] }>("/api/v1/users/bulk", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
 
     createUser: (payload: { username: string; displayName?: string | null; password: string }) =>
       request<UserResponse>("/api/v1/users", {
@@ -1292,6 +1316,24 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         method: "POST",
       }),
 
+    restoreRegistrationInvite: (inviteId: string) =>
+      request<{ ok: true }>(`/api/v1/admin/registration/invites/${encodeURIComponent(inviteId)}/restore`, {
+        method: "POST",
+      }),
+
+    deleteRegistrationInvites: (ids: string[]) =>
+      request<{ ok: true; deleted: number }>("/api/v1/admin/registration/invites/delete", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
+
+    getMyRegistrationInvite: () => request<MyRegistrationInviteResponse>("/api/v1/me/invite-code"),
+
+    createMyRegistrationInvite: () =>
+      request<MyRegistrationInviteResponse>("/api/v1/me/invite-code", {
+        method: "POST",
+      }),
+
     getInstanceAdminSettings: () =>
       request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings"),
 
@@ -1301,7 +1343,16 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         body: JSON.stringify(payload),
       }),
 
-    updateUser: (userId: string, payload: { displayName?: string | null; password?: string; isDisabled?: boolean }) =>
+    updateUser: (
+      userId: string,
+      payload: {
+        displayName?: string | null;
+        password?: string;
+        isDisabled?: boolean;
+        isDeleted?: boolean;
+        role?: "owner" | "member";
+      },
+    ) =>
       request<UserResponse>(`/api/v1/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),

@@ -296,7 +296,7 @@ describe("registration invite codes", () => {
     sqlite.close();
   });
 
-  test("lists invites with a recognizable hint without exposing the code", async () => {
+  test("lists invites with the code itself so it stays copyable", async () => {
     const { sqlite, environment } = createEnvironment();
     const app = createTestApp();
     const invite = await createInvite(app, environment, { maxUses: 3, note: "for Alex" });
@@ -306,8 +306,108 @@ describe("registration invite codes", () => {
     const body = await response.json();
 
     expect(body.invites).toHaveLength(1);
-    expect(body.invites[0]).toMatchObject({ id: invite.id, note: "for Alex", maxUses: 3, useCount: 0 });
-    expect(JSON.stringify(body)).not.toContain(invite.code);
+    expect(body.invites[0]).toMatchObject({
+      id: invite.id,
+      code: invite.code,
+      note: "for Alex",
+      maxUses: 3,
+      useCount: 0,
+      source: "admin",
+      owner: null,
+      usedBy: null,
+      usedAt: null,
+    });
+    sqlite.close();
+  });
+
+  test("keeps a legacy invite readable as a hint when its code can no longer be decrypted", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    sqlite
+      .query(
+        `INSERT INTO registration_invites (id, code_hash, code_hint, max_uses, use_count, created_at)
+         VALUES ('inv_legacy', ?, 'EE-OLD…1234', 1, 0, ?)`,
+      )
+      .run(await sha256("invite:EE-OLD-CODE-1234"), new Date().toISOString());
+
+    const body = await (await app.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(body.invites[0]).toMatchObject({ id: "inv_legacy", code: null, codeHint: "EE-OLD…1234" });
+    sqlite.close();
+  });
+
+  test("restores a revoked invite from the revoked list", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    const invite = await createInvite(app, environment);
+
+    await app.request(`/api/v1/admin/registration/invites/${invite.id}/revoke`, { method: "POST" }, environment);
+    const revoked = await (await app.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(revoked.invites[0].revokedAt).not.toBeNull();
+
+    const restored = await app.request(
+      `/api/v1/admin/registration/invites/${invite.id}/restore`,
+      { method: "POST" },
+      environment,
+    );
+    expect(restored.status).toBe(200);
+    const afterRestore = await (await app.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(afterRestore.invites[0].revokedAt).toBeNull();
+    expect(afterRestore.invites[0].code).toBe(invite.code);
+    sqlite.close();
+  });
+
+  test("deletes selected invites from either list", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    const keep = await createInvite(app, environment, { note: "keep" });
+    const active = await createInvite(app, environment, { note: "active" });
+    const revoked = await createInvite(app, environment, { note: "revoked" });
+    await app.request(`/api/v1/admin/registration/invites/${revoked.id}/revoke`, { method: "POST" }, environment);
+
+    const response = await jsonRequest(
+      app,
+      "/api/v1/admin/registration/invites/delete",
+      { ids: [active.id, revoked.id] },
+      environment,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, deleted: 2 });
+
+    const remaining = await (await app.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(remaining.invites.map((invite) => invite.id)).toEqual([keep.id]);
+    sqlite.close();
+  });
+
+  test("rejects an empty selection for deletion", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    const response = await jsonRequest(
+      app,
+      "/api/v1/admin/registration/invites/delete",
+      { ids: [] },
+      environment,
+    );
+    expect(response.status).toBe(400);
+    sqlite.close();
+  });
+
+  test("records which member an invite brought in", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 1 });
+    const invite = await createInvite(app, environment, { maxUses: 1 });
+
+    const accepted = await jsonRequest(
+      app,
+      "/api/v1/public/registration/register",
+      registerPayload({ inviteCode: invite.code }),
+      environment,
+    );
+    expect(accepted.status).toBe(201);
+
+    const body = await (await app.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(body.invites[0].usedAt).not.toBeNull();
+    expect(body.invites[0].usedBy).toMatchObject({ username: "newcomer" });
     sqlite.close();
   });
 
@@ -320,6 +420,90 @@ describe("registration invite codes", () => {
 
     expect(list.status).toBe(403);
     expect(create.status).toBe(403);
+    sqlite.close();
+  });
+});
+
+describe("member invite codes", () => {
+  test("hands every member one code that stays copyable", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("member");
+
+    const empty = await (await app.request("/api/v1/me/invite-code", {}, environment)).json();
+    expect(empty).toMatchObject({ invite: null, canCreate: true });
+
+    const created = await app.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(created.status).toBe(201);
+    const createdBody = await created.json();
+    expect(createdBody.invite).toMatchObject({ source: "user", maxUses: 1, useCount: 0, expiresAt: null });
+    expect(createdBody.invite.code).toMatch(/^EE-/);
+
+    // Asking again returns the same code instead of minting a second one.
+    const again = await app.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(again.status).toBe(200);
+    expect((await again.json()).invite.code).toBe(createdBody.invite.code);
+
+    const listed = await (await app.request("/api/v1/me/invite-code", {}, environment)).json();
+    expect(listed.invite.code).toBe(createdBody.invite.code);
+    expect(listed.canCreate).toBe(false);
+    sqlite.close();
+  });
+
+  test("locks a member code after its single use", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const memberApp = createTestApp("member");
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 1 });
+    const created = await (await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment)).json();
+
+    const registered = await jsonRequest(
+      memberApp,
+      "/api/v1/public/registration/register",
+      registerPayload({ inviteCode: created.invite.code }),
+      environment,
+    );
+    expect(registered.status).toBe(201);
+
+    const retry = await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(retry.status).toBe(409);
+    expect(await retry.json()).toMatchObject({ error: { code: "invite_already_used" } });
+
+    const listed = await (await memberApp.request("/api/v1/me/invite-code", {}, environment)).json();
+    expect(listed.invite).toMatchObject({ useCount: 1, maxUses: 1 });
+    sqlite.close();
+  });
+
+  test("lets the administrator recover a consumed member code by deleting it", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const memberApp = createTestApp("member");
+    const adminApp = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 1 });
+    const created = await (await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment)).json();
+    await jsonRequest(
+      memberApp,
+      "/api/v1/public/registration/register",
+      registerPayload({ inviteCode: created.invite.code }),
+      environment,
+    );
+
+    const listed = await (await adminApp.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(listed.invites[0]).toMatchObject({ id: created.invite.id, source: "user" });
+
+    await jsonRequest(adminApp, "/api/v1/admin/registration/invites/delete", { ids: [created.invite.id] }, environment);
+    const regenerated = await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(regenerated.status).toBe(201);
+    expect((await regenerated.json()).invite.code).not.toBe(created.invite.code);
+    sqlite.close();
+  });
+
+  test("refuses to hand back a revoked member code", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const memberApp = createTestApp("member");
+    const adminApp = createTestApp();
+    const created = await (await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment)).json();
+    await adminApp.request(`/api/v1/admin/registration/invites/${created.invite.id}/revoke`, { method: "POST" }, environment);
+
+    const retry = await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(retry.status).toBe(409);
     sqlite.close();
   });
 });

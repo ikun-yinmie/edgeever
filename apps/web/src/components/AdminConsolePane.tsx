@@ -90,7 +90,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
             </div>
 
             {activeTab === "members" ? (
-              <UserManagementCard demoMode={false} />
+              <UserManagementCard currentUserId={user.id} demoMode={false} />
             ) : activeTab === "invites" ? (
               <RegistrationInvitesCard />
             ) : activeTab === "registration" ? (

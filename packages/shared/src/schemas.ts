@@ -223,6 +223,10 @@ export const RegistrationInviteCreateSchema = z.object({
   expiresInDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 
+export const RegistrationInviteDeleteSchema = z.object({
+  ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
+});
+
 export const InstanceAdminSettingsUpdateSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
@@ -261,8 +265,21 @@ export const UserUpdateSchema = z
     displayName: z.string().trim().max(80).nullable().optional(),
     password: z.string().min(8).max(512).optional(),
     isDisabled: z.boolean().optional(),
+    isDeleted: z.boolean().optional(),
+    role: z.enum(["owner", "member"]).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
+export const UserBulkUpdateSchema = z
+  .object({
+    ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
+    isDisabled: z.boolean().optional(),
+    isDeleted: z.boolean().optional(),
+  })
+  .refine(
+    (input) => input.isDisabled !== undefined || input.isDeleted !== undefined,
+    "At least one change is required.",
+  );
 
 export const ApiTokenCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -493,3 +510,5 @@ export type AiPromptTemplateUpdateInput = z.infer<typeof AiPromptTemplateUpdateS
 export type MemoShareUpdateInput = z.infer<typeof MemoShareUpdateSchema>;
 export type PublicShareUnlockInput = z.infer<typeof PublicShareUnlockSchema>;
 export type RegistrationInviteCreateInput = z.input<typeof RegistrationInviteCreateSchema>;
+export type RegistrationInviteDeleteInput = z.infer<typeof RegistrationInviteDeleteSchema>;
+export type UserBulkUpdateInput = z.infer<typeof UserBulkUpdateSchema>;

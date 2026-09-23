@@ -269,7 +269,9 @@ export type AuthUser = {
 };
 
 export type InstanceUser = AuthUser & {
+  email: string | null;
   isDisabled: boolean;
+  isDeleted: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 };

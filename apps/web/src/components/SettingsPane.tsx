@@ -22,6 +22,7 @@ import type { EditorContentAlignment, ShortcutSettings } from "@/lib/app-helpers
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
+import { MyInviteCard } from "./settings/MyInviteCard";
 import { DataExportCard } from "./settings/DataExportCard";
 import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
@@ -227,6 +228,7 @@ export const SettingsPane = ({
         return (
           <SettingsGroup>
             <AccountInfoCard user={user} />
+            <MyInviteCard />
             <PasswordCard authRequired={authRequired} demoMode={demoMode} />
             {demoMode ? null : (
               <LoginDevicesCard
