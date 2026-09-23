@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ApiRequestError, api } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ import {
 } from "./settings-ui";
 
 export const INVITE_CODES_QUERY_KEY = ["registration-invites"];
+export const INSTANCE_SETTINGS_QUERY_KEY = ["instance-admin-settings"];
 
 type InviteStatus = "active" | "usedUp" | "revoked" | "expired";
 
@@ -45,6 +47,10 @@ export const RegistrationInvitesCard = () => {
     queryKey: INVITE_CODES_QUERY_KEY,
     queryFn: api.listRegistrationInvites,
   });
+  const settingsQuery = useQuery({
+    queryKey: INSTANCE_SETTINGS_QUERY_KEY,
+    queryFn: api.getInstanceAdminSettings,
+  });
   const [note, setNote] = useState("");
   const [maxUses, setMaxUses] = useState("1");
   const [expiresInDays, setExpiresInDays] = useState("");
@@ -71,6 +77,18 @@ export const RegistrationInvitesCard = () => {
     },
   });
 
+  const requireMutation = useMutation({
+    mutationFn: (registrationInviteRequired: boolean) =>
+      api.updateInstanceAdminSettings({ registrationInviteRequired }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: INSTANCE_SETTINGS_QUERY_KEY });
+    },
+    onError: (mutationError) => {
+      setError(mutationError instanceof ApiRequestError ? mutationError.message : String(mutationError));
+    },
+  });
+
   const revokeMutation = useMutation({
     mutationFn: (inviteId: string) => api.revokeRegistrationInvite(inviteId),
     onSuccess: () => {
@@ -89,6 +107,8 @@ export const RegistrationInvitesCard = () => {
   };
 
   const invites = invitesQuery.data?.invites ?? [];
+  const inviteRequired = settingsQuery.data?.settings.registrationInviteRequired ?? false;
+  const registrationEnabled = settingsQuery.data?.settings.registrationEnabled ?? false;
 
   return (
     <Card>
@@ -102,6 +122,22 @@ export const RegistrationInvitesCard = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/60 px-3.5 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-900">{t("adminConsole.inviteRequired")}</p>
+            <p className="text-xs text-slate-500">
+              {registrationEnabled
+                ? t("adminConsole.inviteRequiredHint")
+                : t("adminConsole.invites.registrationClosedHint")}
+            </p>
+          </div>
+          <Switch
+            checked={inviteRequired}
+            disabled={!settingsQuery.data || requireMutation.isPending}
+            onCheckedChange={(checked) => requireMutation.mutate(checked)}
+          />
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-[1fr_7rem_7rem_auto] sm:items-end">
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-slate-600">{t("adminConsole.invites.note")}</span>

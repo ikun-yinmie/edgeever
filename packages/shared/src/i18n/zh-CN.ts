@@ -2429,6 +2429,7 @@ export const zhCN = {
     invites: {
       title: "注册邀请码",
       description: "生成邀请码发给要注册的人，可设置使用次数与有效期。",
+      registrationClosedHint: "注意：当前「开放用户注册」是关闭的，邀请码暂时用不上，请先到「注册与邮件」里开启注册。",
       note: "备注（可选）",
       notePlaceholder: "例如：给小王",
       maxUses: "可使用次数",

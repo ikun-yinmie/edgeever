@@ -58,7 +58,6 @@ export const InstanceAdminCard = () => {
     saveMutation.mutate({
       registrationEnabled: draft.registrationEnabled,
       registrationCodeRequired: draft.registrationCodeRequired,
-      registrationInviteRequired: draft.registrationInviteRequired,
       codeTtlSeconds: draft.codeTtlSeconds,
       codeResendCooldownSeconds: draft.codeResendCooldownSeconds,
       codeBindIp: draft.codeBindIp,
@@ -112,16 +111,6 @@ export const InstanceAdminCard = () => {
             <Switch
               checked={draft.registrationCodeRequired}
               onCheckedChange={(checked) => update({ registrationCodeRequired: checked })}
-            />
-          </div>
-          <div className={cn("flex items-center justify-between gap-4 transition", draft.registrationEnabled ? "" : "pointer-events-none opacity-40")}>
-            <div>
-              <p className="text-sm font-medium text-slate-900">{t("adminConsole.inviteRequired")}</p>
-              <p className="text-xs text-slate-500">{t("adminConsole.inviteRequiredHint")}</p>
-            </div>
-            <Switch
-              checked={draft.registrationInviteRequired}
-              onCheckedChange={(checked) => update({ registrationInviteRequired: checked })}
             />
           </div>
         </section>

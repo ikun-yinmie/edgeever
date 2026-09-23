@@ -2431,6 +2431,7 @@ export const enUS = {
     invites: {
       title: "Registration invites",
       description: "Generate invite codes for the people you want to register. Set usage limits and expiry.",
+      registrationClosedHint: "Heads up: user registration is currently off, so invite codes have no effect. Turn registration on under \"Registration & email\".",
       note: "Note (optional)",
       notePlaceholder: "e.g. for Alex",
       maxUses: "Allowed uses",

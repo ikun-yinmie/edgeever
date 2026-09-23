@@ -2431,6 +2431,7 @@ export const ja = {
     invites: {
       title: "登録用招待コード",
       description: "登録してもらう人に渡す招待コードを発行します。使用回数と有効期限を設定できます。",
+      registrationClosedHint: "注意：現在「ユーザー登録を許可」がオフのため、招待コードは機能しません。「登録とメール」で先に登録を有効にしてください。",
       note: "メモ（任意）",
       notePlaceholder: "例：田中さん用",
       maxUses: "使用可能回数",
