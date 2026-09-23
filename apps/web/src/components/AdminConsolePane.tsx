@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ArrowLeft, Database, KeyRound, Mail, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, Database, KeyRound, Mail, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
+import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
 import { InstanceAdminCard } from "@/components/settings/InstanceAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
 import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
@@ -9,7 +10,7 @@ import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "members" | "invites" | "registration" | "storage";
+type AdminTabKey = "members" | "groups" | "invites" | "registration" | "storage";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
@@ -22,6 +23,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
   const tabs: { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+    { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
     { key: "registration", label: t("adminConsole.navRegistration"), icon: Mail },
     { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
@@ -91,6 +93,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
             {activeTab === "members" ? (
               <UserManagementCard currentUserId={user.id} demoMode={false} />
+            ) : activeTab === "groups" ? (
+              <GroupManagementCard />
             ) : activeTab === "invites" ? (
               <RegistrationInvitesCard />
             ) : activeTab === "registration" ? (

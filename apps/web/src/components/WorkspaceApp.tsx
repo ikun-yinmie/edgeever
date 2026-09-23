@@ -147,6 +147,9 @@ const EvernoteImportGuidePane = lazy(() =>
   import("./EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
 const TagsPane = lazy(() => import("./TagsPane").then((module) => ({ default: module.TagsPane })));
+const SharedWithMePane = lazy(() =>
+  import("./SharedWithMePane").then((module) => ({ default: module.SharedWithMePane }))
+);
 const TemplatesPane = lazy(() => import("./TemplatesPane").then((module) => ({ default: module.TemplatesPane })));
 const AiPromptsPane = lazy(() => import("./AiPromptsPane").then((module) => ({ default: module.AiPromptsPane })));
 const ExecutionCenterPane = lazy(() =>
@@ -510,7 +513,7 @@ export const WorkspaceApp = ({
     setShortcutSettings,
     shortcutSettings,
   } = useWorkspacePreferences();
-  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
+  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
     isInitialSettingsRoute
       ? "settings"
       : isInitialPluginsRoute
@@ -2325,6 +2328,17 @@ export const WorkspaceApp = ({
     navigateAdmin(ADMIN_CONSOLE_PATH);
   };
 
+  // Shared-with-me lives inside the workspace so opening a shared note uses the
+  // same editor plumbing as one of your own notes.
+  const handleOpenShared = () => {
+    clearMemoSelection?.();
+    setRightView("shared");
+  };
+
+  const handleCloseShared = () => {
+    setRightView("editor");
+  };
+
   const handleOpenPluginManager = () => {
     clearHiddenMobileSearch();
     navigateWorkspacePlugins();
@@ -2926,6 +2940,7 @@ export const WorkspaceApp = ({
                   onBackToList={handleSelectAllMemos}
                   onLogout={onLogout}
                   onOpenAdmin={handleOpenAdminConsole}
+                  onOpenShared={handleOpenShared}
                   isOwner={authRequired && user?.role === "owner"}
                   isLoggingOut={isLoggingOut}
                   imageCompressionEnabled={imageCompressionEnabled}
@@ -3162,6 +3177,15 @@ export const WorkspaceApp = ({
                   />
                   ) : rightView === "ai-prompts" ? (
                     <AiPromptsPane key={localDataScope} onClose={handleCloseAiPrompts} onOpenExecutionCenter={handleOpenExecutionCenter} />
+                  ) : rightView === "shared" ? (
+                    <SharedWithMePane
+                      onClose={handleCloseShared}
+                      onOpenMemo={(memoId) => {
+                        setSelectedMemoId(memoId);
+                        setActivePane("memos");
+                        setRightView("editor");
+                      }}
+                    />
                   ) : rightView === "execution-center" ? (
                     <ExecutionCenterPane currentDeviceId={scheduledTaskDeviceId} onClose={handleCloseExecutionCenter} />
                   ) : rightView === "evernote-migration" ? (

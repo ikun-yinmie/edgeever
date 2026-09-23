@@ -32,6 +32,7 @@ import {
   Network,
   Workflow,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -469,6 +470,7 @@ export const NotebookPane = ({
   onEmptyTrash,
   onOpenSettings,
   onOpenAdmin,
+  onOpenShared,
   isOwner,
   onCreateMemo,
   canCreateMemo,
@@ -509,6 +511,7 @@ export const NotebookPane = ({
   onEmptyTrash: () => void;
   onOpenSettings: () => void;
   onOpenAdmin?: () => void;
+  onOpenShared?: () => void;
   isOwner?: boolean;
   onCreateMemo: (kind?: DiagramKind) => void;
   canCreateMemo: boolean;
@@ -916,6 +919,13 @@ export const NotebookPane = ({
                   label={t("notebookPane.trash")}
                   onClick={onOpenTrash}
                 />
+                {onOpenShared ? (
+                  <SidebarRailButton
+                    icon={<Users className="h-4 w-4" />}
+                    label={t("sharedPane.title")}
+                    onClick={onOpenShared}
+                  />
+                ) : null}
                 {isOwner && onOpenAdmin ? (
                   <SidebarRailButton
                     icon={<ShieldCheck className="h-4 w-4" />}
@@ -1158,6 +1168,17 @@ export const NotebookPane = ({
               </span>
               <span className="min-w-0 flex-1 truncate">{t("notebookPane.profile")}</span>
             </button>
+            {onOpenShared ? (
+              <button
+                onClick={onOpenShared}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                type="button"
+                aria-label={t("sharedPane.title")}
+                title={t("sharedPane.title")}
+              >
+                <Users className="h-4 w-4" />
+              </button>
+            ) : null}
             {isOwner && onOpenAdmin ? (
               <button
                 onClick={onOpenAdmin}

@@ -230,6 +230,99 @@ export type MyRegistrationInviteResponse = {
   canCreate: boolean;
 };
 
+export type CollaborationGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+  shareCount: number;
+  myRole: "manager" | "member";
+};
+
+export type CollaborationGroupMember = {
+  userId: string;
+  role: "manager" | "member";
+  username: string | null;
+  displayName: string | null;
+  createdAt: string;
+};
+
+export type GroupShareSummary = {
+  id: string;
+  groupId: string;
+  groupName: string;
+  targetType: "notebook" | "memo";
+  targetId: string;
+  title: string;
+  editMode: "author" | "group";
+  editorUserIds: string[];
+  note: string | null;
+  createdAt: string;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+};
+
+export type SharedWithMeGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  shareCount: number;
+  memberCount: number;
+};
+
+export type SharedWithMeNotebook = {
+  id: string;
+  name: string;
+  icon: string | null;
+  parentId: string | null;
+  groupId: string;
+  groupName: string;
+  editMode: "author" | "group";
+  canEdit: boolean;
+  memoCount: number;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+};
+
+export type SharedWithMeMemo = {
+  id: string;
+  title: string | null;
+  excerpt: string;
+  updatedAt: string;
+  groupId: string;
+  groupName: string;
+  editMode: "author" | "group";
+  canEdit: boolean;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+};
+
+export type SharedNotebookMemo = {
+  id: string;
+  title: string | null;
+  excerpt: string;
+  updatedAt: string;
+  createdAt: string;
+  notebookId: string;
+  canEdit: boolean;
+};
+
+export type SharedWithMeResponse = {
+  groups: SharedWithMeGroup[];
+  notebooks: SharedWithMeNotebook[];
+  memos: SharedWithMeMemo[];
+  sharedByMe: GroupShareSummary[];
+};
+
+export type SharedNotebookMemosResponse = {
+  memos: SharedNotebookMemo[];
+  canEdit: boolean;
+  groupName: string | null;
+};
+
 export type InstanceAdminSettings = {
   registrationEnabled: boolean;
   registrationCodeRequired: boolean;
@@ -1326,6 +1419,83 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         method: "POST",
         body: JSON.stringify({ ids }),
       }),
+
+    listGroups: () => request<{ groups: CollaborationGroup[] }>("/api/v1/groups"),
+
+    createGroup: (payload: { name: string; description?: string | null }) =>
+      request<{ group: CollaborationGroup }>("/api/v1/groups", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    updateGroup: (groupId: string, payload: { name?: string; description?: string | null }) =>
+      request<{ group: CollaborationGroup }>(`/api/v1/groups/${encodeURIComponent(groupId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+
+    deleteGroup: (groupId: string) =>
+      request<{ ok: true }>(`/api/v1/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" }),
+
+    listGroupMembers: (groupId: string) =>
+      request<{ members: CollaborationGroupMember[] }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/members`,
+      ),
+
+    addGroupMembers: (groupId: string, userIds: string[]) =>
+      request<{ members: CollaborationGroupMember[] }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/members`,
+        { method: "POST", body: JSON.stringify({ userIds }) },
+      ),
+
+    removeGroupMember: (groupId: string, userId: string) =>
+      request<{ ok: true }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      ),
+
+    listGroupShares: (groupId: string) =>
+      request<{ shares: GroupShareSummary[] }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/shares`,
+      ),
+
+    createGroupShare: (
+      groupId: string,
+      payload: {
+        targetType: "notebook" | "memo";
+        targetId: string;
+        editMode: "author" | "group";
+        editorUserIds?: string[];
+        note?: string | null;
+      },
+    ) =>
+      request<{ share: { id: string } }>(`/api/v1/groups/${encodeURIComponent(groupId)}/shares`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    updateGroupShare: (
+      groupId: string,
+      shareId: string,
+      payload: { editMode?: "author" | "group"; editorUserIds?: string[]; note?: string | null },
+    ) =>
+      request<{ ok: true }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/shares/${encodeURIComponent(shareId)}`,
+        { method: "PATCH", body: JSON.stringify(payload) },
+      ),
+
+    revokeGroupShare: (groupId: string, shareId: string) =>
+      request<{ ok: true }>(
+        `/api/v1/groups/${encodeURIComponent(groupId)}/shares/${encodeURIComponent(shareId)}`,
+        { method: "DELETE" },
+      ),
+
+    getSharedWithMe: () => request<SharedWithMeResponse>("/api/v1/shared-with-me"),
+
+    listSharedNotebookMemos: (notebookId: string) =>
+      request<SharedNotebookMemosResponse>(
+        `/api/v1/shared-with-me/notebooks/${encodeURIComponent(notebookId)}/memos`,
+      ),
 
     getMyRegistrationInvite: () => request<MyRegistrationInviteResponse>("/api/v1/me/invite-code"),
 
