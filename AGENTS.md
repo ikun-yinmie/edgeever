@@ -9,6 +9,20 @@
 - **双语同步**：修改中文文档时必须同步更新对应的英文文档。修改根目录 README 时必须同步 `README.md`、`README.zh-CN.md`、`README.zh-TW.md`、`README.ja.md`。
 - **分支规范**：严禁创建新分支，所有修改与提交必须直接在 `main` 分支上完成。
 
+## 二开分支约束（最高优先级）
+
+本仓库是**永久二开分支**，与上游 `tianma-if/edgeever` 已经分道扬镳，产品代码以本仓库为唯一真相：
+
+- **严禁合并上游**：不得 `git merge upstream/main`、不得在 GitHub 网页点 **Sync fork**、
+  不得恢复已删除的 `.github/workflows/sync-edgeever-upstream.yml`。该 workflow 默认走镜像模式，
+  会用上游代码快照整体覆盖本仓库的二开文件（2026-09-23 已发生过一次，删除了后台管理接口、
+  注册加固、邀请码与迁移 `0054`–`0058`）。
+- **只能手工挑拣**：确需上游某个修复时，用 `git diff upstream/main -- <文件>` 对照后手工改写，
+  绝不做整树合并（上游与本仓库目录结构不同，盲目合并会静默删除本仓库独有文件）。
+- **推送目标**：`main` 跟踪的是 `upstream/main`，推送必须显式写 `git push origin main`。
+- **升级路径**：推送 `origin main` → CI `Build custom Docker image` 发布 `ghcr.io/ikun-yinmie/edgeever:main` →
+  本地 `cd ~/Documents/EdgeEver && docker compose pull && docker compose up -d`。
+
 ## 变更风险评估
 
 - **先评估后实现**：动手前说明功能价值、影响范围、最坏后果、回滚方案和未验证项；低价值但可能扰动成熟链路的需求，默认拒绝或提供低风险替代方案。
