@@ -2384,6 +2384,7 @@ export const enUS = {
     backToWorkspace: "Back to workspace",
     openConsole: "Open the system administration page",
     navMembers: "Member management",
+    navInvites: "Invite codes",
     navRegistration: "Registration & email",
     navStorage: "Data storage",
     description: "Manage registration policy, email delivery and public messages.",

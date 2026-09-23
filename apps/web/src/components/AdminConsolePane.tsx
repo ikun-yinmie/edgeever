@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Database, Mail, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, Database, KeyRound, Mail, ShieldCheck, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { InstanceAdminCard } from "@/components/settings/InstanceAdminCard";
@@ -9,7 +9,7 @@ import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "members" | "registration" | "storage";
+type AdminTabKey = "members" | "invites" | "registration" | "storage";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
@@ -22,6 +22,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
   const tabs: { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+    { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
     { key: "registration", label: t("adminConsole.navRegistration"), icon: Mail },
     { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
   ];
@@ -90,11 +91,10 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
             {activeTab === "members" ? (
               <UserManagementCard demoMode={false} />
+            ) : activeTab === "invites" ? (
+              <RegistrationInvitesCard />
             ) : activeTab === "registration" ? (
-              <>
-                <InstanceAdminCard />
-                <RegistrationInvitesCard />
-              </>
+              <InstanceAdminCard />
             ) : (
               <ObjectStorageCard demoMode={false} />
             )}

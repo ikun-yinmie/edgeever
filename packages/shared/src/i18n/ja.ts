@@ -2384,6 +2384,7 @@ export const ja = {
     backToWorkspace: "ワークスペースに戻る",
     openConsole: "システム管理を開く",
     navMembers: "メンバー管理",
+    navInvites: "招待コード",
     navRegistration: "登録とメール",
     navStorage: "データストレージ",
     description: "登録ポリシー、メール送信、公開メッセージを管理します。",

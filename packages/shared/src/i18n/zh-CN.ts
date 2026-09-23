@@ -2382,6 +2382,7 @@ export const zhCN = {
     backToWorkspace: "返回工作区",
     openConsole: "打开系统管理页面",
     navMembers: "成员管理",
+    navInvites: "邀请码",
     navRegistration: "注册与邮件",
     navStorage: "数据存储",
     description: "管理注册策略、邮件服务与公开提示文案。",
