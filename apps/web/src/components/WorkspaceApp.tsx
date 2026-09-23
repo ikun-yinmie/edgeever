@@ -2329,14 +2329,26 @@ export const WorkspaceApp = ({
   };
 
   // Shared-with-me lives inside the workspace so opening a shared note uses the
-  // same editor plumbing as one of your own notes.
+  // same editor plumbing as one of your own notes. Below the desktop breakpoint
+  // the right pane only exists next to the editor, so opening it has to promote
+  // that pane the same way the assets and tags views do.
   const handleOpenShared = () => {
+    if (!isDesktopViewport()) {
+      clearHiddenMobileSearch();
+      skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+      navigateWorkspaceHome();
+      setActivePane("editor");
+    }
     clearMemoSelection?.();
     setRightView("shared");
   };
 
   const handleCloseShared = () => {
     setRightView("editor");
+    if (!isDesktopViewport()) {
+      setActivePane("memos");
+      setMobileBottomNavActive("home");
+    }
   };
 
   const handleOpenPluginManager = () => {
