@@ -4,6 +4,8 @@ import {
   ArchiveRestore,
   KeyRound,
   MoreHorizontal,
+  Power,
+  PowerOff,
   Search,
   ShieldCheck,
   ShieldOff,
@@ -418,6 +420,11 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                         })
                                       }
                                     >
+                                      {user.isDisabled ? (
+                                        <Power className="mr-2 h-3.5 w-3.5" />
+                                      ) : (
+                                        <PowerOff className="mr-2 h-3.5 w-3.5" />
+                                      )}
                                       {user.isDisabled ? t("users.enable") : t("users.disable")}
                                     </DropdownMenuItem>
                                     {user.role === "member" ? (
