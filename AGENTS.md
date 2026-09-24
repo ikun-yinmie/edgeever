@@ -39,6 +39,24 @@
 5. **部署后必须回报**：提交号、镜像 revision、容器健康状态、HTTP 自检结果；前端带 PWA 缓存，
    提醒用户硬刷新后确认效果。
 
+### 服务器自动跟随镜像（无人值守）
+
+`scripts/watch-image.mjs` 由用户 crontab 每 5 分钟跑一轮：发现镜像 revision 与运行中容器不一致就
+拉取、重建、等健康；新版本起不来则自动回滚到上一个镜像，并把该版本记入 `.image-watch.json` 跳过，
+直到有新提交发布（避免每轮重试同一个坏镜像）。已命中构建路径的新提交推上去后无需再人工 pull/up。
+
+- **安装与移除**：`bun scripts/watch-image.mjs --install-cron --interval-minutes 5` / `--uninstall-cron`
+  （只增删自己的托管块，不动用户其他 crontab 条目；cron 的 PATH 已在行内侧显式导出）。
+- **手动检查与演练**：`--verbose`、`--dry-run`、`--force`（同 revision 也重新部署一次）、`--skip-pull`
+  （本地构建/离线场景）。
+- **告警通道**：部署目录 `.image-watch.log`、桌面通知（notify-send，显式带 DISPLAY/DBUS）、
+  `EDGE_EVER_ALERT_WEBHOOK` 指向的 HTTP 端点（收 JSON）。失败时退出码非 0 且打印摘要，cron 顺带发邮件。
+- **状态文件**：部署目录 `.image-watch.json`（已部署 revision、上一个镜像 ID、被跳过的坏版本、
+  连续拉取失败次数）；`.image-watch.lock` 防止重叠执行。
+- **与手工部署的关系**：`deploy-main.mjs` 是“立即部署”，`watch-image.mjs` 是“最终一致”；两者同时
+  触发也只会收敛到同一个镜像。回滚路径在 `/tmp` 的临时 compose 项目中验证过（健康失败→回滚成功），
+  真实部署上的回滚尚未发生，需要时用 `--force` 演练。
+
 ## 变更风险评估
 
 - **先评估后实现**：动手前说明功能价值、影响范围、最坏后果、回滚方案和未验证项；低价值但可能扰动成熟链路的需求，默认拒绝或提供低风险替代方案。
