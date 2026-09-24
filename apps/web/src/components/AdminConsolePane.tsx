@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { ArrowLeft, Database, KeyRound, Mail, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, Database, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
-import { InstanceAdminCard } from "@/components/settings/InstanceAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
+import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
+import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
 import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
+import { RegistrationSettingsCard } from "@/components/settings/RegistrationSettingsCard";
 import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "members" | "groups" | "invites" | "registration" | "storage";
+type AdminTabKey = "members" | "groups" | "invites" | "registration" | "email" | "messages" | "storage";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
@@ -25,9 +27,30 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
     { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
-    { key: "registration", label: t("adminConsole.navRegistration"), icon: Mail },
+    { key: "registration", label: t("adminConsole.navRegistration"), icon: UserPlus },
+    { key: "email", label: t("adminConsole.navEmail"), icon: Mail },
+    { key: "messages", label: t("adminConsole.navMessages"), icon: MessageSquareText },
     { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
   ];
+
+  const renderTab = () => {
+    switch (activeTab) {
+      case "groups":
+        return <GroupManagementCard />;
+      case "invites":
+        return <RegistrationInvitesCard />;
+      case "registration":
+        return <RegistrationSettingsCard />;
+      case "email":
+        return <EmailSettingsCard />;
+      case "messages":
+        return <MessagesSettingsCard />;
+      case "storage":
+        return <ObjectStorageCard demoMode={false} />;
+      default:
+        return <UserManagementCard currentUserId={user.id} demoMode={false} />;
+    }
+  };
 
   return (
     <main className="flex h-[100dvh] flex-col bg-slate-50 text-slate-900">
@@ -72,11 +95,11 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
         </nav>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl space-y-4 p-4 sm:p-6">
-            <div className="flex gap-2 sm:hidden">
+          <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:hidden">
               {tabs.map((tab) => (
                 <button
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  className={`flex shrink-0 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
                     activeTab === tab.key
                       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                       : "border-slate-200 bg-card text-slate-600"
@@ -91,17 +114,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
               ))}
             </div>
 
-            {activeTab === "members" ? (
-              <UserManagementCard currentUserId={user.id} demoMode={false} />
-            ) : activeTab === "groups" ? (
-              <GroupManagementCard />
-            ) : activeTab === "invites" ? (
-              <RegistrationInvitesCard />
-            ) : activeTab === "registration" ? (
-              <InstanceAdminCard />
-            ) : (
-              <ObjectStorageCard demoMode={false} />
-            )}
+            {renderTab()}
           </div>
         </div>
       </div>

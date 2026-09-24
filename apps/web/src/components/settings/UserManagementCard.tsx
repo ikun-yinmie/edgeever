@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, KeyRound, Search, ShieldCheck, ShieldOff, Trash2, UserPlus, Users } from "lucide-react";
+import {
+  ArchiveRestore,
+  KeyRound,
+  MoreHorizontal,
+  Search,
+  ShieldCheck,
+  ShieldOff,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { InstanceUser } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
@@ -12,6 +22,13 @@ import {
   SETTINGS_CARD_TITLE_CLASSNAME,
 } from "./settings-ui";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -267,7 +284,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
             <p className="text-sm text-slate-500">{t("users.empty")}</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[52rem] border-collapse text-sm">
+              <table className="w-full min-w-[50rem] border-collapse text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
                   <tr>
                     <th className="w-10 px-3 py-2.5">
@@ -283,19 +300,20 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                         {t("users.columnMember")}
                       </button>
                     </th>
-                    <th className="px-3 py-2.5 text-left">{t("users.columnRole")}</th>
-                    <th className="px-3 py-2.5 text-left">{t("users.columnStatus")}</th>
-                    <th className="px-3 py-2.5 text-left">
+                    <th className="w-24 px-3 py-2.5 text-left">{t("users.columnRole")}</th>
+                    <th className="w-[6.5rem] px-3 py-2.5 text-left">{t("users.columnStatus")}</th>
+                    <th className="w-40 px-3 py-2.5 text-left">
                       <button className="font-semibold" onClick={() => setSortKey("lastLoginAt")} type="button">
                         {t("users.columnLastLogin")}
                       </button>
                     </th>
-                    <th className="px-3 py-2.5 text-left">
+                    <th className="w-28 px-3 py-2.5 text-left">
                       <button className="font-semibold" onClick={() => setSortKey("createdAt")} type="button">
                         {t("users.columnCreatedAt")}
                       </button>
                     </th>
-                    <th className="px-3 py-2.5 text-right">{t("users.columnActions")}</th>
+                    <th className="w-20 px-3 py-2.5 text-right">{t("users.columnEnabled")}</th>
+                    <th className="w-16 px-3 py-2.5 text-right">{t("users.columnActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -320,11 +338,13 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                             {user.email ? ` · ${user.email}` : ""}
                           </p>
                         </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">{t(`users.roles.${user.role}`)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
+                          {t(`users.roles.${user.role}`)}
+                        </td>
                         <td className="px-3 py-3">
                           <span
                             className={cn(
-                              "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                              "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium leading-5",
                               user.isDeleted
                                 ? "border-slate-200 bg-slate-50 text-slate-600"
                                 : user.isDisabled
@@ -332,6 +352,16 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                   : "border-emerald-200 bg-emerald-50 text-emerald-800",
                             )}
                           >
+                            <span
+                              className={cn(
+                                "h-1.5 w-1.5 shrink-0 rounded-full",
+                                user.isDeleted
+                                  ? "bg-slate-400"
+                                  : user.isDisabled
+                                    ? "bg-amber-500"
+                                    : "bg-emerald-500",
+                              )}
+                            />
                             {user.isDeleted
                               ? t("users.archived")
                               : user.isDisabled
@@ -339,92 +369,106 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                 : t("users.enabled")}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
+                        <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
                           {user.lastLoginAt
                             ? new Date(user.lastLoginAt).toLocaleString()
                             : t("users.neverLoggedIn")}
                         </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
+                        <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
                           {new Date(user.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            {demoMode && isOwner ? null : (
-                              <Button
-                                className="h-8"
-                                onClick={() => setResetUser(user)}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                <KeyRound className="h-3.5 w-3.5" />
-                                {t("users.resetPassword")}
-                              </Button>
-                            )}
-                            {isOwner ? null : (
-                              <>
-                                <label className="flex items-center gap-2 text-xs text-slate-600">
-                                  {t("users.enabled")}
-                                  <Switch
-                                    checked={!user.isDisabled}
-                                    disabled={bulkBusy}
-                                    onCheckedChange={(checked) =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDisabled: !checked } })
-                                    }
-                                  />
-                                </label>
-                                {user.role === "member" ? (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() => updateMutation.mutate({ userId: user.id, input: { role: "owner" } })}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                    {t("users.makeAdmin")}
-                                  </Button>
-                                ) : user.id === currentUserId ? null : (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() => updateMutation.mutate({ userId: user.id, input: { role: "member" } })}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ShieldOff className="h-3.5 w-3.5" />
-                                    {t("users.removeAdmin")}
-                                  </Button>
+                        <td className="px-3 py-3 text-right">
+                          {isOwner ? null : (
+                            <Switch
+                              aria-label={`${user.displayName || user.username} · ${t("users.columnEnabled")}`}
+                              checked={!user.isDisabled}
+                              disabled={bulkBusy}
+                              onCheckedChange={(checked) =>
+                                updateMutation.mutate({ userId: user.id, input: { isDisabled: !checked } })
+                              }
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {isOwner && demoMode ? null : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  aria-label={t("users.moreActions")}
+                                  className="h-8 w-8 p-0"
+                                  size="icon"
+                                  variant="ghost"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem onSelect={() => setResetUser(user)}>
+                                  <KeyRound className="mr-2 h-3.5 w-3.5" />
+                                  {t("users.resetPassword")}
+                                </DropdownMenuItem>
+                                {isOwner ? null : (
+                                  <>
+                                    <DropdownMenuItem
+                                      disabled={bulkBusy}
+                                      onSelect={() =>
+                                        updateMutation.mutate({
+                                          userId: user.id,
+                                          input: { isDisabled: !user.isDisabled },
+                                        })
+                                      }
+                                    >
+                                      {user.isDisabled ? t("users.enable") : t("users.disable")}
+                                    </DropdownMenuItem>
+                                    {user.role === "member" ? (
+                                      <DropdownMenuItem
+                                        disabled={bulkBusy}
+                                        onSelect={() =>
+                                          updateMutation.mutate({ userId: user.id, input: { role: "owner" } })
+                                        }
+                                      >
+                                        <ShieldCheck className="mr-2 h-3.5 w-3.5" />
+                                        {t("users.makeAdmin")}
+                                      </DropdownMenuItem>
+                                    ) : user.id === currentUserId ? null : (
+                                      <DropdownMenuItem
+                                        disabled={bulkBusy}
+                                        onSelect={() =>
+                                          updateMutation.mutate({ userId: user.id, input: { role: "member" } })
+                                        }
+                                      >
+                                        <ShieldOff className="mr-2 h-3.5 w-3.5" />
+                                        {t("users.removeAdmin")}
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    {user.isDeleted ? (
+                                      <DropdownMenuItem
+                                        disabled={bulkBusy}
+                                        onSelect={() =>
+                                          updateMutation.mutate({ userId: user.id, input: { isDeleted: false } })
+                                        }
+                                      >
+                                        <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                                        {t("users.restore")}
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      <DropdownMenuItem
+                                        className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                                        disabled={bulkBusy}
+                                        onSelect={() =>
+                                          updateMutation.mutate({ userId: user.id, input: { isDeleted: true } })
+                                        }
+                                      >
+                                        <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                        {t("users.archive")}
+                                      </DropdownMenuItem>
+                                    )}
+                                  </>
                                 )}
-                                {user.isDeleted ? (
-                                  <Button
-                                    className="h-8"
-                                    disabled={bulkBusy}
-                                    onClick={() =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDeleted: false } })
-                                    }
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <ArchiveRestore className="h-3.5 w-3.5" />
-                                    {t("users.restore")}
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                                    disabled={bulkBusy}
-                                    onClick={() =>
-                                      updateMutation.mutate({ userId: user.id, input: { isDeleted: true } })
-                                    }
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    {t("users.archive")}
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </td>
                       </tr>
                     );

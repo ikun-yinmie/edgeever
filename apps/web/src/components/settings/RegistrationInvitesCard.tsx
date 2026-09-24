@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { ApiRequestError, api } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
+import { INSTANCE_ADMIN_SETTINGS_QUERY_KEY } from "./useInstanceAdminSettings";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
   SETTINGS_CARD_HEADER_CLASSNAME,
@@ -19,7 +20,6 @@ import {
 } from "./settings-ui";
 
 export const INVITE_CODES_QUERY_KEY = ["registration-invites"];
-export const INSTANCE_SETTINGS_QUERY_KEY = ["instance-admin-settings"];
 
 type InviteStatus = "active" | "usedUp" | "revoked" | "expired";
 
@@ -57,7 +57,7 @@ export const RegistrationInvitesCard = () => {
     queryFn: api.listRegistrationInvites,
   });
   const settingsQuery = useQuery({
-    queryKey: INSTANCE_SETTINGS_QUERY_KEY,
+    queryKey: INSTANCE_ADMIN_SETTINGS_QUERY_KEY,
     queryFn: api.getInstanceAdminSettings,
   });
 
@@ -107,7 +107,7 @@ export const RegistrationInvitesCard = () => {
     onSuccess: () => {
       setError(null);
       setSelectedIds([]);
-      void queryClient.invalidateQueries({ queryKey: INSTANCE_SETTINGS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: INSTANCE_ADMIN_SETTINGS_QUERY_KEY });
     },
     onError: reportError,
   });
@@ -160,7 +160,9 @@ export const RegistrationInvitesCard = () => {
   const visibleIds = visibleInvites.map((invite) => invite.id);
   const selectedVisibleIds = selectedIds.filter((id) => visibleIds.includes(id));
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleIds.length === visibleIds.length;
-  const actionsEnabled = inviteRequired;
+  // Only creating is gated on the invite requirement: existing codes must stay
+  // revocable, restorable and deletable even while registration is closed.
+  const createEnabled = inviteRequired;
   const busy = revokeMutation.isPending || restoreMutation.isPending || deleteMutation.isPending;
 
   const toggleSelectAll = (checked: boolean) => {
@@ -201,9 +203,9 @@ export const RegistrationInvitesCard = () => {
           />
         </div>
 
-        {!actionsEnabled ? (
+        {!createEnabled ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 text-xs text-amber-900">
-            {t("adminConsole.invites.actionsLocked")}
+            {t("adminConsole.invites.createLocked")}
           </p>
         ) : null}
 
@@ -212,7 +214,7 @@ export const RegistrationInvitesCard = () => {
             <span className="text-xs font-semibold text-slate-600">{t("adminConsole.invites.note")}</span>
             <Input
               className="h-9"
-              disabled={!actionsEnabled}
+              disabled={!createEnabled}
               onChange={(event) => setNote(event.target.value)}
               placeholder={t("adminConsole.invites.notePlaceholder")}
               value={note}
@@ -222,7 +224,7 @@ export const RegistrationInvitesCard = () => {
             <span className="text-xs font-semibold text-slate-600">{t("adminConsole.invites.maxUses")}</span>
             <Input
               className="h-9"
-              disabled={!actionsEnabled}
+              disabled={!createEnabled}
               max={1000}
               min={1}
               onChange={(event) => setMaxUses(event.target.value)}
@@ -234,7 +236,7 @@ export const RegistrationInvitesCard = () => {
             <span className="text-xs font-semibold text-slate-600">{t("adminConsole.invites.expiresInDays")}</span>
             <Input
               className="h-9"
-              disabled={!actionsEnabled}
+              disabled={!createEnabled}
               max={365}
               min={1}
               onChange={(event) => setExpiresInDays(event.target.value)}
@@ -244,7 +246,7 @@ export const RegistrationInvitesCard = () => {
           </label>
           <Button
             className="h-9"
-            disabled={!actionsEnabled || createMutation.isPending}
+            disabled={!createEnabled || createMutation.isPending}
             onClick={() => createMutation.mutate()}
           >
             {createMutation.isPending ? t("adminConsole.invites.creating") : t("adminConsole.invites.create")}
@@ -296,7 +298,7 @@ export const RegistrationInvitesCard = () => {
               ) : null}
               <Button
                 className="h-8"
-                disabled={!actionsEnabled || selectedVisibleIds.length === 0 || deleteMutation.isPending}
+                disabled={selectedVisibleIds.length === 0 || deleteMutation.isPending}
                 onClick={() => deleteMutation.mutate(selectedVisibleIds)}
                 size="sm"
                 variant="outline"
@@ -315,14 +317,13 @@ export const RegistrationInvitesCard = () => {
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[46rem] border-collapse text-sm">
+              <table className="w-full min-w-[44rem] border-collapse text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
                   <tr>
                     <th className="w-10 px-3 py-2.5">
                       <Checkbox
                         aria-label={t("adminConsole.invites.selectAll")}
                         checked={allVisibleSelected}
-                        disabled={!actionsEnabled}
                         onCheckedChange={(checked) => toggleSelectAll(checked === true)}
                       />
                     </th>
@@ -344,32 +345,36 @@ export const RegistrationInvitesCard = () => {
                           <Checkbox
                             aria-label={invite.codeHint}
                             checked={selectedIds.includes(invite.id)}
-                            disabled={!actionsEnabled}
                             onCheckedChange={(checked) => toggleSelect(invite.id, checked === true)}
                           />
                         </td>
                         <td className="px-3 py-3">
                           {invite.code ? (
                             <div className="flex items-center gap-2">
-                              <code className="font-mono text-sm font-semibold tracking-wide text-slate-900">
+                              <code className="min-w-0 truncate font-mono text-sm font-semibold tracking-wide text-slate-900">
                                 {invite.code}
                               </code>
-                              <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", STATUS_STYLES[status])}>
+                              <span
+                                className={cn(
+                                  "shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium leading-5",
+                                  STATUS_STYLES[status],
+                                )}
+                              >
                                 {t(STATUS_LABEL_KEYS[status])}
                               </span>
                             </div>
                           ) : (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <code className="font-mono text-sm font-semibold text-slate-500">{invite.codeHint}</code>
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                                  {t("adminConsole.invites.codeUnavailable")}
-                                </span>
-                              </div>
+                            <div className="flex items-center gap-2">
+                              <code className="min-w-0 truncate font-mono text-sm font-semibold text-slate-500">
+                                {invite.codeHint}
+                              </code>
+                              <span className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium leading-5 text-slate-500">
+                                {t("adminConsole.invites.codeUnavailable")}
+                              </span>
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
+                        <td className="max-w-[10rem] truncate px-3 py-3 text-xs text-slate-600">
                           {invite.source === "user"
                             ? t("adminConsole.invites.sourceUser", { name: ownerName ?? "—" })
                             : t("adminConsole.invites.sourceAdmin")}
@@ -391,7 +396,7 @@ export const RegistrationInvitesCard = () => {
                           ) : null}
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                             {invite.code ? (
                               <Button
                                 className="h-8"
@@ -407,7 +412,7 @@ export const RegistrationInvitesCard = () => {
                             {invite.revokedAt ? (
                               <Button
                                 className="h-8"
-                                disabled={!actionsEnabled || busy}
+                                disabled={busy}
                                 onClick={() => restoreMutation.mutate(invite.id)}
                                 size="sm"
                                 variant="ghost"
@@ -418,7 +423,7 @@ export const RegistrationInvitesCard = () => {
                             ) : (
                               <Button
                                 className="h-8"
-                                disabled={!actionsEnabled || busy}
+                                disabled={busy}
                                 onClick={() => revokeMutation.mutate(invite.id)}
                                 size="sm"
                                 variant="ghost"
@@ -428,7 +433,7 @@ export const RegistrationInvitesCard = () => {
                             )}
                             <Button
                               className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                              disabled={!actionsEnabled || busy}
+                              disabled={busy}
                               onClick={() => deleteMutation.mutate([invite.id])}
                               size="sm"
                               variant="ghost"
