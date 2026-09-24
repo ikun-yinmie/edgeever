@@ -25,9 +25,24 @@ const createStatement = (sql, harness) => {
       if (sql.includes("AND wm.role = 'owner'")) {
         return { results: harness.administratorIds.map((id) => ({ id })), success: true };
       }
+      if (sql.includes("SELECT w.id AS workspace_id")) {
+        return { results: harness.workspaceIds.map((workspace_id) => ({ workspace_id })), success: true };
+      }
+      if (sql.includes("FROM resources r")) {
+        return { results: harness.resourceRows, success: true };
+      }
       return { results: harness.rows, success: true };
     },
-    first: async () => (sql.includes("COUNT(*)") ? { count: harness.ownerCount } : null),
+    first: async () => {
+      if (sql.includes("COUNT(*)")) return { count: harness.ownerCount };
+      if (harness.takenUsername && sql.includes("SELECT id FROM users WHERE username")) {
+        return { id: "usr_other" };
+      }
+      if (harness.takenEmail && sql.includes("SELECT id FROM users WHERE email")) {
+        return { id: "usr_other" };
+      }
+      return null;
+    },
     run: async () => ({ success: true }),
   };
   harness.statements.push(statement);
@@ -41,6 +56,10 @@ const createEnvironment = (rows = [], harnessOptions = {}) => {
     batched: [],
     administratorIds: harnessOptions.administratorIds ?? [],
     ownerCount: harnessOptions.ownerCount ?? 1,
+    workspaceIds: harnessOptions.workspaceIds ?? [],
+    resourceRows: harnessOptions.resourceRows ?? [],
+    takenUsername: harnessOptions.takenUsername ?? false,
+    takenEmail: harnessOptions.takenEmail ?? false,
   };
   const environment = {
     storage: {
@@ -288,5 +307,142 @@ describe("single member updates", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  test("edits the username, display name and email of a member", async () => {
+    const app = createApp(async () => ownerAuth);
+    const environment = createEnvironment([]);
+
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "writer2", displayName: "Second Writer", email: "Writer@Example.COM" }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    const update = environment.harness.batched.find((statement) => statement.sql.startsWith("UPDATE users SET"));
+    expect(update.sql).toContain("username = ?");
+    expect(update.bindings).toEqual([
+      "writer2",
+      "Second Writer",
+      "writer@example.com",
+      expect.any(String),
+      "usr_member",
+    ]);
+  });
+
+  test("refuses a rename that another account already owns", async () => {
+    const app = createApp(async () => ownerAuth);
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "taken" }),
+      },
+      createEnvironment([], { takenUsername: true }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: "username_exists" } });
+  });
+
+  test("refuses an email that another account already owns", async () => {
+    const app = createApp(async () => ownerAuth);
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "taken@example.com" }),
+      },
+      createEnvironment([], { takenEmail: true }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: "email_exists" } });
+  });
+});
+
+describe("permanent member deletion", () => {
+  test("needs an administrator session", async () => {
+    const app = createApp(async () => ({ ...ownerAuth, role: "member" }));
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      { method: "DELETE" },
+      createEnvironment([]),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  test("refuses to delete the acting account", async () => {
+    const app = createApp(async () => ownerAuth);
+    const response = await app.request(
+      "/api/v1/users/usr_owner",
+      { method: "DELETE" },
+      createEnvironment([]),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("refuses to delete an administrator", async () => {
+    const app = createApp(async () => ownerAuth, { role: "owner" });
+    const environment = createEnvironment([]);
+    const response = await app.request(
+      "/api/v1/users/usr_admin",
+      { method: "DELETE" },
+      environment,
+    );
+
+    expect(response.status).toBe(400);
+    expect(environment.harness.batched).toEqual([]);
+  });
+
+  test("purges the member workspace and account", async () => {
+    const app = createApp(async () => ownerAuth);
+    const environment = createEnvironment([], { workspaceIds: ["ws_member"] });
+
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      { method: "DELETE" },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    const sql = environment.harness.batched.map((statement) => statement.sql);
+    expect(sql.some((statement) => statement.startsWith("DELETE FROM memos WHERE workspace_id IN"))).toBe(true);
+    expect(sql.some((statement) => statement.startsWith("DELETE FROM notebooks WHERE workspace_id IN"))).toBe(true);
+    expect(sql.some((statement) => statement.startsWith("DELETE FROM users WHERE id = ?"))).toBe(true);
+    const workspaceDelete = environment.harness.batched.find((statement) =>
+      statement.sql.startsWith("DELETE FROM workspaces WHERE id IN"));
+    expect(workspaceDelete.bindings).toEqual(["ws_member"]);
+    const memoDelete = environment.harness.batched.findIndex((statement) =>
+      statement.sql.startsWith("DELETE FROM memos WHERE workspace_id IN"));
+    const syncDelete = environment.harness.batched.findIndex((statement) =>
+      statement.sql.startsWith("DELETE FROM mobile_sync_changes"));
+    expect(syncDelete).toBeGreaterThan(memoDelete);
+  });
+
+  test("deletes an account that has no workspace of its own", async () => {
+    const app = createApp(async () => ownerAuth);
+    const environment = createEnvironment([]);
+
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      { method: "DELETE" },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    const sql = environment.harness.batched.map((statement) => statement.sql);
+    expect(sql.some((statement) => statement.startsWith("DELETE FROM workspaces"))).toBe(false);
+    expect(sql.some((statement) => statement.startsWith("DELETE FROM users WHERE id = ?"))).toBe(true);
   });
 });

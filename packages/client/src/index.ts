@@ -1516,7 +1516,9 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     updateUser: (
       userId: string,
       payload: {
+        username?: string;
         displayName?: string | null;
+        email?: string | null;
         password?: string;
         isDisabled?: boolean;
         isDeleted?: boolean;
@@ -1526,6 +1528,11 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       request<UserResponse>(`/api/v1/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
+      }),
+
+    deleteUser: (userId: string) =>
+      request<{ ok: true }>(`/api/v1/users/${userId}`, {
+        method: "DELETE",
       }),
 
     logout: () =>

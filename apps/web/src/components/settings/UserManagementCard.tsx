@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   KeyRound,
   MoreHorizontal,
+  Pencil,
   Power,
   PowerOff,
   Search,
@@ -52,10 +53,15 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [resetUser, setResetUser] = useState<InstanceUser | null>(null);
+  const [editUser, setEditUser] = useState<InstanceUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<InstanceUser | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [resetPassword, setResetPassword] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("all");
   const [sortKey, setSortKey] = useState<MemberSortKey>("createdAt");
@@ -93,6 +99,27 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
     mutationFn: (input: { ids: string[]; isDisabled?: boolean; isDeleted?: boolean }) => api.bulkUpdateUsers(input),
     onSuccess: () => {
       setSelectedIds([]);
+      void refresh();
+    },
+  });
+  const editMutation = useMutation({
+    mutationFn: ({
+      userId,
+      input,
+    }: {
+      userId: string;
+      input: { username?: string; displayName?: string | null; email?: string | null };
+    }) => api.updateUser(userId, input),
+    onSuccess: () => {
+      setEditUser(null);
+      void refresh();
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => api.deleteUser(userId),
+    onSuccess: (_result, userId) => {
+      setDeleteTarget(null);
+      setSelectedIds((current) => current.filter((id) => id !== userId));
       void refresh();
     },
   });
@@ -161,6 +188,43 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
     createMutation.error instanceof ApiRequestError && createMutation.error.code === "username_exists"
       ? t("users.usernameExists")
       : t("users.failed");
+
+  const openEdit = (user: InstanceUser) => {
+    editMutation.reset();
+    setEditUsername(user.username);
+    setEditDisplayName(user.displayName ?? "");
+    setEditEmail(user.email ?? "");
+    setEditUser(user);
+  };
+
+  const handleEditOpenChange = (open: boolean) => {
+    setEditUser(open ? editUser : null);
+    if (!open) editMutation.reset();
+  };
+
+  const handleEdit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!editUser) return;
+    const input: { username?: string; displayName?: string | null; email?: string | null } = {};
+    const nextUsername = editUsername.trim();
+    const nextDisplayName = editDisplayName.trim() || null;
+    const nextEmail = editEmail.trim().toLowerCase() || null;
+    if (nextUsername && nextUsername !== editUser.username) input.username = nextUsername;
+    if (nextDisplayName !== (editUser.displayName ?? null)) input.displayName = nextDisplayName;
+    if (nextEmail !== (editUser.email ?? null)) input.email = nextEmail;
+    if (Object.keys(input).length === 0) {
+      setEditUser(null);
+      return;
+    }
+    editMutation.mutate({ userId: editUser.id, input });
+  };
+
+  const editError =
+    editMutation.error instanceof ApiRequestError && editMutation.error.code === "username_exists"
+      ? t("users.usernameExists")
+      : editMutation.error instanceof ApiRequestError && editMutation.error.code === "email_exists"
+        ? t("users.emailExists")
+        : t("users.failed");
 
   const handleReset = (event: FormEvent) => {
     event.preventDefault();
@@ -405,6 +469,10 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem disabled={bulkBusy} onSelect={() => openEdit(user)}>
+                                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                                  {t("users.edit")}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => setResetUser(user)}>
                                   <KeyRound className="mr-2 h-3.5 w-3.5" />
                                   {t("users.resetPassword")}
@@ -461,7 +529,6 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                       </DropdownMenuItem>
                                     ) : (
                                       <DropdownMenuItem
-                                        className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
                                         disabled={bulkBusy}
                                         onSelect={() =>
                                           updateMutation.mutate({ userId: user.id, input: { isDeleted: true } })
@@ -471,6 +538,15 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                         {t("users.archive")}
                                       </DropdownMenuItem>
                                     )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                                      disabled={bulkBusy}
+                                      onSelect={() => setDeleteTarget(user)}
+                                    >
+                                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                      {t("users.delete")}
+                                    </DropdownMenuItem>
                                   </>
                                 )}
                               </DropdownMenuContent>
@@ -599,6 +675,96 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
               <Button type="submit" variant="solid" disabled={updateMutation.isPending}>{t("users.resetPassword")}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editUser)} onOpenChange={handleEditOpenChange}>
+        <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b border-slate-100 px-6 py-5 pr-12">
+            <DialogTitle>{t("users.editTitle", { username: editUser?.username })}</DialogTitle>
+            <DialogDescription className="leading-6">{t("users.editDescription")}</DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-5 px-6 py-5" autoComplete="off" onSubmit={handleEdit}>
+            <label className="grid gap-2 text-sm font-medium text-slate-700" htmlFor="edgeever-edit-account-username">
+              {t("users.username")}
+              <Input
+                id="edgeever-edit-account-username"
+                name="edgeever-edit-account-username"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                data-1p-ignore
+                data-lpignore="true"
+                value={editUsername}
+                onChange={(event) => setEditUsername(event.target.value)}
+                placeholder={t("users.usernamePlaceholder")}
+                pattern="[a-zA-Z0-9_-]+"
+                minLength={2}
+                maxLength={80}
+                required
+              />
+              <span className="text-xs font-normal text-slate-500">{t("users.usernameEditHint")}</span>
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700" htmlFor="edgeever-edit-account-display-name">
+              {t("users.displayName")}
+              <Input
+                id="edgeever-edit-account-display-name"
+                name="edgeever-edit-account-display-name"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                value={editDisplayName}
+                onChange={(event) => setEditDisplayName(event.target.value)}
+                placeholder={t("users.displayNamePlaceholder")}
+                maxLength={80}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700" htmlFor="edgeever-edit-account-email">
+              {t("users.email")}
+              <Input
+                id="edgeever-edit-account-email"
+                name="edgeever-edit-account-email"
+                type="email"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                value={editEmail}
+                onChange={(event) => setEditEmail(event.target.value)}
+                placeholder={t("users.emailPlaceholder")}
+                maxLength={200}
+              />
+              <span className="text-xs font-normal text-slate-500">{t("users.emailHint")}</span>
+            </label>
+            {editMutation.isError ? <p className="text-sm font-medium text-rose-600" role="alert">{editError}</p> : null}
+            <DialogFooter className="mt-1 gap-2 sm:space-x-0">
+              <DialogClose asChild><Button type="button" variant="outline">{t("common.cancel")}</Button></DialogClose>
+              <Button type="submit" variant="solid" disabled={editMutation.isPending}>
+                {editMutation.isPending ? t("users.saving") : t("common.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("users.deleteTitle", { username: deleteTarget?.username })}</DialogTitle>
+            <DialogDescription className="leading-6">{t("users.deleteDescription")}</DialogDescription>
+          </DialogHeader>
+          {deleteMutation.isError ? <p className="text-sm font-medium text-rose-600" role="alert">{t("users.failed")}</p> : null}
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <DialogClose asChild><Button type="button" variant="outline">{t("common.cancel")}</Button></DialogClose>
+            <Button
+              disabled={deleteMutation.isPending}
+              onClick={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id); }}
+              type="button"
+              variant="danger"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleteMutation.isPending ? t("users.deleting") : t("users.deleteConfirm")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

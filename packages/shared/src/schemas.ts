@@ -262,7 +262,22 @@ export const InstanceAdminSettingsUpdateSchema = z
 
 export const UserUpdateSchema = z
   .object({
+    username: z
+      .string()
+      .trim()
+      .min(2, "Username must be at least 2 characters.")
+      .max(80)
+      .regex(/^[a-zA-Z0-9_-]+$/, "Username may only contain letters, numbers, dashes and underscores.")
+      .optional(),
     displayName: z.string().trim().max(80).nullable().optional(),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("A valid email address is required.")
+      .max(200)
+      .nullable()
+      .optional(),
     password: z.string().min(8).max(512).optional(),
     isDisabled: z.boolean().optional(),
     isDeleted: z.boolean().optional(),

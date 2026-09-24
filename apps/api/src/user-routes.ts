@@ -7,8 +7,9 @@ import { hashPassword } from "./auth-crypto";
 import { isProtectedDemoAccount } from "./demo-mode";
 import { createId, isoNow } from "./entity-utils";
 import { badRequest, conflict, forbidden, notFound, unauthorized } from "./http-errors";
+import { deleteStoredObjects } from "./object-storage";
 import { requireOwner } from "./request-auth";
-import type { DatabaseAdapter } from "./storage-contract";
+import type { DatabaseAdapter, PreparedStatementAdapter } from "./storage-contract";
 import {
   createDefaultNotebookRows,
   createWorkspaceDefaultSeedStatements,
@@ -43,6 +44,47 @@ export const mapInstanceUser = (row: InstanceUserRow): InstanceUser => ({
   lastLoginAt: row.last_login_at,
   createdAt: row.created_at,
 });
+
+/**
+ * Statements that permanently remove a member: their personal workspace with
+ * everything inside it, then the account itself. Workspace-scoped tables that
+ * carry no cascade from `workspaces` are listed explicitly, memo rows go first
+ * because `resources` and `notebooks` both RESTRICT, and sync rows are cleared
+ * last because the notebook/memo delete triggers queue them again.
+ */
+export const permanentUserDeletionStatements = (
+  database: DatabaseAdapter,
+  input: { userId: string; workspaceIds: string[]; auditActorId: string | null; metadata?: unknown },
+): PreparedStatementAdapter[] => {
+  const statements: PreparedStatementAdapter[] = [];
+  const { workspaceIds } = input;
+  if (workspaceIds.length > 0) {
+    const placeholders = workspaceIds.map(() => "?").join(", ");
+    statements.push(
+      database
+        .prepare(`DELETE FROM resources WHERE memo_id IN (SELECT id FROM memos WHERE workspace_id IN (${placeholders}))`)
+        .bind(...workspaceIds),
+      database.prepare(`DELETE FROM memos WHERE workspace_id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`UPDATE notebooks SET parent_id = NULL WHERE workspace_id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`DELETE FROM notebooks WHERE workspace_id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`DELETE FROM api_tokens WHERE workspace_id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`DELETE FROM group_shares WHERE source_workspace_id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`DELETE FROM workspaces WHERE id IN (${placeholders})`).bind(...workspaceIds),
+      database.prepare(`DELETE FROM mobile_sync_changes WHERE workspace_id IN (${placeholders})`).bind(...workspaceIds),
+    );
+  }
+  statements.push(
+    // Sessions, workspace membership and group membership cascade from users,
+    // but revoking sessions first keeps any in-flight request failing closed.
+    database.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(input.userId),
+    database.prepare(`DELETE FROM users WHERE id = ?`).bind(input.userId),
+    auditStatement(database, "user", input.auditActorId, "user.delete", "user", input.userId, {
+      workspaces: workspaceIds.length,
+      ...(input.metadata && typeof input.metadata === "object" ? input.metadata : {}),
+    }),
+  );
+  return statements;
+};
 
 const requireOwnerRequest = async (
   context: AppContext,
@@ -135,12 +177,30 @@ export const registerUserRoutes = (
         context.env.EDGE_EVER_DEMO_MODE,
         context.env.EDGE_EVER_AUTH_USERNAME,
         current.username,
-      ) && (input.password !== undefined || input.isDisabled !== undefined)
+      ) && (
+        input.username !== undefined
+        || input.password !== undefined
+        || input.isDisabled !== undefined
+      )
     ) {
       return forbidden(context, "The demo owner account uses fixed credentials and cannot be modified.");
     }
     if (current.role === "owner" && (input.isDisabled === true || input.isDeleted === true)) {
       return badRequest(context, "The instance owner cannot be disabled.");
+    }
+    if (input.username !== undefined && input.username !== current.username) {
+      const takenUsername = await context.env.storage.db
+        .prepare(`SELECT id FROM users WHERE username = ? AND id <> ?`)
+        .bind(input.username, userId)
+        .first<{ id: string }>();
+      if (takenUsername) return conflict(context, "username_exists", "Username already exists.");
+    }
+    if (input.email !== undefined && input.email !== null) {
+      const takenEmail = await context.env.storage.db
+        .prepare(`SELECT id FROM users WHERE email = ? AND id <> ?`)
+        .bind(input.email, userId)
+        .first<{ id: string }>();
+      if (takenEmail) return conflict(context, "email_exists", "Email already exists.");
     }
 
     const actorId = context.get("auth")!.actorId;
@@ -161,9 +221,17 @@ export const registerUserRoutes = (
 
     const updates: string[] = [];
     const binds: unknown[] = [];
+    if (input.username !== undefined) {
+      updates.push("username = ?");
+      binds.push(input.username);
+    }
     if (input.displayName !== undefined) {
       updates.push("display_name = ?");
       binds.push(input.displayName);
+    }
+    if (input.email !== undefined) {
+      updates.push("email = ?");
+      binds.push(input.email);
     }
     if (input.password !== undefined) {
       updates.push("password_hash = ?");
@@ -183,6 +251,9 @@ export const registerUserRoutes = (
     const statements = [
       context.env.storage.db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...binds),
       auditStatement(context.env.storage.db, "user", context.get("auth").actorId, "user.update", "user", userId, {
+        username: input.username,
+        displayName: input.displayName,
+        email: input.email,
         passwordReset: input.password !== undefined,
         isDisabled: input.isDisabled,
         isDeleted: input.isDeleted,
@@ -272,5 +343,73 @@ export const registerUserRoutes = (
     await database.batch(statements);
 
     return context.json({ ok: true, updated: affected.length, skipped });
+  });
+
+  // Permanent removal of a single member: the account, its personal workspace
+  // and everything inside it. Administrators and the acting account are refused
+  // so the console can never delete the last way back in.
+  app.delete("/api/v1/users/:id", async (context) => {
+    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    if (denied) return denied;
+
+    const userId = context.req.param("id");
+    const actorId = context.get("auth")!.actorId;
+    if (userId === actorId) return badRequest(context, "You cannot delete your own account.");
+
+    const current = await dependencies.getInstanceUser(context.env.storage.db, userId);
+    if (!current) return notFound(context, "User not found");
+    if (current.role === "owner") {
+      return badRequest(context, "Administrator accounts cannot be deleted.");
+    }
+    if (
+      isProtectedDemoAccount(
+        context.env.EDGE_EVER_DEMO_MODE,
+        context.env.EDGE_EVER_AUTH_USERNAME,
+        current.username,
+      )
+    ) {
+      return forbidden(context, "The demo owner account uses fixed credentials and cannot be deleted.");
+    }
+
+    const database = context.env.storage.db;
+    const workspaceRows = await database
+      .prepare(
+        `SELECT w.id AS workspace_id
+         FROM workspaces w
+         INNER JOIN workspace_members wm ON wm.workspace_id = w.id
+         WHERE wm.user_id = ?`,
+      )
+      .bind(userId)
+      .all<{ workspace_id: string }>();
+    const workspaceIds = (workspaceRows.results ?? []).map((row) => row.workspace_id);
+
+    // Attachments live outside the database, so collect their object keys before
+    // the owning rows disappear.
+    if (workspaceIds.length > 0) {
+      const resourcePlaceholders = workspaceIds.map(() => "?").join(", ");
+      const resourceRows = await database
+        .prepare(
+          `SELECT r.object_key, r.storage_config_id
+           FROM resources r
+           INNER JOIN memos m ON m.id = r.memo_id
+           WHERE m.workspace_id IN (${resourcePlaceholders})`,
+        )
+        .bind(...workspaceIds)
+        .all<{ object_key: string; storage_config_id: string | null }>();
+      if ((resourceRows.results ?? []).length > 0) {
+        await deleteStoredObjects(context.env, resourceRows.results);
+      }
+    }
+
+    await database.batch(
+      permanentUserDeletionStatements(database, {
+        userId,
+        workspaceIds,
+        auditActorId: actorId,
+        metadata: { username: current.username },
+      }),
+    );
+
+    return context.json({ ok: true });
   });
 };
