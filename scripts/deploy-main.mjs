@@ -135,6 +135,22 @@ const parseArgs = (argv) => {
 const inspectImageRevision = (image) =>
   runQuiet("docker", ["image", "inspect", image, "--format", '{{index .Config.Labels "org.opencontainers.image.revision"}}']);
 
+/** docker pull 失败时保留同样的话，否则轮询循环会静默超时。 */
+export const describePullFailure = (error) => {
+  const stderr = typeof error?.stderr === "string" ? error.stderr : error?.stderr?.toString?.() ?? "";
+  const lines = stderr.split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines.at(-1) ?? error?.message ?? "unknown docker pull failure";
+};
+
+const pullImage = (image) => {
+  try {
+    runQuiet("docker", ["pull", "-q", image]);
+    return null;
+  } catch (error) {
+    return describePullFailure(error);
+  }
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const main = async (argv = process.argv.slice(2)) => {
@@ -210,8 +226,16 @@ export const main = async (argv = process.argv.slice(2)) => {
     const deadline = Date.now() + options.timeoutMinutes * 60_000;
     log(`等待 ${image} 发布出 ${commitSha.slice(0, 7)}（最多 ${options.timeoutMinutes} 分钟）`);
     let ready = false;
+    let pullFailures = 0;
     while (Date.now() < deadline) {
-      runQuiet("docker", ["pull", "-q", image]);
+      const pullFailure = pullImage(image);
+      if (pullFailure) {
+        pullFailures += 1;
+        log(`镜像拉取失败（第 ${pullFailures} 次）：${pullFailure}`);
+        if (pullFailures >= 6) throw new Error(`连续拉取失败，放弃等待：${pullFailure}`);
+      } else {
+        pullFailures = 0;
+      }
       if (inspectImageRevision(image) === commitSha) {
         ready = true;
         break;

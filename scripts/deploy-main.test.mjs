@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { imageNameFromRemote, isImageBuildTriggered, parseDeployEnv } from "./deploy-main.mjs";
+import { describePullFailure, imageNameFromRemote, isImageBuildTriggered, parseDeployEnv } from "./deploy-main.mjs";
 
 describe("fork deployment trigger detection", () => {
   test("matches the paths that make the custom Docker image workflow build", () => {
@@ -23,6 +23,11 @@ describe("fork deployment targets", () => {
     expect(imageNameFromRemote("git@github.com:ikun-yinmie/edgeever.git")).toBe("ghcr.io/ikun-yinmie/edgeever");
     expect(imageNameFromRemote("https://github.com/ikun-yinmie/edgeever.git")).toBe("ghcr.io/ikun-yinmie/edgeever");
     expect(imageNameFromRemote("git@gitlab.com:someone/edgeever.git")).toBe(null);
+  });
+
+  test("reports why an image pull failed instead of waiting silently", () => {
+    expect(describePullFailure({ stderr: "layer a: done\ncontext deadline exceeded\n" })).toBe("context deadline exceeded");
+    expect(describePullFailure({ message: "spawn docker ENOENT" })).toBe("spawn docker ENOENT");
   });
 
   test("reads only the deployment keys from the compose env file", () => {
