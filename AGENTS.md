@@ -21,7 +21,23 @@
   绝不做整树合并（上游与本仓库目录结构不同，盲目合并会静默删除本仓库独有文件）。
 - **推送目标**：`main` 跟踪的是 `upstream/main`，推送必须显式写 `git push origin main`。
 - **升级路径**：推送 `origin main` → CI `Build custom Docker image` 发布 `ghcr.io/ikun-yinmie/edgeever:main` →
-  本地 `cd ~/Documents/EdgeEver && docker compose pull && docker compose up -d`。
+  本地 `cd ~/Documents/EdgeEver && docker compose pull && docker compose up -d`（已由 `scripts/deploy-main.mjs` 串成一条命令，见下）。
+
+## 一键提交与部署（用户说“提交”即走完整链路）
+
+用户说出“提交 / 提交代码”时，默认把提交、推送、等镜像、重新部署一次做完，不要再分步询问：
+
+1. **只暂存本次改动涉及的文件**：工作区可能同时有其他协作者的改动，严禁 `git add -A`。
+2. **一条命令走完**：`bun scripts/deploy-main.mjs --message "<commit message>" --paths <本次改动文件…>`，
+   脚本依次执行提交（自动追加 Codebuff 尾注）→ `git push origin main` → 轮询 GHCR 直到
+   `org.opencontainers.image.revision` 等于该提交 → 部署目录 `docker compose pull` + `up -d` →
+   健康检查与 `GET /` 自检。多个提交想整理成多次提交时，用 `--no-push` 逐个提交，最后再跑一次（不带改动）完成推送与部署。
+3. **部署目标**：默认 `~/Documents/EdgeEver`，可用 `--deploy-dir` 或 `EDGE_EVER_DEPLOY_DIR` 覆盖；
+   镜像名、版本与端口从该目录 `.env` 的 `EDGE_EVER_IMAGE` / `EDGE_EVER_VERSION` / `EDGE_EVER_PORT` 读取。
+4. **未命中构建路径时不算部署**：改动没落在 `.github/workflows/custom-docker-image.yml` 的 `push.paths`
+   内时 CI 不会出新镜像，脚本会跳过等待与重建并说明原因，此时不得宣称“已部署”。
+5. **部署后必须回报**：提交号、镜像 revision、容器健康状态、HTTP 自检结果；前端带 PWA 缓存，
+   提醒用户硬刷新后确认效果。
 
 ## 变更风险评估
 
