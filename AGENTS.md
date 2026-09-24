@@ -51,6 +51,7 @@
   （本地构建/离线场景）。
 - **告警通道**：部署目录 `.image-watch.log`、桌面通知（notify-send，显式带 DISPLAY/DBUS）、
   `EDGE_EVER_ALERT_WEBHOOK` 指向的 HTTP 端点（收 JSON）。失败时退出码非 0 且打印摘要，cron 顺带发邮件。
+  cron 不读 shell profile，所以 webhook 要用 `--install-cron --webhook <url>` 写进 cron 行才能生效。
 - **状态文件**：部署目录 `.image-watch.json`（已部署 revision、上一个镜像 ID、被跳过的坏版本、
   连续拉取失败次数）；`.image-watch.lock` 防止重叠执行。
 - **与手工部署的关系**：`deploy-main.mjs` 是“立即部署”，`watch-image.mjs` 是“最终一致”；两者同时

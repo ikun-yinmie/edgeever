@@ -82,9 +82,11 @@ export const buildCronLines = ({
   deployDir,
   intervalMinutes = 5,
   pathValue = DEFAULT_CRON_PATH,
+  webhookUrl = null,
 }) => [
+  // cron 不读 shell profile，告警地址必须在行内显式声明；
   // 仓库盘没挂上时静默跳过，避免 cron 每 5 分钟发一封失败邮件。
-  `*/${intervalMinutes} * * * * export PATH=${pathValue}; [ -f '${scriptPath}' ] && cd '${repoRoot}' && '${bunPath}' '${scriptPath}' --deploy-dir '${deployDir}' >> '${path.join(deployDir, WATCH_LOG_FILE)}' 2>&1`,
+  `*/${intervalMinutes} * * * * ${webhookUrl ? `EDGE_EVER_ALERT_WEBHOOK='${webhookUrl}' ` : ""}export PATH=${pathValue}; [ -f '${scriptPath}' ] && cd '${repoRoot}' && '${bunPath}' '${scriptPath}' --deploy-dir '${deployDir}' >> '${path.join(deployDir, WATCH_LOG_FILE)}' 2>&1`,
 ];
 
 export const buildAlertPayload = ({ kind, title, detail, image, revision }) => ({
@@ -276,7 +278,7 @@ const parseArgs = (argv) => {
   return options;
 };
 
-const installCron = ({ repoRoot, deployDir, intervalMinutes, remove = false }) => {
+const installCron = ({ repoRoot, deployDir, intervalMinutes, webhookUrl = null, remove = false }) => {
   const existing = runQuiet("crontab", ["-l"]) || "";
   if (remove) {
     run("bash", ["-c", `crontab - <<'CRON'\n${stripManagedCronBlock(existing)}\nCRON`], { capture: false });
@@ -288,9 +290,10 @@ const installCron = ({ repoRoot, deployDir, intervalMinutes, remove = false }) =
     scriptPath: path.join(repoRoot, "scripts", "watch-image.mjs"),
     deployDir,
     intervalMinutes,
+    webhookUrl,
   });
   run("bash", ["-c", `crontab - <<'CRON'\n${upsertManagedCronBlock(existing, lines)}\nCRON`], { capture: false });
-  return `已写入 crontab 托管块（每 ${intervalMinutes} 分钟检查一次）`;
+  return `已写入 crontab 托管块（每 ${intervalMinutes} 分钟检查一次${webhookUrl ? "，告警已接入 webhook" : ""}）`;
 };
 
 export const main = async (argv = process.argv.slice(2)) => {
@@ -312,6 +315,7 @@ export const main = async (argv = process.argv.slice(2)) => {
       repoRoot,
       deployDir,
       intervalMinutes: options.intervalMinutes,
+      webhookUrl: options.webhook ?? process.env.EDGE_EVER_ALERT_WEBHOOK ?? null,
       remove: options.uninstallCron,
     });
     console.log(result);

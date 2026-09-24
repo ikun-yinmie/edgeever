@@ -80,6 +80,19 @@ describe("managed crontab block", () => {
     expect(lines[0]).toContain(">> '/deploy/.image-watch.log' 2>&1");
   });
 
+  test("bakes the alert webhook into the cron line, because cron never reads a shell profile", () => {
+    const withWebhook = buildCronLines({
+      repoRoot: "/repo",
+      bunPath: "/bun",
+      scriptPath: "/repo/scripts/watch-image.mjs",
+      deployDir: "/deploy",
+      webhookUrl: "https://example.com/hook",
+    });
+    expect(withWebhook[0]).toContain("EDGE_EVER_ALERT_WEBHOOK='https://example.com/hook'");
+    const withoutWebhook = buildCronLines({ repoRoot: "/repo", bunPath: "/bun", scriptPath: "/s", deployDir: "/deploy" });
+    expect(withoutWebhook[0]).not.toContain("EDGE_EVER_ALERT_WEBHOOK");
+  });
+
   test("removing the block restores the original crontab", () => {
     const withBlock = upsertManagedCronBlock(existing, ["*/5 * * * * true"]);
     expect(stripManagedCronBlock(withBlock)).toBe(existing.trim());
