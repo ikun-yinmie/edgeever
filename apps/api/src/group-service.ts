@@ -12,6 +12,7 @@
 // routes only have to ask "may this actor read/write this note?".
 
 import { createId, isoNow } from "./entity-utils";
+import type { ResourceRow } from "./resource-service";
 import type { DatabaseAdapter } from "./storage-contract";
 
 export type GroupRow = {
@@ -284,6 +285,36 @@ export const resolveNotebookAccess = async (
     groupName: share.group_name,
     editMode: share.edit_mode,
   };
+};
+
+/**
+ * Attachments and images live next to their memo in the author's workspace, so
+ * a group member reading a shared note resolves the resource through the same
+ * share grant as the note itself. Deleted notes (and their resources) stay
+ * invisible through a share.
+ */
+export const resolveSharedResourceRow = async (
+  database: DatabaseAdapter,
+  options: { userId: string; ownWorkspaceId: string; resourceId: string },
+): Promise<ResourceRow | null> => {
+  const resource = await database
+    .prepare(
+      `SELECT r.id, r.memo_id, r.original_memo_id, r.bucket_name, r.object_key, r.storage_config_id, r.kind, r.mime_type,
+              r.filename, r.byte_size, r.sha256, r.width, r.height, r.created_at, r.updated_at, r.is_deleted
+       FROM resources r
+       INNER JOIN memos m ON m.id = r.memo_id
+       WHERE r.id = ? AND r.is_deleted = 0`,
+    )
+    .bind(options.resourceId)
+    .first<ResourceRow>();
+  if (!resource) return null;
+
+  const access = await resolveMemoAccess(database, {
+    userId: options.userId,
+    ownWorkspaceId: options.ownWorkspaceId,
+    memoId: resource.memo_id,
+  });
+  return access?.canRead ? resource : null;
 };
 
 export const listGroupsForUser = async (database: DatabaseAdapter, userId: string) => {

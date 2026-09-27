@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, ExternalLink, Link2, LoaderCircle, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, LoaderCircle, RefreshCw, Share2, Trash2, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
+import { ShareToGroupForm } from "./ShareToGroupDialog";
 
 const getPublicShareUrl = (token: string) => {
   const baseUrl = getConfiguredDesktopApiBaseUrl() || window.location.origin;
@@ -47,15 +49,19 @@ export const memoShareQueryKey = (memoId: string) => ["memo-share", memoId] as c
 
 export const ShareMemoDialog = ({
   memoId,
+  memoTitle,
   open,
   onOpenChange,
 }: {
   memoId: string;
+  /** Note title, used by the embedded group-share step. */
+  memoTitle?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<"link" | "group">("link");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [copyTarget, setCopyTarget] = useState<"link" | "password" | "both">("link");
   const [revealedPassword, setRevealedPassword] = useState("");
@@ -64,7 +70,7 @@ export const ShareMemoDialog = ({
   const shareQuery = useQuery({
     queryKey,
     queryFn: () => api.getMemoShare(memoId),
-    enabled: open,
+    enabled: open && mode === "link",
     retry: false,
   });
   const createMutation = useMutation({
@@ -96,6 +102,7 @@ export const ShareMemoDialog = ({
     createMutation.reset();
     passwordMutation.reset();
     revokeMutation.reset();
+    setMode("link");
     setCopyState("idle");
     setCopyTarget("link");
     setRevealedPassword("");
@@ -112,6 +119,8 @@ export const ShareMemoDialog = ({
     }
     setRevealedPassword(readStoredSharePassword(memoId, share.token));
   }, [memoId, share?.passwordProtected, share?.token]);
+
+  const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: api.listGroups, enabled: open });
 
   const shareUrl = share ? getPublicShareUrl(share.token) : "";
   const isWorking = shareQuery.isLoading || createMutation.isPending || passwordMutation.isPending || revokeMutation.isPending;
@@ -147,11 +156,55 @@ export const ShareMemoDialog = ({
             {t("sharing.title")}
           </DialogTitle>
           <DialogDescription className="pt-1 leading-5">
-            {t(share?.passwordProtected ? "sharing.descriptionProtected" : "sharing.description")}
+            {mode === "group"
+              ? t("sharedPane.shareDialogDescription")
+              : t(share?.passwordProtected ? "sharing.descriptionProtected" : "sharing.description")}
           </DialogDescription>
+          <div className="flex gap-1 rounded-lg bg-slate-100 p-1 pt-2" role="tablist">
+            <button
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition",
+                mode === "link" ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700",
+              )}
+              onClick={() => setMode("link")}
+              role="tab"
+              aria-selected={mode === "link"}
+              type="button"
+            >
+              <Link2 className="h-4 w-4" />
+              {t("sharing.linkTab")}
+            </button>
+            <button
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition",
+                mode === "group" ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700",
+              )}
+              onClick={() => setMode("group")}
+              role="tab"
+              aria-selected={mode === "group"}
+              type="button"
+            >
+              <UsersRound className="h-4 w-4" />
+              {t("sharing.groupTab")}
+            </button>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4 px-5 py-5">
+        {mode === "group" ? (
+          <div className="flex max-h-[60vh] flex-col overflow-y-auto px-5 py-5">
+            <ShareToGroupForm
+              groups={groupsQuery.data?.groups ?? []}
+              memoId={memoId}
+              memoTitle={memoTitle}
+              onCancel={() => onOpenChange(false)}
+              onShared={() => {
+                onOpenChange(false);
+                void queryClient.invalidateQueries({ queryKey: ["shared-with-me"] });
+              }}
+            />
+          </div>
+        ) : (
+          <div className="space-y-4 px-5 py-5">
           {shareQuery.isLoading ? (
             <div className="flex min-h-20 items-center justify-center text-slate-500" role="status">
               <LoaderCircle className="h-5 w-5 animate-spin" />
@@ -248,7 +301,8 @@ export const ShareMemoDialog = ({
             </div>
           )}
           {error ? <p className="text-sm text-rose-600" role="alert">{t("sharing.error")}</p> : null}
-        </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

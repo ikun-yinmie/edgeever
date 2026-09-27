@@ -7,6 +7,7 @@ import { AppError } from "./app-error";
 import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { isoNow } from "./entity-utils";
 import { apiError, badRequest, notFound } from "./http-errors";
+import { resolveMemoAccess } from "./group-service";
 import { resolveObjectStorage } from "./object-storage";
 import {
   SUPPORTED_IMAGE_MIME_TYPES,
@@ -52,6 +53,10 @@ type ResourceRouteDependencies = {
     resourceId: string,
     includeDeleted?: boolean,
   ) => Promise<ResourceRow | null>;
+  resolveSharedResourceRow: (
+    database: DatabaseAdapter,
+    input: { userId: string; ownWorkspaceId: string; resourceId: string },
+  ) => Promise<ResourceRow | null>;
   initiateResourceUpload: typeof initiateResourceUploadService;
   uploadResourcePart: (
     context: AppContext,
@@ -89,6 +94,29 @@ export const registerResourceRoutes = (
   app: Hono<AppEnv>,
   dependencies: ResourceRouteDependencies,
 ) => {
+  /**
+   * Notes shared into a group live in the author's workspace, so images inside
+   * them must resolve through the share grant instead of the viewer's own
+   * workspace. Owners keep the direct lookup; only a missing row falls back to
+   * the shared path.
+   */
+  const resolveReadableResourceRow = async (
+    context: AppContext,
+    resourceId: string,
+  ): Promise<ResourceRow | null> => {
+    const auth = context.get("auth");
+    const database = context.env.storage.db;
+    const ownWorkspaceId = getWorkspaceId(context);
+    const owned = await dependencies.getResourceRow(database, ownWorkspaceId, resourceId);
+    if (owned || auth?.kind !== "user") return owned;
+
+    return dependencies.resolveSharedResourceRow(database, {
+      userId: auth.actorId ?? "",
+      ownWorkspaceId,
+      resourceId,
+    });
+  };
+
   app.get("/api/v1/resources", async (context) => {
     const denied = requireScopes(context, "read:resources");
     if (denied) return denied;
@@ -275,11 +303,7 @@ export const registerResourceRoutes = (
     const denied = requireScopes(context, "read:resources");
     if (denied) return denied;
 
-    const resource = await dependencies.getResourceRow(
-      context.env.storage.db,
-      getWorkspaceId(context),
-      context.req.param("id"),
-    );
+    const resource = await resolveReadableResourceRow(context, context.req.param("id"));
     if (!resource) return notFound(context, "Resource not found");
 
     const byteRange = parseByteRange(context.req.header("Range"), resource.byte_size);

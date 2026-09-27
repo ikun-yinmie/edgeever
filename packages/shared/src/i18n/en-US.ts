@@ -1916,6 +1916,9 @@ export const enUS = {
     publicUpdated: "Updated {{time}}",
     publicUnavailable: "This shared note is unavailable",
     publicUnavailableHint: "The link may be invalid, the owner may have revoked it, or the note may have been deleted.",
+    groupTab: "Share to group",
+    linkTab: "Public link",
+    groupSharedDone: "Shared with the group — members can see it now.",
   },
   slashMenu: {
     menu: "Insert menu",

@@ -1914,6 +1914,9 @@ export const zhCN = {
     publicUpdated: "更新于 {{time}}",
     publicUnavailable: "这篇分享笔记不可用",
     publicUnavailableHint: "链接可能无效、已被分享者撤销，或原笔记已经删除。",
+    groupTab: "分享到群组",
+    linkTab: "公开链接",
+    groupSharedDone: "已共享到群组，组成员现在可以看到了。",
   },
   slashMenu: {
     menu: "插入功能菜单",

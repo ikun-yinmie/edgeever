@@ -1916,6 +1916,9 @@ export const ja = {
     publicUpdated: "更新 {{time}}",
     publicUnavailable: "この共有ノートは利用できません",
     publicUnavailableHint: "リンクが無効か、所有者が取り消したか、ノートが削除された可能性があります。",
+    groupTab: "グループに共有",
+    linkTab: "公開リンク",
+    groupSharedDone: "グループに共有しました。メンバーが見られるようになりました。",
   },
   slashMenu: {
     menu: "挿入メニュー",

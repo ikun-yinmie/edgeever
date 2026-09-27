@@ -68,6 +68,7 @@ const createApp = (auth = agentAuth, getResourceRow = async () => null, override
     createImageResource: async () => { throw new Error("Unexpected upload"); },
     getMemoDetail: async () => null,
     getResourceRow,
+    resolveSharedResourceRow: async () => null,
     initiateResourceUpload: async () => { throw new Error("Unexpected multipart initialization"); },
     uploadResourcePart: async () => { throw new Error("Unexpected multipart part"); },
     completeResourceUpload: async () => { throw new Error("Unexpected multipart completion"); },
@@ -268,6 +269,62 @@ describe("resource route contracts", () => {
     expect(response.headers.get("Content-Range")).toBe("bytes 2-5/256");
     expect(response.headers.get("Content-Length")).toBe("4");
     expect(await response.text()).toBe("2345");
+  });
+
+  test("serves a shared note's image to a group member whose own workspace lacks it", async () => {
+    const environment = createEnvironment();
+    environment.storage.resources = {
+      get: async () => ({
+        body: new Blob([new Uint8Array(16)]).stream(),
+        size: 16,
+        writeHttpMetadata: () => {},
+      }),
+    };
+    const userAuth = {
+      ...agentAuth,
+      kind: "user",
+      actorType: "user",
+      scopes: ["read:resources"],
+    };
+    let sharedLookup;
+    const response = await createApp(
+      userAuth,
+      async () => null,
+      {
+        resolveSharedResourceRow: async (_database, input) => {
+          sharedLookup = input;
+          return { ...resourceRow, kind: "image", mime_type: "image/png", filename: "image.png", storage_config_id: null };
+        },
+      },
+    ).request(
+      "/api/v1/resources/res_1/blob",
+      {},
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(sharedLookup).toEqual({
+      userId: "token_1",
+      ownWorkspaceId: "ws_1",
+      resourceId: "res_1",
+    });
+  });
+
+  test("answers 404 for a resource outside the workspace without any share grant", async () => {
+    const userAuth = {
+      ...agentAuth,
+      kind: "user",
+      actorType: "user",
+      scopes: ["read:resources"],
+    };
+    const response = await createApp(userAuth, async () => null).request(
+      "/api/v1/resources/res_missing/blob",
+      {},
+      createEnvironment(),
+    );
+
+    expect(response.status).toBe(404);
   });
 
   test("serves filename-detected audio inline with a playable MIME type", async () => {

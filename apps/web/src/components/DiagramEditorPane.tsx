@@ -3479,7 +3479,7 @@ export const DiagramEditorPane = ({
             }}
           />
         ) : null}
-        <ShareMemoDialog memoId={memo.id} open={shareOpen} onOpenChange={setShareOpen} />
+        <ShareMemoDialog memoId={memo.id} memoTitle={memo.title} open={shareOpen} onOpenChange={setShareOpen} />
         {memoIdCopyNotice ? (
           <ClipboardCopyNotice status={memoIdCopyNotice}>
             {t(memoIdCopyNotice === "copied" ? "editor.noteIdCopied" : "editor.noteIdCopyFailed", { id: memo.id })}

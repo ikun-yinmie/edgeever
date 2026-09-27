@@ -4255,7 +4255,7 @@ const RichEditorPane = ({
         onOpenCompanionNote={onOpenCompanionNote}
       />
 
-      <ShareMemoDialog memoId={memo.id} open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareMemoDialog memoId={memo.id} memoTitle={title} open={shareOpen} onOpenChange={setShareOpen} />
 
       {imageShareSource && (
         <ShareNoteImageDialog
