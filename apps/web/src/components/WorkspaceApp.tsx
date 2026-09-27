@@ -248,6 +248,10 @@ export const WorkspaceApp = ({
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
   const pendingQuickSwitcherMemoIdRef = useRef<string | null>(desktopWorkspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  // Group-shared memos live in the author's workspace, so they never appear in
+  // the personal list. The selection-normalising effect below would otherwise
+  // instantly clear such an external selection; this ref holds it open.
+  const externalSelectionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!window.edgeeverDesktop?.isAvailable) return;
     writeDesktopWorkspaceRestoreState({
@@ -1120,6 +1124,16 @@ export const WorkspaceApp = ({
       pendingQuickSwitcherMemoIdRef.current = null;
     }
 
+    if (externalSelectionRef.current) {
+      // Opened from the shared-with-me view (or a plugin): keep the selection
+      // even though the memo is not in the personal list. Release it once the
+      // user navigates back to the regular list.
+      if (selectedMemoId === externalSelectionRef.current && rightView === "editor") {
+        return;
+      }
+      externalSelectionRef.current = null;
+    }
+
     if (createdMemoEditId && selectedMemoId === createdMemoEditId) {
       // Keep the create request alive until the editor consumes it. The new
       // memo can appear in the list before its detail query has mounted the
@@ -1135,7 +1149,7 @@ export const WorkspaceApp = ({
     if (!selectedMemoId || !selectedMemoInList) {
       setSelectedMemoId(memos[0].id);
     }
-  }, [createdMemoEditId, memos, rendererRecoveryMode, selectedMemoId]);
+  }, [createdMemoEditId, memos, rendererRecoveryMode, rightView, selectedMemoId]);
 
   useEffect(() => {
     if (!rendererRecoveryMode || !selectedMemoId) return;
@@ -1148,6 +1162,41 @@ export const WorkspaceApp = ({
     queryFn: () => repository.getMemo(detailMemoId as string, memoView === "trash"),
     enabled: Boolean(detailMemoId),
   });
+  const selectedMemoIdForAccess = memoQuery.data?.memo?.id ?? null;
+  const memoAccessQuery = useQuery({
+    queryKey: ["memo-access", selectedMemoIdForAccess],
+    queryFn: () => api.getMemoAccess(selectedMemoIdForAccess as string),
+    enabled: Boolean(selectedMemoIdForAccess),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const memoAccess = memoAccessQuery.data?.access ?? null;
+
+  const handleSaveSharedCopy = useCallback(async (memo: MemoDetail) => {
+    const targetNotebookId = memoView === "notebook" && selectedNotebookId
+      ? selectedNotebookId
+      : notebooks[0]?.id ?? null;
+    if (!targetNotebookId) {
+      throw new Error("No notebook available for the copy");
+    }
+    const result = await repository.createMemo({
+      notebookId: targetNotebookId,
+      title: memo.title ? t("editor.saveSharedCopyTitle", { title: memo.title }) : "",
+      contentMarkdown: memo.contentMarkdown,
+      contentJson: memo.contentJson,
+      tags: memo.tags,
+    });
+    await putLocalMemo(localDataScope, result.memo);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["memos"] }),
+      queryClient.invalidateQueries({ queryKey: ["notebooks"] }),
+    ]);
+    // Jump straight into the saved copy so the user continues editing their
+    // own note instead of the read-only shared original.
+    externalSelectionRef.current = result.memo.id;
+    setSelectedMemoId(result.memo.id);
+    return result.memo;
+  }, [localDataScope, memoView, notebooks, queryClient, repository, selectedNotebookId, t]);
   const prefetchMemoDetail = useCallback((memoId: string) => {
     void queryClient.prefetchQuery({
       queryKey: memoDetailQueryKey(memoId, memoView),
@@ -3193,6 +3242,7 @@ export const WorkspaceApp = ({
                     <SharedWithMePane
                       onClose={handleCloseShared}
                       onOpenMemo={(memoId) => {
+                        externalSelectionRef.current = memoId;
                         setSelectedMemoId(memoId);
                         setActivePane("memos");
                         setRightView("editor");
@@ -3276,6 +3326,8 @@ export const WorkspaceApp = ({
                     isTrashView={memoView === "trash"}
                     notebooks={notebooks}
                     isLoading={memoQuery.isLoading}
+                    sharedAccess={memoAccess?.shared ? memoAccess : null}
+                    onSaveSharedCopy={handleSaveSharedCopy}
                     contentSearchQuery={search}
                     searchFocusToken={noteSearchFocusToken}
                     replaceFocusToken={noteReplaceFocusToken}

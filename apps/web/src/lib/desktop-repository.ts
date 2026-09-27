@@ -257,7 +257,16 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
   },
 
   getMemo: async (memoId, includeDeleted = false) => {
-    const result = await request("memo.get", { memoId, includeDeleted });
+    let result: { memo: MemoDetail };
+    try {
+      result = await request("memo.get", { memoId, includeDeleted });
+    } catch (error) {
+      // Notes shared through a group live in their author's workspace and are
+      // never mirrored into the local sidecar database. Fetch them from the
+      // API so the shared reader can still open them.
+      const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw error; });
+      return { memo: await repairDisplayedMemo(remote.memo) };
+    }
     return { memo: await repairDisplayedMemo(result.memo) };
   },
 

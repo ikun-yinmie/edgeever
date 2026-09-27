@@ -189,7 +189,20 @@ export const registerMemoRoutes = (
       context.req.param("id"),
       context.req.query("includeDeleted") === "1" && scope.access.isOwner,
     );
-    return memo ? context.json({ memo }) : notFound(context, "Memo not found");
+    if (!memo) return notFound(context, "Memo not found");
+    // Group-shared notes live in the author's workspace. Tell the client so it
+    // keeps them out of the viewer's own notebooks until they save a copy.
+    return context.json({
+      memo,
+      ...(scope.access.isOwner ? {} : {
+        access: {
+          shared: true,
+          canEdit: scope.access.canEdit,
+          groupId: scope.access.groupId,
+          groupName: scope.access.groupName,
+        },
+      }),
+    });
   });
 
   app.post("/api/v1/memos/:id/edit-sessions", async (context) => {

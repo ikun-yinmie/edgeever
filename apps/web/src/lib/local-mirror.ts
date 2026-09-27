@@ -215,7 +215,10 @@ export const syncLocalMirror = (scope: string) => {
 export const listLocalNotebooks = async (scope: string): Promise<{ notebooks: Notebook[] }> => {
   const notebooks = await localDb.notebooks.where("scope").equals(scope).toArray();
   const memos = await localDb.memos.where("scope").equals(scope).toArray();
-  const activeMemos = memos.filter((memo) => !memo.isDeleted);
+  const ownNotebookIds = new Set(notebooks.map((notebook) => notebook.id));
+  // Notes cached from a group share live in the author's workspace; their
+  // counts belong to the group share, not to the viewer's notebooks.
+  const activeMemos = memos.filter((memo) => !memo.isDeleted && ownNotebookIds.has(memo.notebookId));
   const counts = new Map<string, { count: number; last: string | null }>();
 
   for (const memo of activeMemos) {
@@ -242,7 +245,12 @@ export const listLocalMemos = async (scope: string, params: LocalMemoListParams)
   const q = params.q?.trim().toLocaleLowerCase();
   const tag = params.tag?.trim().toLocaleLowerCase();
 
+  // Notes cached from a group share carry their author's notebook id, which is
+  // unknown to this workspace's notebook tree. They belong to the group share,
+  // not to the viewer's notebooks, so they never appear in the personal lists.
+  const ownNotebookIds = new Set((await localDb.notebooks.where("scope").equals(scope).toArray()).map((notebook) => notebook.id));
   memos = memos.filter((memo) => {
+    if (!memo.isDeleted && !ownNotebookIds.has(memo.notebookId)) return false;
     if (memo.isDeleted !== Boolean(params.trash)) return false;
     if (notebookIds?.length && !notebookIds.includes(memo.notebookId)) return false;
     if (tag && !memo.tags.some((memoTag) => memoTag.toLocaleLowerCase() === tag)) return false;
@@ -745,6 +753,11 @@ export const deleteLocalMemo = async (scope: string, memoId: string, permanent =
     deletedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
+};
+
+/** Drop a mirrored row without touching the trash — used to evict group-shared notes. */
+export const removeLocalMemo = async (scope: string, memoId: string) => {
+  await localDb.memos.delete([scope, memoId]);
 };
 
 export const restoreLocalMemo = async (scope: string, memoId: string) => {

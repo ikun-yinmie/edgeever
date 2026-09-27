@@ -1,5 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { DEFAULT_MEMO_TITLE, type MemoSummary } from "@edgeever/shared";
+import { DEFAULT_MEMO_TITLE, type MemoSummary, type Notebook } from "@edgeever/shared";
+
+type ListNotebooksQueryData = { notebooks: Notebook[] };
 
 export type MemoListQueryData = {
   pages: Array<{
@@ -151,6 +153,15 @@ export const remapMemoIdsInLists = (
 };
 
 export const updateMemoSummaryInLists = (queryClient: QueryClient, summary: MemoSummary) => {
+  // A note shared through a group keeps its author's notebook id. It must not
+  // gain entries in the viewer's personal lists — only the group share shows it.
+  const ownNotebookIds = new Set(
+    (queryClient.getQueryData<ListNotebooksQueryData>(["notebooks"])?.notebooks ?? []).map((notebook) => notebook.id),
+  );
+  if (ownNotebookIds.size > 0 && !ownNotebookIds.has(summary.notebookId)) {
+    return;
+  }
+
   for (const [queryKey, current] of queryClient.getQueriesData<MemoListQueryData>({ queryKey: ["memos"] })) {
     if (!current) {
       continue;

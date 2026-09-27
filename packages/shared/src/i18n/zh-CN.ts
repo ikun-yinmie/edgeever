@@ -1878,6 +1878,12 @@ export const zhCN = {
     hideOutline: "隐藏文档大纲",
     collapseOutlineHeading: "收起 {{name}}",
     expandOutlineHeading: "展开 {{name}}",
+    groupSharedNote: "来自群组「{{group}}」的共享笔记，仅当保存为自己的笔记后才会进入你的笔记本。",
+    groupSharedNoteNoGroup: "这是一篇群组共享笔记，仅当保存为自己的笔记后才会进入你的笔记本。",
+    saveSharedCopy: "保存为自己的笔记",
+    saveSharedCopyDone: "已保存到你的笔记本",
+    saveSharedCopyFailed: "保存失败，请重试",
+    saveSharedCopyTitle: "{{title}}（副本）",
   },
   sharing: {
     action: "分享笔记",
@@ -2185,6 +2191,8 @@ export const zhCN = {
     shareSubmit: "共享",
     sharing: "共享中...",
     failed: "共享操作失败，请稍后重试。",
+    sidebarSection: "群组",
+    sidebarEmpty: "这个群组还没有共享内容。",
   },
   groups: {
     title: "群组",

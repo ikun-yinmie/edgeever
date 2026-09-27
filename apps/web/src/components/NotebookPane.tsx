@@ -48,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotebookTreeItem } from "./NotebookTreeItem";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Notebook, AuthUser, DiagramKind } from "@edgeever/shared";
 import type { NotebookNode, NotebookDropPosition, NotebookSortMode } from "@/lib/app-helpers";
@@ -606,6 +607,16 @@ export const NotebookPane = ({
     queryFn: () => repository.listNotebooks(),
   });
 
+  const sharedWithMeQuery = useQuery({
+    queryKey: ["shared-with-me"],
+    queryFn: api.getSharedWithMe,
+    staleTime: 60_000,
+  });
+  const sharedGroups = sharedWithMeQuery.data?.groups ?? [];
+  const sharedNotebookCount = sharedWithMeQuery.data?.notebooks.length ?? 0;
+  const sharedMemoCount = sharedWithMeQuery.data?.memos.length ?? 0;
+  const sharedTotalCount = sharedNotebookCount + sharedMemoCount;
+
   const notebooks = notebooksQuery.data?.notebooks ?? [];
   const notebookSortOptions = useMemo(() => getNotebookSortOptions(t), [t]);
   const tree = useMemo(() => buildNotebookTree(notebooks, getNotebookSortComparator(notebookSortMode)), [notebooks, notebookSortMode]);
@@ -842,6 +853,31 @@ export const NotebookPane = ({
             ))}
           </div>
         )}
+
+        {sharedGroups.length > 0 ? (
+          <div className="mb-4" data-group-section>
+            <div className="group mb-1 flex items-center justify-between gap-2">
+              <SidebarSectionLabel icon={<Users className="h-4 w-4" />} label={t("sharedPane.sidebarSection")} />
+            </div>
+            <div className="space-y-1">
+              {sharedGroups.map((group) => (
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                  key={group.id}
+                  type="button"
+                  onClick={onOpenShared}
+                >
+                  <Users className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-slate-400">{group.shareCount}</span>
+                </button>
+              ))}
+              {sharedTotalCount === 0 ? (
+                <p className="px-2 py-1 text-xs text-slate-400">{t("sharedPane.sidebarEmpty")}</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
       </div>
       </div>

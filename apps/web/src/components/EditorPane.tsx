@@ -29,6 +29,7 @@ import {
   Copy,
   Lock,
   LockOpen,
+  UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
@@ -285,6 +286,10 @@ import {
 type EditorPaneProps = {
   memo: MemoDetail | null;
   repository: EdgeEverRepository;
+  /** Present when the open note lives in another workspace via a group share. */
+  sharedAccess?: { canEdit: boolean; groupId: string | null; groupName: string | null } | null;
+  /** Save a copy of the shared note into the viewer's own workspace. */
+  onSaveSharedCopy?: (memo: MemoDetail) => Promise<MemoDetail>;
   desktopFocusMode: boolean;
   onToggleDesktopFocusMode: () => void;
   editorContentAlignment: EditorContentAlignment;
@@ -404,6 +409,8 @@ const RichEditorPane = ({
   pluginNavigationRequest,
   onOpenExecutionCenter,
   onRequestMobileNativeEdit,
+  sharedAccess,
+  onSaveSharedCopy,
 }: RichEditorPaneProps) => {
   const { t, i18n } = useTranslation();
   const { customEditorTheme, editorTheme } = useEditorTheme();
@@ -539,6 +546,7 @@ const RichEditorPane = ({
     staleTime: 30_000,
   });
   const isMemoShared = Boolean(shareStatusQuery.data?.share);
+  const isGroupSharedNote = Boolean(sharedAccess);
   const mobileDefaultEditRequested = Boolean(memo?.id && memo.id === mobileDefaultEditMemoId && !readOnly);
   const mobileEditingActive = isMobileEditing || mobileDefaultEditRequested;
 
@@ -2633,6 +2641,22 @@ const RichEditorPane = ({
     window.setTimeout(() => setMemoIdCopyNotice(null), copied ? 2200 : 3000);
   }, [memo]);
 
+  const [saveCopyState, setSaveCopyState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const handleSaveSharedCopy = useCallback(async () => {
+    const currentMemo = memoRef.current;
+    if (!currentMemo || !onSaveSharedCopy) return;
+    setSaveCopyState("saving");
+    try {
+      const saved = await onSaveSharedCopy(currentMemo);
+      setSaveCopyState("saved");
+      window.setTimeout(() => setSaveCopyState("idle"), 2600);
+      void saved;
+    } catch {
+      setSaveCopyState("error");
+      window.setTimeout(() => setSaveCopyState("idle"), 3200);
+    }
+  }, [onSaveSharedCopy]);
+
   useEffect(() => {
     const persistBeforeSuspend = () => {
       if (hasUnsavedChangesRef.current) {
@@ -3838,6 +3862,42 @@ const RichEditorPane = ({
             />
           </div>
         </div>
+
+        {isGroupSharedNote ? (
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900"
+            role="status"
+          >
+            <UsersRound className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="min-w-0 flex-1">
+              {sharedAccess?.groupName
+                ? t("editor.groupSharedNote", { group: sharedAccess.groupName })
+                : t("editor.groupSharedNoteNoGroup")}
+            </span>
+            <Button
+              className="h-7 shrink-0 px-2 text-xs"
+              disabled={saveCopyState === "saving" || saveCopyState === "saved"}
+              size="sm"
+              variant="outline"
+              onClick={() => void handleSaveSharedCopy()}
+            >
+              {saveCopyState === "saving" ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : saveCopyState === "saved" ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              {t(
+                saveCopyState === "saved"
+                  ? "editor.saveSharedCopyDone"
+                  : saveCopyState === "error"
+                    ? "editor.saveSharedCopyFailed"
+                    : "editor.saveSharedCopy",
+              )}
+            </Button>
+          </div>
+        ) : null}
 
         <div className={MEMO_EDITOR_TITLE_REGION_CLASS_NAME}>
           <div className="min-w-0">

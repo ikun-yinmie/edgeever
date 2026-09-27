@@ -32,6 +32,7 @@ import {
   deleteLocalResource,
   createLocalResource,
   putLocalMemo,
+  removeLocalMemo,
   putLocalNotebook,
   putLocalMemoUpdate,
   restoreLocalMemo,
@@ -176,6 +177,19 @@ const acceptRemoteMemoDetail = async (
     window.dispatchEvent(new CustomEvent("edgeever:memo-detail-refreshed", { detail: remote }));
   }
   return true;
+};
+
+/**
+ * A note shared through a group lives in its author's workspace. Its copy in
+ * the local mirror would surface inside the viewer's own notebooks (usually
+ * the inbox), so group-shared notes are never written into the mirror — the
+ * editor renders them straight from the API response.
+ */
+const isOwnWorkspaceMemo = async (scope: string, memo: MemoDetail) => {
+  const local = await getLocalMemoWithoutBlocking(scope, memo.id);
+  if (local) return true;
+  const notebooks = await localDb.notebooks.where("scope").equals(scope).toArray();
+  return notebooks.some((notebook) => notebook.id === memo.notebookId);
 };
 
 export const createWebRepository = (scope: string): EdgeEverRepository => {
@@ -450,6 +464,13 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     if (firstResult.source === "remote") {
       const local = await localPromise;
       const usableLocal = local && (includeDeleted || !local.isDeleted) ? local : null;
+      // Group-shared notes stay out of the local mirror entirely.
+      if (!(await isOwnWorkspaceMemo(scope, firstResult.remote.memo))) {
+        if (usableLocal) {
+          await removeLocalMemo(scope, memoId);
+        }
+        return firstResult.remote;
+      }
       const accepted = await acceptRemoteMemoDetail(scope, firstResult.remote.memo, usableLocal);
       if (accepted) {
         return firstResult.remote;
@@ -469,6 +490,11 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       if (firstResult.source === "local") {
         void remotePromise
           .then(async (remote) => {
+            if (!(await isOwnWorkspaceMemo(scope, remote.memo))) {
+              await removeLocalMemo(scope, memoId);
+              window.dispatchEvent(new CustomEvent("edgeever:memo-detail-refreshed", { detail: remote.memo }));
+              return;
+            }
             await acceptRemoteMemoDetail(scope, remote.memo, usableLocal, { emitRefreshEvent: true });
           })
           .catch(() => {
@@ -483,7 +509,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     }
 
     const remote = await remotePromise;
-    cacheMemoWithoutBlocking(scope, remote.memo);
+    if (await isOwnWorkspaceMemo(scope, remote.memo)) {
+      cacheMemoWithoutBlocking(scope, remote.memo);
+    }
     return remote;
   },
 

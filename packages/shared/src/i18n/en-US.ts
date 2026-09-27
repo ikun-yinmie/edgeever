@@ -1880,6 +1880,12 @@ export const enUS = {
     hideOutline: "Hide outline",
     collapseOutlineHeading: "Collapse {{name}}",
     expandOutlineHeading: "Expand {{name}}",
+    groupSharedNote: "Shared through the group \"{{group}}\". It joins your own notebooks only after you save a copy.",
+    groupSharedNoteNoGroup: "This note is shared through a group. It joins your own notebooks only after you save a copy.",
+    saveSharedCopy: "Save as my note",
+    saveSharedCopyDone: "Saved to your notebooks",
+    saveSharedCopyFailed: "Save failed, try again",
+    saveSharedCopyTitle: "{{title}} (copy)",
   },
   sharing: {
     action: "Share note",
@@ -2187,6 +2193,8 @@ export const enUS = {
     shareSubmit: "Share",
     sharing: "Sharing...",
     failed: "The sharing action failed. Try again later.",
+    sidebarSection: "Groups",
+    sidebarEmpty: "Nothing is shared in this group yet.",
   },
   groups: {
     title: "Groups",

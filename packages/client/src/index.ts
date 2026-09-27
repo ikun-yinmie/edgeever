@@ -389,8 +389,17 @@ export type ObjectStorageSettingsResponse = {
   externalSettings?: ObjectStorageSettings | null;
 };
 
+export type SharedMemoAccess = {
+  shared: true;
+  canEdit: boolean;
+  groupId: string | null;
+  groupName: string | null;
+};
+
 export type MemoResponse = {
   memo: MemoDetail;
+  /** Present when the note lives in another workspace and is readable through a group share. */
+  access?: SharedMemoAccess;
 };
 
 export type ListTemplatesResponse = {
@@ -1849,6 +1858,15 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       const suffix = search.toString() ? `?${search.toString()}` : "";
       return request<MemoResponse>(`/api/v1/memos/${memoId}${suffix}`);
     },
+
+    getMemoAccess: (memoId: string) =>
+      request<{ access: SharedMemoAccess | null }>(
+        `/api/v1/shared-with-me/memos/${encodeURIComponent(memoId)}`,
+      )      .then((body) => ({
+        // The endpoint also answers for the viewer's own memos (isOwner, no
+        // group); only a real group share carries a groupId.
+        access: body.access?.groupId ? { ...body.access, shared: true as const } : null,
+      })),
 
     getMemoShare: (memoId: string) =>
       request<MemoShareResponse>(`/api/v1/memos/${memoId}/share`),

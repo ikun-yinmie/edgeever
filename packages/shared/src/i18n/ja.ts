@@ -1880,6 +1880,12 @@ export const ja = {
     hideOutline: "アウトラインを隠す",
     collapseOutlineHeading: "{{name}} を閉じる",
     expandOutlineHeading: "{{name}} を開く",
+    groupSharedNote: "グループ「{{group}}」から共有されたノートです。コピーを保存すると自分のノートブックに入ります。",
+    groupSharedNoteNoGroup: "グループで共有されたノートです。コピーを保存すると自分のノートブックに入ります。",
+    saveSharedCopy: "自分のノートとして保存",
+    saveSharedCopyDone: "ノートブックに保存しました",
+    saveSharedCopyFailed: "保存に失敗しました。再試行してください",
+    saveSharedCopyTitle: "{{title}}（コピー）",
   },
   sharing: {
     action: "ノートを共有",
@@ -2187,6 +2193,8 @@ export const ja = {
     shareSubmit: "共有",
     sharing: "共有中...",
     failed: "共有に失敗しました。しばらくしてから再試行してください。",
+    sidebarSection: "グループ",
+    sidebarEmpty: "このグループにはまだ共有されたものがありません。",
   },
   groups: {
     title: "グループ",
