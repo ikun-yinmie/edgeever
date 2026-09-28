@@ -868,7 +868,7 @@ export const NotebookPane = ({
           {sharedGroups.length > 0 ? (
             <>
               <button
-                className="group mb-1 flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                className="group mb-1 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                 type="button"
                 aria-expanded={groupSectionOpen}
                 onClick={() => setGroupSectionOpen((open) => !open)}
@@ -883,15 +883,15 @@ export const NotebookPane = ({
               {groupSectionOpen ? (
                 <div className="space-y-1">
                   {sharedGroups.map((group) => (
-                    <button
-                      className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
-                      key={group.id}
-                      type="button"
-                      onClick={onOpenShared}
-                    >
-                      <Users className="h-4 w-4 shrink-0 text-emerald-600" />
-                      <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                      <span className="shrink-0 text-xs tabular-nums text-slate-400">{group.shareCount}</span>
+                                          <button
+                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        type="button"
+                        onClick={onOpenShared}
+                      >
+                        <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
+                        <Users className="h-4 w-4 shrink-0 text-slate-500" />
+                        <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-slate-400">{group.shareCount}</span>
                     </button>
                   ))}
                   {sharedTotalCount === 0 ? (
@@ -905,7 +905,7 @@ export const NotebookPane = ({
           {onOpenShared ? (
             <>
               <button
-                className="group mb-1 mt-3 flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                className="group mb-1 mt-3 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                 type="button"
                 aria-expanded={mySharesSectionOpen}
                 onClick={() => setMySharesSectionOpen((open) => !open)}
@@ -920,29 +920,31 @@ export const NotebookPane = ({
               {mySharesSectionOpen ? (
                 <div className="space-y-1">
                   {linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length ? (
-                    <button
-                      className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
-                      type="button"
-                      onClick={onOpenShared}
-                    >
-                      <Link2 className="h-4 w-4 shrink-0 text-sky-600" />
-                      <span className="min-w-0 flex-1 truncate">{t("sharedPane.mySharesLinkLabel")}</span>
-                      <span className="shrink-0 text-xs tabular-nums text-slate-400">
-                        {linkSharesQuery.data.shares.filter((share) => !share.memoDeleted).length}
-                      </span>
+                                          <button
+                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        type="button"
+                        onClick={onOpenShared}
+                      >
+                        <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
+                        <Link2 className="h-4 w-4 shrink-0 text-slate-500" />
+                        <span className="min-w-0 flex-1 truncate font-medium">{t("sharedPane.mySharesLinkLabel")}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-slate-400">
+                          {linkSharesQuery.data.shares.filter((share) => !share.memoDeleted).length}
+                        </span>
                     </button>
                   ) : null}
                   {sharedWithMeQuery.data?.sharedByMe.length ? (
-                    <button
-                      className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
-                      type="button"
-                      onClick={onOpenShared}
-                    >
-                      <Users className="h-4 w-4 shrink-0 text-emerald-600" />
-                      <span className="min-w-0 flex-1 truncate">{t("sharedPane.mySharesGroupLabel")}</span>
-                      <span className="shrink-0 text-xs tabular-nums text-slate-400">
-                        {sharedWithMeQuery.data.sharedByMe.length}
-                      </span>
+                                          <button
+                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        type="button"
+                        onClick={onOpenShared}
+                      >
+                        <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
+                        <Users className="h-4 w-4 shrink-0 text-slate-500" />
+                        <span className="min-w-0 flex-1 truncate font-medium">{t("sharedPane.mySharesGroupLabel")}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-slate-400">
+                          {sharedWithMeQuery.data.sharedByMe.length}
+                        </span>
                     </button>
                   ) : null}
                   {!linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length &&
