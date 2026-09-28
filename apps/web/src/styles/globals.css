@@ -1478,6 +1478,9 @@ textarea {
 
 .ProseMirror .edgeever-code-block,
 .ProseMirror .edgeever-mermaid-code-block {
+  /* The title band and the source body share these to read as a single card. */
+  --edgeever-code-band-border: rgb(var(--slate-300-rgb) / 0.6);
+  --edgeever-code-band-bg: rgb(var(--slate-100-rgb) / 0.55);
   position: relative;
   margin: 0 0 1rem;
 }
@@ -1516,6 +1519,37 @@ textarea {
   gap: 0.5rem;
   margin-bottom: 0.35rem;
   min-height: 1.9rem;
+}
+
+/* When the header shows, it fuses with the body below into one rounded card. */
+.ProseMirror .edgeever-code-block-has-header .edgeever-code-header {
+  margin-bottom: 0;
+  padding: 0.15rem 0.45rem 0.15rem 0.3rem;
+  border: 1px solid var(--edgeever-code-band-border);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--edgeever-code-band-bg);
+}
+
+.ProseMirror .edgeever-code-block.edgeever-code-block-has-header .edgeever-code-source {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-has-header .edgeever-mermaid-preview {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* The floating mermaid toolbar must clear the title band. */
+.ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-has-header .edgeever-mermaid-toolbar {
+  top: 2.55rem;
+}
+
+/* Collapsed plain blocks render only the header, so it closes the card itself. */
+.ProseMirror .edgeever-code-block.edgeever-code-block-collapsed.edgeever-code-block-has-header .edgeever-code-header {
+  border-bottom: 1px solid var(--edgeever-code-band-border);
+  border-radius: 8px;
 }
 
 .ProseMirror .edgeever-code-title-input {
@@ -2546,6 +2580,12 @@ textarea {
   border-color: var(--brand-green);
   color: var(--brand-green-text);
   background: rgb(var(--slate-200-rgb));
+}
+
+:root.dark .ProseMirror .edgeever-code-block,
+:root.dark .ProseMirror .edgeever-mermaid-code-block {
+  --edgeever-code-band-border: rgb(var(--slate-200-rgb) / 0.8);
+  --edgeever-code-band-bg: rgb(var(--slate-100-rgb) / 0.45);
 }
 
 :root.dark .ProseMirror .edgeever-mermaid-code-block {

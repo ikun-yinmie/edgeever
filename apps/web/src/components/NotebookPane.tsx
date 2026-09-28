@@ -895,7 +895,7 @@ export const NotebookPane = ({
                     </button>
                   ))}
                   {sharedTotalCount === 0 ? (
-                    <p className="px-2 py-1 text-xs text-slate-400">{t("sharedPane.sidebarEmpty")}</p>
+                    <p className="py-1 pl-[3.25rem] pr-2 text-xs text-slate-400">{t("sharedPane.sidebarEmpty")}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -949,7 +949,7 @@ export const NotebookPane = ({
                   ) : null}
                   {!linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length &&
                   !sharedWithMeQuery.data?.sharedByMe.length ? (
-                    <p className="px-2 py-1 text-xs text-slate-400">{t("sharedPane.mySharesEmpty")}</p>
+                    <p className="py-1 pl-[3.25rem] pr-2 text-xs text-slate-400">{t("sharedPane.mySharesEmpty")}</p>
                   ) : null}
                 </div>
               ) : null}

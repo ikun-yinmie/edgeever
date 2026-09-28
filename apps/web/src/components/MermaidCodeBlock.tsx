@@ -129,6 +129,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
         isMermaid
           ? `edgeever-mermaid-code-block${sourceVisible ? " is-source-visible" : ""}`
           : "edgeever-code-block",
+        showHeader ? "edgeever-code-block-has-header" : "",
         isWide ? "edgeever-code-block-wide" : "",
         isCollapsed ? "edgeever-code-block-collapsed" : "",
       ].filter(Boolean).join(" ")}

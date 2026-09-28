@@ -88,6 +88,14 @@
   color: var(--editor-theme-code-text);
 }
 
+/* Fuse the code title band with the themed code body into one card. */
+.edgeever-editor[data-editor-theme]:not([data-editor-theme="default"]) .ProseMirror .edgeever-code-block-has-header .edgeever-code-header {
+  --edgeever-code-band-border: var(--editor-theme-border);
+  --edgeever-code-band-bg: color-mix(in srgb, var(--editor-theme-code-bg) 55%, transparent);
+  border-color: var(--editor-theme-border);
+  background: var(--edgeever-code-band-bg);
+}
+
 /* Table geometry (padding, line-height, column widths) lives in globals.css. */
 .edgeever-editor[data-editor-theme]:not([data-editor-theme="default"]) .ProseMirror th {
 
