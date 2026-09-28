@@ -82,7 +82,7 @@ const EditorToolbarButton = ({
         {children}
       </button>
     </TooltipTrigger>
-    <TooltipContent>{title}</TooltipContent>
+    <TooltipContent side="top">{title}</TooltipContent>
   </Tooltip>
 );
 
@@ -329,7 +329,7 @@ export const EditorToolbar = ({
                     {markdownMode ? t("editorToolbar.switchToRichText") : t("editorToolbar.switchToMarkdown")}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="flex items-center gap-2">
+                <TooltipContent side="top" className="flex items-center gap-2">
                   <span>{markdownMode ? t("editorToolbar.richText") : t("editorToolbar.markdown")}</span>
                   {markdownModeShortcutLabel && (
                     <kbd className="rounded border border-border/20 bg-card/10 px-1.5 py-0.5 font-mono text-[10px] leading-none">
@@ -609,7 +609,7 @@ export const EditorToolbar = ({
                   {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">
+              <TooltipContent side="top">
                 {t(expanded ? "editorToolbar.showLess" : "editorToolbar.showMore")}
               </TooltipContent>
             </Tooltip>

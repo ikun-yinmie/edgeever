@@ -12,29 +12,24 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "32px"];
+const FONT_SIZES = ["12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px", "32px", "40px", "48px"];
 
+/** 每行五个的文字色盘：第一行黑灰阶，后四行按色相从浅到深。 */
 const TEXT_COLORS = [
-  { value: "#0f172a", label: "#0f172a" },
-  { value: "#ef4444", label: "#ef4444" },
-  { value: "#f97316", label: "#f97316" },
-  { value: "#eab308", label: "#eab308" },
-  { value: "#16a34a", label: "#16a34a" },
-  { value: "#0ea5e9", label: "#0ea5e9" },
-  { value: "#6366f1", label: "#6366f1" },
-  { value: "#a855f7", label: "#a855f7" },
-  { value: "#ec4899", label: "#ec4899" },
-  { value: "#78716c", label: "#78716c" },
+  "#0f172a", "#475569", "#9aa4b2", "#78716c", "#c026d3",
+  "#ef4444", "#f97316", "#eab308", "#16a34a", "#0d9488",
+  "#0ea5e9", "#3b82f6", "#6366f1", "#a855f7", "#ec4899",
+  "#fca5a5", "#fdba74", "#fde047", "#86efac", "#7dd3fc",
+  "#a5b4fc", "#d8b4fe", "#f9a8d4", "#059669", "#be185d",
 ];
 
+/** 每行五个的高亮底色盘：柔和低饱和，附带两个深色便于反白标注。 */
 const HIGHLIGHT_COLORS = [
-  { value: "#fde68a", label: "#fde68a" },
-  { value: "#fecaca", label: "#fecaca" },
-  { value: "#bbf7d0", label: "#bbf7d0" },
-  { value: "#bae6fd", label: "#bae6fd" },
-  { value: "#e9d5ff", label: "#e9d5ff" },
-  { value: "#fbcfe8", label: "#fbcfe8" },
-  { value: "#e7e5e4", label: "#e7e5e4" },
+  "#fde68a", "#fecaca", "#bbf7d0", "#bae6fd", "#e9d5ff",
+  "#fbcfe8", "#fef08a", "#99f6e4", "#bfdbfe", "#ddd6fe",
+  "#e7e5e4", "#fed7aa", "#a7f3d0", "#f5d0fe", "#c7d2fe",
+  "#d9f99d", "#fda4af", "#93c5fd", "#fcd34d", "#86efac",
+  "#0ea5e9", "#e11d48", "#16a34a", "#d97706", "#7c3aed",
 ];
 
 type EditorInlineStyleMenuProps = {
@@ -52,6 +47,57 @@ const readTextStyleAttr = (editor: Editor | null, attribute: "color" | "backgrou
     return null;
   }
 };
+
+type ColorSwatchProps = {
+  color: string;
+  selected: boolean;
+  onSelect: () => void;
+};
+
+/** 圆角色块：浅色用边框分界，深色带白色内衬便于辨认。 */
+const ColorSwatch = ({ color, selected, onSelect }: ColorSwatchProps) => (
+  <button
+    type="button"
+    className={cn(
+      "h-7 w-7 rounded-md border transition",
+      selected
+        ? "border-emerald-500 ring-2 ring-emerald-500/30"
+        : "border-slate-200 hover:border-slate-400",
+    )}
+    style={{
+      backgroundColor: color,
+      boxShadow: "inset 0 0 0 2px rgb(255 255 255 / 0.45)",
+    }}
+    aria-label={color}
+    aria-pressed={selected}
+    onClick={onSelect}
+  />
+);
+
+type CustomColorItemProps = {
+  label: string;
+  onPick: (color: string) => void;
+};
+
+/** 托管在下拉菜单项里的原生取色器：选择即应用，菜单保持打开以便微调。 */
+const CustomColorItem = ({ label, onPick }: CustomColorItemProps) => (
+  <DropdownMenuItem
+    className="gap-2"
+    onSelect={(event) => event.preventDefault()}
+  >
+    <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-md border border-slate-200" aria-hidden="true">
+      <span className="absolute inset-0 bg-[conic-gradient(red,yellow,lime,aqua,blue,magenta,red)]" />
+    </span>
+    <span className="flex-1 text-sm">{label}</span>
+    <input
+      type="color"
+      aria-label={label}
+      className="h-6 w-8 shrink-0 cursor-pointer border-0 bg-transparent p-0"
+      onChange={(event) => onPick(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+    />
+  </DropdownMenuItem>
+);
 
 export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuProps) => {
   const { t } = useTranslation();
@@ -83,7 +129,7 @@ export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuPr
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{t("editorToolbar.fontSize")}</TooltipContent>
+        <TooltipContent side="top">{t("editorToolbar.fontSize")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="min-w-36">
         {FONT_SIZES.map((size) => (
@@ -154,28 +200,21 @@ export const EditorTextColorMenu = ({ editor, readOnly }: EditorInlineStyleMenuP
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{t("editorToolbar.fontColor")}</TooltipContent>
+        <TooltipContent side="top">{t("editorToolbar.fontColor")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="min-w-44">
         <div className="grid grid-cols-5 gap-1 p-1">
           {TEXT_COLORS.map((color) => (
-            <button
-              key={color.value}
-              type="button"
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-md border transition",
-                currentColor?.toLowerCase() === color.value
-                  ? "border-emerald-500 ring-2 ring-emerald-500/30"
-                  : "border-slate-200 hover:border-slate-400",
-              )}
-              style={{ backgroundColor: color.value }}
-              aria-label={color.value}
-              title={color.value}
-              onClick={() => run((active) => active.chain().focus().setColor(color.value).run())}
+            <ColorSwatch
+              key={color}
+              color={color}
+              selected={currentColor?.toLowerCase() === color}
+              onSelect={() => run((active) => active.chain().focus().setColor(color).run())}
             />
           ))}
         </div>
         <DropdownMenuSeparator />
+        <CustomColorItem label={t("editorToolbar.customColorLabel")} onPick={(color) => run((active) => active.chain().focus().setColor(color).run())} />
         <DropdownMenuItem onSelect={() => run((active) => active.chain().focus().unsetColor().run())}>
           {t("editorToolbar.fontColorReset")}
         </DropdownMenuItem>
@@ -218,28 +257,21 @@ export const EditorHighlightColorMenu = ({ editor, readOnly }: EditorInlineStyle
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{t("editorToolbar.highlightColor")}</TooltipContent>
+        <TooltipContent side="top">{t("editorToolbar.highlightColor")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="min-w-44">
         <div className="grid grid-cols-5 gap-1 p-1">
           {HIGHLIGHT_COLORS.map((color) => (
-            <button
-              key={color.value}
-              type="button"
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-md border transition",
-                currentColor?.toLowerCase() === color.value
-                  ? "border-emerald-500 ring-2 ring-emerald-500/30"
-                  : "border-slate-200 hover:border-slate-400",
-              )}
-              style={{ backgroundColor: color.value }}
-              aria-label={color.value}
-              title={color.value}
-              onClick={() => run((active) => active.chain().focus().setBackgroundColor(color.value).run())}
+            <ColorSwatch
+              key={color}
+              color={color}
+              selected={currentColor?.toLowerCase() === color}
+              onSelect={() => run((active) => active.chain().focus().setBackgroundColor(color).run())}
             />
           ))}
         </div>
         <DropdownMenuSeparator />
+        <CustomColorItem label={t("editorToolbar.customColorLabel")} onPick={(color) => run((active) => active.chain().focus().setBackgroundColor(color).run())} />
         <DropdownMenuItem onSelect={() => run((active) => active.chain().focus().unsetBackgroundColor().run())}>
           {t("editorToolbar.highlightColorReset")}
         </DropdownMenuItem>
