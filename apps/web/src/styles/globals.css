@@ -1485,34 +1485,6 @@ textarea {
   margin: 0 0 1rem;
 }
 
-.ProseMirror .edgeever-code-copy-button {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
-  z-index: 1;
-  border: 1px solid rgb(var(--slate-300-rgb) / 0.7);
-  border-radius: 6px;
-  padding: 0.22rem 0.5rem;
-  background: rgb(255 255 255 / 0.88);
-  backdrop-filter: blur(6px);
-  color: #475569;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 500;
-  line-height: 1.4;
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
-}
-
-.ProseMirror .edgeever-code-copy-button:hover,
-.ProseMirror .edgeever-code-copy-button:focus-visible {
-  border-color: var(--brand-green);
-  color: var(--brand-green-text);
-  background: rgb(255 255 255 / 0.96);
-  box-shadow: 0 1px 4px rgb(var(--brand-green-rgb) / 0.12);
-  outline: none;
-}
-
 .ProseMirror .edgeever-code-header {
   display: flex;
   align-items: center;
@@ -1550,6 +1522,27 @@ textarea {
 .ProseMirror .edgeever-code-block.edgeever-code-block-collapsed.edgeever-code-block-has-header .edgeever-code-header {
   border-bottom: 1px solid var(--edgeever-code-band-border);
   border-radius: 8px;
+}
+
+.ProseMirror .edgeever-code-lang {
+  flex: none;
+  border: 1px solid rgb(var(--slate-200-rgb) / 0.9);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  background: rgb(255 255 255 / 0.75);
+  color: #64748b;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+:root.dark .ProseMirror .edgeever-code-lang {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted) / 0.6);
+  color: hsl(var(--muted-foreground));
 }
 
 .ProseMirror .edgeever-code-title-input {
@@ -1663,8 +1656,8 @@ textarea {
   color: #0f172a;
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875em;
+  line-height: 1.65;
   white-space: pre;
-  padding-right: 5.5rem;
   box-shadow: 0 1px 2px rgb(var(--slate-900-rgb) / 0.03);
 }
 
@@ -2567,19 +2560,6 @@ textarea {
   border-color: rgb(var(--slate-200-rgb) / 0.8);
   background: rgb(var(--slate-100-rgb) / 0.8);
   color: hsl(var(--foreground));
-}
-
-:root.dark .ProseMirror .edgeever-code-copy-button {
-  border-color: rgb(var(--slate-200-rgb) / 0.9);
-  background: rgb(var(--slate-100-rgb) / 0.9);
-  color: rgb(var(--slate-500-rgb));
-}
-
-:root.dark .ProseMirror .edgeever-code-copy-button:hover,
-:root.dark .ProseMirror .edgeever-code-copy-button:focus-visible {
-  border-color: var(--brand-green);
-  color: var(--brand-green-text);
-  background: rgb(var(--slate-200-rgb));
 }
 
 :root.dark .ProseMirror .edgeever-code-block,

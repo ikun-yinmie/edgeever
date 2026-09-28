@@ -132,6 +132,8 @@ export const IMAGE_COMPRESSION_STORAGE_KEY = "edgeever.imageCompressionEnabled";
 export const DESKTOP_FOCUS_MODE_STORAGE_KEY = "edgeever.desktopFocusMode";
 export const NOTEBOOK_SIDEBAR_COLLAPSED_STORAGE_KEY = "edgeever.notebookSidebarCollapsed";
 export const DESKTOP_READING_PROTECTION_STORAGE_KEY = "edgeever.desktopReadingProtection";
+/** Per-note reading-protection overrides, stored as a memo-id → boolean map. */
+export const NOTE_READING_PROTECTION_STORAGE_KEY = "edgeever.noteReadingProtection";
 export const EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY = "edgeever.editorOutlineCollapsed";
 export const EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY = "edgeever.editorContentAlignment";
 export const EDITOR_TOOLBAR_EXPANDED_STORAGE_KEY = "edgeever.editorToolbarExpanded";
@@ -365,6 +367,58 @@ export const writeNotebookSidebarCollapsedPreference = (collapsed: boolean) => {
   } catch {
     // Local storage can be unavailable in private or restricted browser contexts.
   }
+};
+
+export const readNoteReadingProtectionMap = (): Record<string, boolean> => {
+  try {
+    const raw = window.localStorage.getItem(NOTE_READING_PROTECTION_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const map: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === "boolean" && key) {
+        map[key] = value;
+      }
+    }
+    return map;
+  } catch {
+    return {};
+  }
+};
+
+export const writeNoteReadingProtectionMap = (map: Record<string, boolean>) => {
+  try {
+    window.localStorage.setItem(NOTE_READING_PROTECTION_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Local storage can be unavailable in private or restricted browser contexts.
+  }
+};
+
+/**
+ * Reading protection is remembered per note: true (reading) / false (editing);
+ * missing entries fall back to the legacy device-wide preference.
+ */
+export const readNoteReadingProtection = (memoId: string | null | undefined, fallback: boolean) => {
+  if (!memoId) return fallback;
+  const value = readNoteReadingProtectionMap()[memoId];
+  return typeof value === "boolean" ? value : fallback;
+};
+
+export const writeNoteReadingProtection = (memoId: string | null | undefined, protectedMode: boolean, fallback: boolean) => {
+  if (!memoId) {
+    writeDesktopReadingProtectionPreference(protectedMode);
+    return;
+  }
+  if (protectedMode === fallback) {
+    // The value matches the device default, so no per-note override is needed.
+    const map = readNoteReadingProtectionMap();
+    if (!(memoId in map)) return;
+    delete map[memoId];
+    writeNoteReadingProtectionMap(map);
+    return;
+  }
+  writeNoteReadingProtectionMap({ ...readNoteReadingProtectionMap(), [memoId]: protectedMode });
 };
 
 export const readDesktopReadingProtectionPreference = () => {

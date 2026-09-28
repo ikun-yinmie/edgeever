@@ -157,7 +157,8 @@ import {
   readDesktopReadingProtectionPreference,
   readEditorOutlineCollapsedPreference,
   readEditorPhonePreviewPreference,
-  writeDesktopReadingProtectionPreference,
+  readNoteReadingProtection,
+  writeNoteReadingProtection,
   writeEditorOutlineCollapsedPreference,
   writeEditorPhonePreviewPreference,
   type EditorContentAlignment,
@@ -487,7 +488,10 @@ const RichEditorPane = ({
     typeof window === "undefined" ? false : window.matchMedia(MOBILE_EDITOR_QUERY).matches
   );
   const [isMobileEditing, setIsMobileEditing] = useState(false);
-  const [desktopReadingProtection, setDesktopReadingProtection] = useState(readDesktopReadingProtectionPreference);
+  // Reading protection is remembered per note; the device-wide flag is the fallback.
+  const [desktopReadingProtection, setDesktopReadingProtection] = useState(() =>
+    readNoteReadingProtection(memo?.id ?? null, readDesktopReadingProtectionPreference())
+  );
   const [mobilePlainText, setMobilePlainText] = useState("");
   const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
   const [editorOutlineCollapsed, setEditorOutlineCollapsed] = useState(readEditorOutlineCollapsedPreference);
@@ -559,10 +563,15 @@ const RichEditorPane = ({
   const toggleDesktopReadingProtection = useCallback(() => {
     setDesktopReadingProtection((protectedMode) => {
       const nextProtectedMode = !protectedMode;
-      writeDesktopReadingProtectionPreference(nextProtectedMode);
+      writeNoteReadingProtection(memo?.id ?? null, nextProtectedMode, readDesktopReadingProtectionPreference());
       return nextProtectedMode;
     });
-  }, []);
+  }, [memo?.id]);
+
+  // Follow the per-note reading-protection state when switching notes.
+  useEffect(() => {
+    setDesktopReadingProtection(readNoteReadingProtection(memo?.id ?? null, readDesktopReadingProtectionPreference()));
+  }, [memo?.id]);
 
   const handleEditorOutlineCollapsedChange = useCallback((collapsed: boolean) => {
     setEditorOutlineCollapsed(collapsed);
@@ -585,9 +594,9 @@ const RichEditorPane = ({
   useEffect(() => {
     if (!isMobileViewport && mobileDefaultEditRequested && desktopReadingProtection) {
       setDesktopReadingProtection(false);
-      writeDesktopReadingProtectionPreference(false);
+      writeNoteReadingProtection(memo?.id ?? null, false, readDesktopReadingProtectionPreference());
     }
-  }, [desktopReadingProtection, isMobileViewport, mobileDefaultEditRequested]);
+  }, [desktopReadingProtection, isMobileViewport, memo?.id, mobileDefaultEditRequested]);
 
   useEffect(() => {
     if (!desktopReadingProtection) return;

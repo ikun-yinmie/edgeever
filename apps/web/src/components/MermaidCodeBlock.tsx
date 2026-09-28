@@ -43,6 +43,10 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   const blockTitle = typeof meta.title === "string" ? meta.title : "";
   const isWide = meta.width === "wide";
   const isCollapsed = meta.collapsed === true;
+  const canEdit = editor.isEditable;
+  // In read mode the collapse toggle uses view-local state and never edits the document.
+  const [viewCollapsed, setViewCollapsed] = useState(false);
+  const collapsed = canEdit ? isCollapsed : viewCollapsed;
   const [svg, setSvg] = useState("");
   const [sourceVisible, setSourceVisible] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -61,7 +65,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   };
 
   useEffect(() => {
-    if (!isMermaid || !source || isCollapsed) {
+    if (!isMermaid || !source || collapsed) {
       setSvg("");
       setRenderState("idle");
       return;
@@ -119,9 +123,10 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isMermaid, mermaidTheme, source, isCollapsed]);
+  }, [isMermaid, mermaidTheme, source, collapsed]);
 
-  const showHeader = editor.isEditable || blockTitle || isWide || isCollapsed;
+  // The header always shows: language label, collapse and copy also serve read mode.
+  const showHeader = true;
 
   return (
     <NodeViewWrapper
@@ -131,13 +136,14 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           : "edgeever-code-block",
         showHeader ? "edgeever-code-block-has-header" : "",
         isWide ? "edgeever-code-block-wide" : "",
-        isCollapsed ? "edgeever-code-block-collapsed" : "",
+        collapsed ? "edgeever-code-block-collapsed" : "",
       ].filter(Boolean).join(" ")}
       data-language={language}
     >
       {showHeader && (
         <div className="edgeever-code-header" contentEditable={false}>
-          {editor.isEditable ? (
+          <span className="edgeever-code-lang" aria-hidden="true">{language}</span>
+          {canEdit ? (
             <input
               type="text"
               className="edgeever-code-title-input"
@@ -158,27 +164,31 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
             blockTitle && <span className="edgeever-code-title-label">{blockTitle}</span>
           )}
           <div className="edgeever-code-header-actions">
-            {editor.isEditable && (
+            {canEdit && (
               <>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       className="edgeever-code-tool-button"
-                      aria-label={t(isCollapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
-                      aria-pressed={isCollapsed}
+                      aria-label={t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
+                      aria-pressed={collapsed}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        updateAttributes({ meta: { ...meta, collapsed: !isCollapsed } });
+                        if (canEdit) {
+                          updateAttributes({ meta: { ...meta, collapsed: !collapsed } });
+                        } else {
+                          setViewCollapsed((value) => !value);
+                        }
                       }}
                       onMouseDown={(event) => event.preventDefault()}
                     >
-                      {isCollapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {t(isCollapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
+                    {t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
                   </TooltipContent>
                 </Tooltip>
                 <Tooltip>
@@ -235,7 +245,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
       {isMermaid ? (
         <TooltipProvider delayDuration={0} skipDelayDuration={0}>
           <div className="edgeever-mermaid-toolbar" contentEditable={false}>
-            {editor.isEditable && (
+            {canEdit && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -280,37 +290,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
             )}
           </div>
         </TooltipProvider>
-      ) : (
-        !showHeader && (
-          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="edgeever-code-copy-button"
-                  contentEditable={false}
-                  aria-label={t(copyState === "copied" ? "editorToolbar.codeCopied" : copyState === "error" ? "editorToolbar.codeCopyFailed" : "editorToolbar.copyCode")}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void handleCopy();
-                  }}
-                  onMouseDown={(event) => event.preventDefault()}
-                >
-                  {copyState === "copied"
-                    ? t("editorToolbar.codeCopied")
-                    : copyState === "error"
-                      ? t("editorToolbar.codeCopyFailed")
-                      : t("editorToolbar.copyCode")}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(copyState === "copied" ? "editorToolbar.codeCopied" : copyState === "error" ? "editorToolbar.codeCopyFailed" : "editorToolbar.copyCode")}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )
-      )}
+      ) : null}
       {isMermaid && (
         <div
           className="edgeever-mermaid-preview"
@@ -337,7 +317,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           )}
         </div>
       )}
-      {!isCollapsed && (
+      {!collapsed && (
         <NodeViewContent
           className={isMermaid ? "edgeever-code-source edgeever-mermaid-source" : "edgeever-code-source"}
           role="textbox"

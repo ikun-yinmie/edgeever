@@ -3,6 +3,7 @@ import {
   DEFAULT_SHORTCUT_SETTINGS,
   DESKTOP_FOCUS_MODE_STORAGE_KEY,
   DESKTOP_READING_PROTECTION_STORAGE_KEY,
+  NOTE_READING_PROTECTION_STORAGE_KEY,
   NOTEBOOK_SIDEBAR_COLLAPSED_STORAGE_KEY,
   EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY,
   EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY,
@@ -20,6 +21,8 @@ import {
   readNotebookTreeCollapsedIdsPreference,
   readDesktopFocusModePreference,
   readDesktopReadingProtectionPreference,
+  readNoteReadingProtection,
+  readNoteReadingProtectionMap,
   readNotebookSidebarCollapsedPreference,
   readEditorOutlineCollapsedPreference,
   readEditorToolbarExpandedPreference,
@@ -31,6 +34,7 @@ import {
   writeNotebookTreeCollapsedIdsPreference,
   writeDesktopFocusModePreference,
   writeDesktopReadingProtectionPreference,
+  writeNoteReadingProtection,
   writeNotebookSidebarCollapsedPreference,
   writeEditorOutlineCollapsedPreference,
   writeEditorToolbarExpandedPreference,
@@ -71,6 +75,71 @@ describe("search shortcut scope", () => {
 
   test("uses memo-list search when no note is open", () => {
     expect(getSearchShortcutScope(null)).toBe("memo-list");
+  });
+});
+
+describe("per-note reading protection preference", () => {
+  test("falls back to the device-wide flag when the note has no override", () => {
+    installLocalStorage();
+    expect(readNoteReadingProtection("memo-1", false)).toBe(false);
+    expect(readNoteReadingProtection("memo-1", true)).toBe(true);
+    expect(readNoteReadingProtection(null, true)).toBe(true);
+  });
+
+  test("persists per-note overrides and reads them back", () => {
+    const values = installLocalStorage();
+
+    writeNoteReadingProtection("memo-1", true, false);
+    expect(readNoteReadingProtection("memo-1", false)).toBe(true);
+    expect(readNoteReadingProtection("memo-2", false)).toBe(false);
+    expect(values.get(NOTE_READING_PROTECTION_STORAGE_KEY)).toBe(JSON.stringify({ "memo-1": true }));
+
+    writeNoteReadingProtection("memo-1", false, false);
+    expect(readNoteReadingProtection("memo-1", false)).toBe(false);
+    expect(values.get(NOTE_READING_PROTECTION_STORAGE_KEY)).toBe(JSON.stringify({}));
+  });
+
+  test("keeps other notes' overrides when one is removed", () => {
+    installLocalStorage();
+
+    writeNoteReadingProtection("memo-1", true, false);
+    writeNoteReadingProtection("memo-2", true, false);
+    writeNoteReadingProtection("memo-1", false, false);
+
+    expect(readNoteReadingProtectionMap()).toEqual({ "memo-2": true });
+  });
+
+  test("writes through to the device flag for untitled or unsaved notes", () => {
+    const values = installLocalStorage();
+
+    writeNoteReadingProtection(null, true, false);
+    expect(values.get(DESKTOP_READING_PROTECTION_STORAGE_KEY)).toBe("true");
+    expect(values.has(NOTE_READING_PROTECTION_STORAGE_KEY)).toBe(false);
+  });
+
+  test("fails closed to the fallback when local storage is unavailable", () => {
+    globalThis.window = {
+      localStorage: {
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        setItem: () => {
+          throw new Error("blocked");
+        },
+      },
+    };
+
+    expect(readNoteReadingProtection("memo-1", true)).toBe(true);
+    expect(() => writeNoteReadingProtection("memo-1", true, false)).not.toThrow();
+  });
+
+  test("ignores malformed stored maps", () => {
+    installLocalStorage();
+    window.localStorage.setItem(NOTE_READING_PROTECTION_STORAGE_KEY, "not-json");
+    expect(readNoteReadingProtectionMap()).toEqual({});
+
+    window.localStorage.setItem(NOTE_READING_PROTECTION_STORAGE_KEY, JSON.stringify({ "memo-1": "yes", "memo-2": true }));
+    expect(readNoteReadingProtectionMap()).toEqual({ "memo-2": true });
   });
 });
 
