@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Check, CircleAlert, Code2, Copy, Maximize2, ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Maximize2 } from "lucide-react";
 import { MERMAID_THEME_PALETTES, useMermaidTheme } from "./ThemeProvider";
 import { MermaidViewer } from "./MermaidViewer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CODE_BLOCK_LANGUAGES } from "@/lib/code-block";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { renderMermaidWithFallback } from "@/lib/mermaid-renderer";
 import { getOfficialMermaidThemeVariables } from "@/lib/mermaid-theme";
@@ -31,6 +38,51 @@ const loadBeautifulMermaid = () => {
     beautifulMermaidModulePromise = import("beautiful-mermaid");
   }
   return beautifulMermaidModulePromise;
+};
+
+type LanguagePickerProps = {
+  language: string;
+  onPick: (language: string) => void;
+  label: string;
+};
+
+/** The header language badge doubles as the type switcher while editing. */
+const LanguagePicker = ({ language, onPick, label }: LanguagePickerProps) => {
+  const { t } = useTranslation();
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="edgeever-code-lang edgeever-code-lang-picker"
+              aria-label={label}
+              aria-haspopup="menu"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              {language}
+              <ChevronDown className="edgeever-code-lang-caret" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="max-h-72 min-w-36 overflow-y-auto">
+        {CODE_BLOCK_LANGUAGES.map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            className={language === option.value ? "bg-emerald-50 text-emerald-800" : undefined}
+            onSelect={() => onPick(option.value)}
+          >
+            {option.value === "plaintext" ? t("editorToolbar.plainText") : option.label}
+            {language === option.value && <span className="ml-auto" aria-hidden="true">✓</span>}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 };
 
 export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewProps) => {
@@ -142,7 +194,15 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
     >
       {showHeader && (
         <div className="edgeever-code-header" contentEditable={false}>
-          <span className="edgeever-code-lang" aria-hidden="true">{language}</span>
+          {canEdit ? (
+            <LanguagePicker
+              language={language}
+              onPick={(value) => updateAttributes({ language: value })}
+              label={t("editorToolbar.codeLanguage")}
+            />
+          ) : (
+            <span className="edgeever-code-lang" aria-hidden="true">{language}</span>
+          )}
           {canEdit ? (
             <input
               type="text"
