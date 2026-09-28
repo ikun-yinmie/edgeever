@@ -248,7 +248,11 @@ export const deleteNotebookRecord = async (
   actor: AuditActor
 ) => {
   const current = await getNotebook(db, workspaceId, id);
-  if (!current) throw new AppError("not_found", "Notebook not found", 404);
+  if (!current) {
+    // Idempotent no-op: the notebook may already be gone on another device;
+    // throwing here would wedge the offline delete queue forever.
+    return;
+  }
   if (isInboxNotebook(current, workspaceId)) {
     throw new AppError("bad_request", "等待分类不能删除。", 400);
   }
@@ -270,14 +274,38 @@ export const deleteNotebookRecord = async (
     );
   }
 
+  // Cascade the soft deletion to descendant notebooks and their memos so a
+  // subtree can be removed in one action (previously any child notebook or
+  // memo forced a 409 and users had to delete leaf-by-leaf).
+  const descendants = await db
+    .prepare(
+      `WITH RECURSIVE tree(id) AS (
+         SELECT id FROM notebooks WHERE id = ? AND workspace_id = ?
+         UNION ALL
+         SELECT n.id FROM notebooks n INNER JOIN tree t ON n.parent_id = t.id
+       ) SELECT id FROM tree`,
+    )
+    .bind(id, workspaceId)
+    .all<{ id: string }>();
+  const notebookIds = (descendants.results ?? []).map((row) => row.id);
+  const placeholders = notebookIds.map(() => "?").join(", ");
+
   const now = isoNow();
-  await db.prepare(
-    `UPDATE notebooks
-     SET is_deleted = 1, deleted_at = ?, updated_at = ?
-     WHERE id = ? AND workspace_id = ? AND slug <> 'inbox'
-       AND id <> 'nb_inbox' AND id <> ?`
-  ).bind(now, now, id, workspaceId, workspaceInboxId(workspaceId)).run();
-  await audit(db, actor.actorType, actor.actorId, "notebook.delete", "notebook", id, {});
+  const statements = [
+    db.prepare(
+      `UPDATE memos
+       SET is_deleted = 1, deleted_at = ?, updated_at = ?
+       WHERE workspace_id = ? AND is_deleted = 0 AND notebook_id IN (${placeholders})`,
+    ).bind(now, now, workspaceId, ...notebookIds),
+    db.prepare(
+      `UPDATE notebooks
+       SET is_deleted = 1, deleted_at = ?, updated_at = ?
+       WHERE workspace_id = ? AND is_deleted = 0 AND id IN (${placeholders})
+         AND slug <> 'inbox' AND id <> 'nb_inbox' AND id <> ?`,
+    ).bind(now, now, workspaceId, ...notebookIds, workspaceInboxId(workspaceId)),
+    auditStatement(db, actor.actorType, actor.actorId, "notebook.delete", "notebook", id, {}),
+  ];
+  await db.batch(statements);
 };
 
 export const restoreNotebookRecord = async (

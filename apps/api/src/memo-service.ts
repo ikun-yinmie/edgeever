@@ -452,7 +452,7 @@ export const deleteMemosRecord = async (
   memoIds: string[],
   permanent: boolean,
   actor: { actorType: "user" | "agent"; actorId: string | null }
-) => {
+): Promise<number> => {
   const db = env.storage.db;
   const uniqueMemoIds = Array.from(new Set(memoIds));
 
@@ -472,11 +472,22 @@ export const deleteMemosRecord = async (
     .all<{ id: string }>();
 
   if (rows.results.length !== uniqueMemoIds.length) {
-    throw new AppError(
-      "missing_memos",
-      permanent ? "One or more memos cannot be permanently deleted." : "One or more memos cannot be deleted.",
-      400
-    );
+    // Soft deletion is idempotent: notes already deleted on another device
+    // (or never created because the create request is still queued) must not
+    // wedge the offline queue with a permanent 400.
+    if (permanent) {
+      throw new AppError(
+        "missing_memos",
+        "One or more memos cannot be permanently deleted.",
+        400
+      );
+    }
+    const foundIds = new Set(rows.results.map((row) => row.id));
+    const deletable = uniqueMemoIds.filter((memoId) => foundIds.has(memoId));
+    if (deletable.length === 0) {
+      return 0;
+    }
+    return deleteMemosRecord(env, workspaceId, deletable, false, actor);
   }
 
   const now = isoNow();

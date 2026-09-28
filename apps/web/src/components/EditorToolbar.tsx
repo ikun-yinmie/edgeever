@@ -21,6 +21,8 @@ import {
   Sigma,
   ChevronDown,
   ChevronUp,
+  Baseline,
+  Highlighter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MEMO_EDITOR_TOOLBAR_COLLAPSED_CLASS_NAME } from "@/components/MemoEditorChromeDensity";
@@ -38,6 +40,7 @@ import {
 } from "@/lib/app-helpers";
 import { CODE_BLOCK_LANGUAGES, getCodeBlockLanguageValue } from "@/lib/code-block";
 import { EditorTableMenu } from "@/components/EditorTableMenu";
+import { EditorFontSizeMenu, EditorHighlightColorMenu, EditorTextColorMenu } from "@/components/EditorInlineStyleMenu";
 import { wrapIndentedParagraphInList } from "@/lib/editor-shortcuts";
 import {
   EDITOR_THEME_NAMES,
@@ -494,6 +497,9 @@ export const EditorToolbar = ({
           >
             <Code2 className="h-4 w-4" />
           </EditorToolbarButton>
+          <EditorFontSizeMenu editor={editor} readOnly={readOnly} />
+          <EditorTextColorMenu editor={editor} readOnly={readOnly} />
+          <EditorHighlightColorMenu editor={editor} readOnly={readOnly} />
 
           <MemoEditorToolbarDivider className="hidden sm:block" />
           <EditorToolbarButton

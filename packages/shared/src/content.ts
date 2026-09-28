@@ -1,4 +1,5 @@
 import { MarkdownManager } from "@tiptap/markdown";
+import { createEdgeEverCodeBlock } from "./code-block-meta";
 import {
   createEdgeEverDocumentExtensions,
   type CreateEdgeEverDocumentExtensionsOptions,
@@ -107,6 +108,7 @@ export const createEdgeEverMarkdownManager = (
 
 const markdownManager = createEdgeEverMarkdownManager({
   mathematics: createEdgeEverMarkdownMathematics(),
+  codeBlock: createEdgeEverCodeBlock(),
 });
 
 const PROTECTED_MARKDOWN_SEGMENT = /(```[\s\S]*?```|~~~[\s\S]*?~~~|\$\$[\s\S]*?\$\$)/g;

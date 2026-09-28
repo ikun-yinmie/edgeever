@@ -29,6 +29,8 @@ export * from "./revision-diff";
 export * from "./resource-links";
 export * from "./schemas";
 export * from "./sharing";
+export * from "./text-style";
+export { createEdgeEverCodeBlock } from "./code-block-meta";
 export * from "./sync";
 export * from "./desktop-rpc";
 export * from "./details";

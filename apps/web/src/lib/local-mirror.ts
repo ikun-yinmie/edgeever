@@ -561,6 +561,34 @@ export const deleteLocalNotebook = async (scope: string, notebookId: string) => 
   const notebook = await getLocalNotebook(scope, notebookId);
   if (!notebook) return false;
   await localDb.notebooks.delete([scope, notebookId]);
+  // The server cascades the delete to descendant notebooks and their memos;
+  // mirror the same cascade locally so the list does not show orphaned rows.
+  const descendants = await localDb.notebooks.where("scope").equals(scope).toArray();
+  const childIds = new Set<string>();
+  let frontier = new Set([notebookId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const candidate of descendants) {
+      if (childIds.has(candidate.id)) continue;
+      if (candidate.parentId && (frontier.has(candidate.parentId) || childIds.has(candidate.parentId))) {
+        childIds.add(candidate.id);
+        frontier.add(candidate.id);
+        changed = true;
+      }
+    }
+  }
+  const affectedNotebookIds = [notebookId, ...childIds];
+  const memos = await localDb.memos.where("scope").equals(scope).toArray();
+  for (const memo of memos) {
+    if (memo.isDeleted || !affectedNotebookIds.includes(memo.notebookId)) continue;
+    await putLocalMemo(scope, {
+      ...memo,
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
   return true;
 };
 

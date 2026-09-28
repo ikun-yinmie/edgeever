@@ -3,8 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BookOpen,
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
+  ExternalLink,
   FileText,
   PenLine,
   Share2,
@@ -20,6 +23,9 @@ import { describeEditPolicy, groupSharedItems } from "@/lib/shared-with-me";
 import { cn } from "@/lib/utils";
 
 export const SHARED_WITH_ME_QUERY_KEY = ["shared-with-me"];
+export const MEMO_LINK_SHARES_QUERY_KEY = ["memo-link-shares"];
+
+const buildShareUrl = (token: string) => `${window.location.origin}/share/${encodeURIComponent(token)}`;
 
 interface SharedWithMePaneProps {
   onClose: () => void;
@@ -31,10 +37,13 @@ export const SharedWithMePane = ({ onClose, onOpenMemo }: SharedWithMePaneProps)
   const queryClient = useQueryClient();
   const sharedQuery = useQuery({ queryKey: SHARED_WITH_ME_QUERY_KEY, queryFn: api.getSharedWithMe });
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
+  const linkSharesQuery = useQuery({ queryKey: MEMO_LINK_SHARES_QUERY_KEY, queryFn: api.listMemoLinkShares, staleTime: 60_000 });
   const [expandedNotebookId, setExpandedNotebookId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [policyTarget, setPolicyTarget] = useState<{ share: GroupShareSummary; groupId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [confirmRevokeToken, setConfirmRevokeToken] = useState<string | null>(null);
 
   const notebookMemosQuery = useQuery({
     queryKey: ["shared-notebook-memos", expandedNotebookId],
@@ -60,6 +69,27 @@ export const SharedWithMePane = ({ onClose, onOpenMemo }: SharedWithMePaneProps)
       setError(mutationError instanceof ApiRequestError ? mutationError.message : String(mutationError));
     },
   });
+
+  const revokeLinkShareMutation = useMutation({
+    mutationFn: (memoId: string) => api.revokeMemoShare(memoId),
+    onSuccess: () => {
+      setError(null);
+      setConfirmRevokeToken(null);
+      void queryClient.invalidateQueries({ queryKey: MEMO_LINK_SHARES_QUERY_KEY });
+    },
+    onError: (mutationError) => {
+      setError(mutationError instanceof ApiRequestError ? mutationError.message : String(mutationError));
+    },
+  });
+
+  const copyShareLink = async (token: string) => {
+    const { copyTextToClipboard } = await import("@/lib/clipboard");
+    const copied = await copyTextToClipboard(buildShareUrl(token));
+    if (copied) {
+      setCopiedToken(token);
+      window.setTimeout(() => setCopiedToken((current) => (current === token ? null : current)), 1800);
+    }
+  };
 
   const sections = useMemo(
     () =>
@@ -230,7 +260,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo }: SharedWithMePaneProps)
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionMyShares")}</h2>
-            {myShares.length === 0 ? (
+            {myShares.length === 0 && (linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length ?? 0) === 0 ? (
               <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                 {t("sharedPane.emptyMyShares")}
               </p>
@@ -246,7 +276,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo }: SharedWithMePaneProps)
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-slate-900">{share.title || t("common.untitledMemo")}</p>
                       <p className="truncate text-xs text-slate-500">
-                        {share.groupName} · {policyLabel(share)}
+                        {t("sharedPane.mySharesGroupLabel")} · {share.groupName} · {policyLabel(share)}
                       </p>
                     </div>
                     <Button
@@ -268,6 +298,68 @@ export const SharedWithMePane = ({ onClose, onOpenMemo }: SharedWithMePaneProps)
                     </Button>
                   </li>
                 ))}
+                {(linkSharesQuery.data?.shares ?? [])
+                  .filter((linkShare) => !linkShare.memoDeleted)
+                  .map((linkShare) => (
+                    <li className="flex flex-wrap items-center gap-3 px-3.5 py-3" key={`link-${linkShare.memoId}`}>
+                      <ExternalLink className="h-4 w-4 shrink-0 text-sky-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {linkShare.memoTitle || t("common.untitledMemo")}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {t("sharedPane.mySharesLinkLabel")}
+                          {linkShare.passwordProtected ? " · 🔒" : ""}
+                        </p>
+                      </div>
+                      {confirmRevokeToken === linkShare.token ? (
+                        <>
+                          <span className="text-xs text-slate-500">{t("sharedPane.revokeLinkShareConfirm")}</span>
+                          <Button
+                            className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            disabled={revokeLinkShareMutation.isPending}
+                            onClick={() => revokeLinkShareMutation.mutate(linkShare.memoId)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {t("sharedPane.revokeLinkShare")}
+                          </Button>
+                          <Button className="h-8" onClick={() => setConfirmRevokeToken(null)} size="sm" variant="outline">
+                            {t("common.cancel")}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            className="h-8"
+                            onClick={() => void copyShareLink(linkShare.token)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            {copiedToken === linkShare.token ? (
+                              <>
+                                <Check className="h-4 w-4" />
+                                {t("sharedPane.mySharesLinkCopied")}
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4" />
+                                {t("sharedPane.copyLink")}
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            onClick={() => setConfirmRevokeToken(linkShare.token)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {t("sharedPane.revokeLinkShare")}
+                          </Button>
+                        </>
+                      )}
+                    </li>
+                  ))}
               </ul>
             )}
           </section>

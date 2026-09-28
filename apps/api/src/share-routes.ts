@@ -280,6 +280,35 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
 };
 
 export const registerMemoShareRoutes = (app: Hono<AppEnv>) => {
+  // Listing of every active public (link) share in the workspace, used by the
+  // "My shares" sidebar section to review and revoke outbound shares.
+  app.get("/api/v1/memo-link-shares", async (c) => {
+    const denied = requireUser(c);
+    if (denied) return denied;
+
+    const rows = await c.env.storage.db.prepare(
+      `SELECT ms.memo_id, ms.token, ms.created_at, ms.updated_at, ms.password_hash,
+              m.title, m.updated_at AS memo_updated_at, m.is_deleted
+       FROM memo_shares ms
+       INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
+       WHERE ms.workspace_id = ?
+       ORDER BY ms.created_at DESC
+       LIMIT 500`
+    ).bind(getWorkspaceId(c)).all<MemoShareRow & {
+      title: string | null;
+      memo_updated_at: string;
+      is_deleted: number;
+    }>();
+
+    const shares = (rows.results ?? []).map((row) => ({
+      ...mapMemoShare(row),
+      memoTitle: row.title,
+      memoUpdatedAt: row.memo_updated_at,
+      memoDeleted: row.is_deleted === 1,
+    }));
+    return c.json({ shares });
+  });
+
   app.get("/api/v1/memos/:id/share", async (c) => {
     const denied = requireUser(c);
     if (denied) return denied;

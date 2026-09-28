@@ -137,6 +137,7 @@ import { DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeever/shared/image-display";
 import { EdgeEverLink } from "@edgeever/shared/editor-link";
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { codeBlockLowlight, EdgeEverCodeBlock } from "@/lib/code-block";
+import { EdgeEverTextBackgroundColor, EdgeEverTextColor, EdgeEverTextFontSize } from "@edgeever/shared";
 import { compressImageForUpload } from "@/lib/image-compression";
 import { LOCAL_DATABASE_INTERRUPTED_EVENT, localDb, selectNewestLocalDraft, type MemoUpdateSyncPayload } from "@/lib/local-db";
 import { persistEmergencyDraft, readEmergencyDraft, removeEmergencyDraft } from "@/lib/emergency-draft";
@@ -1112,6 +1113,9 @@ const RichEditorPane = ({
       }),
       EdgeEverLink.configure({ openOnClick: false }),
       inlineFieldExtension,
+      EdgeEverTextBackgroundColor,
+      EdgeEverTextColor,
+      EdgeEverTextFontSize,
       EdgeEverCodeBlock.configure({ lowlight: codeBlockLowlight, defaultLanguage: "plaintext" }),
       ThemeBlock,
       ResizableImage.configure({

@@ -50,6 +50,7 @@ export const NATIVE_EDITOR_MARK_TYPES = new Set<string>([
   "underline",
   "code",
   "link",
+  "textStyle",
   UNSUPPORTED_MARK_TYPE,
 ]);
 

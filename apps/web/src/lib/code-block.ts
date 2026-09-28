@@ -1,7 +1,7 @@
 import { common, createLowlight } from "lowlight";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import type { Editor } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+import { createEdgeEverCodeBlock } from "@edgeever/shared";
 import { MermaidCodeBlock } from "@/components/MermaidCodeBlock";
 
 export const codeBlockLowlight = createLowlight(common);
@@ -21,7 +21,20 @@ export const selectCurrentCodeBlockContent = (editor: Editor) => {
   return editor.commands.setTextSelection({ from: blockFrom, to: blockTo });
 };
 
-export const EdgeEverCodeBlock = CodeBlockLowlight.extend({
+/**
+ * The shared codeBlock (meta attrs + markdown round-trip) wired to the React
+ * node view and the desktop lowlight highlighter. The options cast is needed
+ * because `lowlight` is added by the lowlight adapter's options interface.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const EdgeEverCodeBlock = createEdgeEverCodeBlock().extend<any>({
+  addOptions() {
+    return {
+      ...(this.parent?.() ?? {}),
+      lowlight: codeBlockLowlight,
+    };
+  },
+
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
@@ -33,6 +46,14 @@ export const EdgeEverCodeBlock = CodeBlockLowlight.extend({
     return ReactNodeViewRenderer(MermaidCodeBlock);
   },
 });
+
+export const getCodeBlockLanguageValue = (language: unknown) => {
+  if (typeof language !== "string" || !language) {
+    return "plaintext";
+  }
+
+  return CODE_BLOCK_LANGUAGES.some((option) => option.value === language) ? language : "plaintext";
+};
 
 export const CODE_BLOCK_LANGUAGES = [
   { value: "plaintext", label: "Plain text" },
@@ -58,11 +79,3 @@ export const CODE_BLOCK_LANGUAGES = [
   { value: "typescript", label: "TypeScript" },
   { value: "yaml", label: "YAML" },
 ] as const;
-
-export const getCodeBlockLanguageValue = (language: unknown) => {
-  if (typeof language !== "string" || !language) {
-    return "plaintext";
-  }
-
-  return CODE_BLOCK_LANGUAGES.some((option) => option.value === language) ? language : "plaintext";
-};

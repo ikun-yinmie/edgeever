@@ -265,6 +265,12 @@ export type GroupShareSummary = {
   authorDisplayName: string | null;
 };
 
+export type MemoLinkShareListItem = MemoShare & {
+  memoTitle: string | null;
+  memoUpdatedAt: string;
+  memoDeleted: boolean;
+};
+
 export type SharedWithMeGroup = {
   id: string;
   name: string;
@@ -1870,6 +1876,9 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
 
     getMemoShare: (memoId: string) =>
       request<MemoShareResponse>(`/api/v1/memos/${memoId}/share`),
+
+    listMemoLinkShares: () =>
+      request<{ shares: MemoLinkShareListItem[] }>(`/api/v1/memo-link-shares`),
 
     createMemoShare: (memoId: string) =>
       request<{ share: MemoShare }>(`/api/v1/memos/${memoId}/share`, {
