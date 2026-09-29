@@ -1684,6 +1684,69 @@ textarea {
   box-shadow: 0 1px 2px rgb(var(--slate-900-rgb) / 0.03);
 }
 
+/* Yuque-style line-number gutter, absolutely positioned inside the block. */
+.ProseMirror .edgeever-code-block-numbered {
+  padding-left: 3rem;
+}
+
+.ProseMirror .edgeever-code-gutter {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  width: 3rem;
+  flex-direction: column;
+  align-items: flex-end;
+  overflow: hidden;
+  border-right: 1px solid rgb(var(--slate-200-rgb) / 0.9);
+  padding: 0.9rem 0.5rem 0.9rem 0;
+  background: rgb(var(--slate-100-rgb) / 0.4);
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  color: rgb(var(--slate-400-rgb));
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75em;
+  line-height: 1.65;
+  text-align: right;
+  user-select: none;
+  pointer-events: none;
+}
+
+.ProseMirror .edgeever-code-block-wrap .edgeever-code-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ProseMirror .edgeever-code-sync-toast {
+  position: absolute;
+  top: 2.6rem;
+  right: 0.5rem;
+  z-index: 3;
+  border: 1px solid rgb(var(--brand-green-rgb) / 0.35);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  background: rgb(255 255 255 / 0.96);
+  color: var(--brand-green-text);
+  font-size: 0.72rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgb(var(--brand-green-rgb) / 0.12);
+  pointer-events: none;
+}
+
+:root.dark .ProseMirror .edgeever-code-gutter {
+  border-right-color: hsl(var(--border));
+  background: hsl(var(--muted) / 0.5);
+  color: hsl(var(--muted-foreground) / 0.8);
+}
+
+:root.dark .ProseMirror .edgeever-code-sync-toast {
+  border-color: rgb(var(--brand-green-rgb) / 0.4);
+  background: hsl(var(--muted) / 0.96);
+  color: var(--brand-green-text);
+}
+
 .ProseMirror .edgeever-mermaid-code-block {
   overflow: visible;
   background: transparent;

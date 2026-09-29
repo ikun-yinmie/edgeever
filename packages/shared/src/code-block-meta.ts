@@ -14,15 +14,21 @@ export type EdgeEverCodeMeta = {
   title: string;
   width: "normal" | "wide";
   collapsed: boolean;
+  /** Show a gutter with line numbers (default true, matching Yuque). */
+  lineNumbers: boolean;
+  /** Wrap long lines instead of scrolling horizontally (default false). */
+  wrap: boolean;
 };
 
-const EMPTY_META: EdgeEverCodeMeta = { v: 1, title: "", width: "normal", collapsed: false };
+const EMPTY_META: EdgeEverCodeMeta = { v: 1, title: "", width: "normal", collapsed: false, lineNumbers: true, wrap: false };
 
 const clampMeta = (value: Partial<EdgeEverCodeMeta> | null | undefined): EdgeEverCodeMeta => ({
   v: 1,
   title: typeof value?.title === "string" ? value.title.slice(0, 300) : "",
   width: value?.width === "wide" ? "wide" : "normal",
   collapsed: value?.collapsed === true,
+  lineNumbers: value?.lineNumbers !== false,
+  wrap: value?.wrap === true,
 });
 
 /** Escape a JSON payload so it can sit on one fence line (no backticks / newlines). */
@@ -63,7 +69,7 @@ export const buildCodeFenceInfo = (
   meta: Partial<EdgeEverCodeMeta> | null | undefined,
 ): string => {
   const normalized = clampMeta(meta);
-  const hasMeta = Boolean(normalized.title) || normalized.width === "wide" || normalized.collapsed;
+  const hasMeta = Boolean(normalized.title) || normalized.width === "wide" || normalized.collapsed || !normalized.lineNumbers || normalized.wrap;
   const lang = (language ?? "").trim();
   if (!hasMeta) return lang;
   return `${lang} ${EDGE_EVER_CODE_META_MARKER}=${encodeCodeMetaJson(normalized)}`.trim();
@@ -79,6 +85,8 @@ export const codeBlockMetaFromAttrs = (attrs: Record<string, unknown> | undefine
     title: typeof attrs.title === "string" ? attrs.title : "",
     width: attrs.width === "wide" ? "wide" : "normal",
     collapsed: attrs.collapsed === true,
+    lineNumbers: attrs.lineNumbers !== false,
+    wrap: attrs.wrap === true,
   });
 };
 
@@ -101,7 +109,7 @@ export const createEdgeEverCodeBlock = () =>
           },
           renderHTML: (attributes) => {
             const meta = codeBlockMetaFromAttrs(attributes);
-            if (!meta.title && meta.width === "normal" && !meta.collapsed) return {};
+            if (!meta.title && meta.width === "normal" && !meta.collapsed && meta.lineNumbers && !meta.wrap) return {};
             return { "data-edgeever-code-meta": encodeCodeMetaJson(meta) };
           },
         },

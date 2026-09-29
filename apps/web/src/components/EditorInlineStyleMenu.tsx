@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Baseline, Highlighter } from "lucide-react";
+import { Baseline, ChevronDown, Highlighter } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +12,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-const FONT_SIZES = ["12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px", "32px", "40px", "48px"];
+const FONT_SIZES = ["12px", "13px", "14px", "15px", "16px", "19px", "22px", "24px", "29px", "32px", "40px", "48px"];
+
+export const FONT_SIZE_MENU_VALUES = FONT_SIZES;
 
 /** 每行五个的文字色盘：第一行黑灰阶，后四行按色相从浅到深。 */
 const TEXT_COLORS = [
@@ -125,13 +127,14 @@ export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuPr
               aria-label={t("editorToolbar.fontSize")}
               onMouseDown={(event) => event.preventDefault()}
             >
-              <span className="text-[13px] font-semibold leading-none">{t("editorToolbar.fontSize")}</span>
+              <span className="min-w-9 text-[13px] font-semibold leading-none tabular-nums">{currentSize ?? t("editorToolbar.fontSize")}</span>
+              <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="top">{t("editorToolbar.fontSize")}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="start" className="min-w-36">
+      <DropdownMenuContent align="start" className="max-h-80 min-w-24 overflow-y-auto">
         {FONT_SIZES.map((size) => (
           <DropdownMenuItem
             key={size}

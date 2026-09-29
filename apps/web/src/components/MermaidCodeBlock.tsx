@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Maximize2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Ellipsis, ListOrdered, Maximize2, WrapText } from "lucide-react";
 import { MERMAID_THEME_PALETTES, useMermaidTheme } from "./ThemeProvider";
 import { MermaidViewer } from "./MermaidViewer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CODE_BLOCK_LANGUAGES } from "@/lib/code-block";
@@ -91,10 +93,24 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   const language = typeof node.attrs.language === "string" ? node.attrs.language.toLowerCase() : "plaintext";
   const source = node.textContent.trim();
   const isMermaid = language === "mermaid";
-  const meta = (node.attrs.meta ?? {}) as { title?: string; width?: string; collapsed?: boolean };
+  const meta = (node.attrs.meta ?? {}) as {
+    title?: string;
+    width?: string;
+    collapsed?: boolean;
+    lineNumbers?: boolean;
+    wrap?: boolean;
+  };
   const blockTitle = typeof meta.title === "string" ? meta.title : "";
   const isWide = meta.width === "wide";
   const isCollapsed = meta.collapsed === true;
+  // Defaults match Yuque: line numbers on, wrapping off.
+  const showLineNumbers = meta.lineNumbers !== false;
+  const wrapLines = meta.wrap === true;
+  const lineCount = useMemo(() => node.childCount > 0 ? node.textContent.split("\n").length : 1, [node]);
+  const lineNumbers = useMemo(
+    () => Array.from({ length: lineCount }, (_, index) => index + 1),
+    [lineCount],
+  );
   const canEdit = editor.isEditable;
   // In read mode the collapse toggle uses view-local state and never edits the document.
   const [viewCollapsed, setViewCollapsed] = useState(false);
@@ -104,12 +120,19 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   const [viewerOpen, setViewerOpen] = useState(false);
   const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [syncToast, setSyncToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (copyState === "idle") return;
     const timer = window.setTimeout(() => setCopyState("idle"), 1800);
     return () => window.clearTimeout(timer);
   }, [copyState]);
+
+  useEffect(() => {
+    if (!syncToast) return;
+    const timer = window.setTimeout(() => setSyncToast(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [syncToast]);
 
   const handleCopy = async () => {
     const copied = await copyTextToClipboard(node.textContent);
@@ -189,6 +212,8 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
         showHeader ? "edgeever-code-block-has-header" : "",
         isWide ? "edgeever-code-block-wide" : "",
         collapsed ? "edgeever-code-block-collapsed" : "",
+        !isMermaid && showLineNumbers && !collapsed ? "edgeever-code-block-numbered" : "",
+        !isMermaid && wrapLines && !collapsed ? "edgeever-code-block-wrap" : "",
       ].filter(Boolean).join(" ")}
       data-language={language}
     >
@@ -299,6 +324,77 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
                 {t(copyState === "copied" ? "editorToolbar.codeCopied" : copyState === "error" ? "editorToolbar.codeCopyFailed" : "editorToolbar.copyCode")}
               </TooltipContent>
             </Tooltip>
+            {canEdit && (
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="edgeever-code-tool-button"
+                        aria-label={t("editorToolbar.codeMoreActions")}
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <Ellipsis aria-hidden="true" />
+                      </button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t("editorToolbar.codeMoreActions")}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuCheckboxItem
+                    checked={showLineNumbers}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      updateAttributes({ meta: { ...meta, lineNumbers: !showLineNumbers } });
+                    }}
+                  >
+                    <ListOrdered className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t("editorToolbar.codeLineNumbers")}
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={wrapLines}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      updateAttributes({ meta: { ...meta, wrap: !wrapLines } });
+                    }}
+                  >
+                    <WrapText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t("editorToolbar.codeWrapLines")}
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      updateAttributes({ meta: { lineNumbers: showLineNumbers, wrap: wrapLines } });
+                      setSyncToast(t("editorToolbar.codeSyncDone"));
+                    }}
+                  >
+                    {t("editorToolbar.codeSyncStyleAll")}
+                    <span className="ml-auto text-xs text-slate-400">⌘⇧S</span>
+                    <span className="sr-only">meta only</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      const target = { ...meta };
+                      const languageValue = typeof node.attrs.language === "string" ? node.attrs.language : "plaintext";
+                      const chain = editor.chain().focus();
+                      editor.state.doc.descendants((descNode, pos) => {
+                        if (descNode.type.name !== "codeBlock") return true;
+                        chain.setNodeSelection(pos).updateAttributes("codeBlock", {
+                          language: languageValue,
+                          meta: { ...target, collapsed: false },
+                        });
+                        return false;
+                      });
+                      chain.run();
+                      setSyncToast(t("editorToolbar.codeSyncDone"));
+                    }}
+                  >
+                    {t("editorToolbar.codeSyncStyleAndLanguageAll")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       )}
@@ -377,6 +473,13 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           )}
         </div>
       )}
+      {!collapsed && !isMermaid && showLineNumbers && (
+        <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
+          {lineNumbers.map((value) => (
+            <span key={value}>{value}</span>
+          ))}
+        </div>
+      )}
       {!collapsed && (
         <NodeViewContent
           className={isMermaid ? "edgeever-code-source edgeever-mermaid-source" : "edgeever-code-source"}
@@ -388,6 +491,14 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           aria-multiline="true"
           aria-readonly={!editor.isEditable}
         />
+      )}
+      {syncToast && (
+        <div
+          className="edgeever-code-sync-toast"
+          role="status"
+        >
+          {syncToast}
+        </div>
       )}
       {isMermaid && svg && (
         <MermaidViewer
