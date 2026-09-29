@@ -3,6 +3,8 @@ import type { Editor } from "@tiptap/react";
 import DragHandle from "@tiptap/extension-drag-handle-react";
 import {
   Braces,
+  ChevronsDownUp,
+  Clapperboard,
   Copy,
   CornerDownLeft,
   GripVertical,
@@ -18,13 +20,17 @@ import {
   ListOrdered,
   ListTodo,
   MoreVertical,
+  Palette,
   Pilcrow,
   Plus,
   Quote,
   RefreshCw,
   Scissors,
+  Sparkles,
+  StickyNote,
   Trash2,
 } from "lucide-react";
+import { wrapInList } from "@tiptap/pm/schema-list";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -62,6 +68,14 @@ type TransformOption = {
   label: string;
   run: (editor: Editor) => boolean;
 };
+
+/** Theme (highlight) block kinds, mirroring ThemeBlock.tsx. */
+const THEME_BLOCK_KINDS: Array<{ kind: string; icon: typeof Palette }> = [
+  { kind: "intro", icon: StickyNote },
+  { kind: "key-point", icon: Sparkles },
+  { kind: "callout", icon: CornerDownLeft },
+  { kind: "chapter", icon: Heading2 },
+];
 
 const HEADING_TRANSFORMS: Array<{ level: 1 | 2 | 3 | 4 | 5 | 6; icon: typeof Heading1 }> = [
   { level: 1, icon: Heading1 },
@@ -115,6 +129,33 @@ const getBlockTransformOptions = (t: (key: string) => string): TransformOption[]
     label: t("editorToolbar.codeBlock"),
     run: (editor) => editor.chain().focus().setCodeBlock().run(),
   },
+  {
+    id: "fold",
+    icon: ChevronsDownUp,
+    label: t("editorToolbar.fold"),
+    run: (editor) => editor.chain().focus().setDetails().run(),
+  },
+  ...THEME_BLOCK_KINDS.map(({ kind, icon }) => ({
+    id: `theme-block-${kind}`,
+    icon,
+    label: t(`editorToolbar.themeBlocks.${kind}` as const),
+    run: (editor: Editor) => {
+      const { from, to } = editor.state.selection;
+      const selectedText = editor.state.doc.textBetween(from, to, "\n", "\n").trim();
+      return editor
+        .chain()
+        .focus()
+        .insertContentAt(
+          { from, to },
+          {
+            type: "edgeeverThemeBlock",
+            attrs: { kind },
+            content: [{ type: "paragraph", content: selectedText ? [{ type: "text", text: selectedText }] : undefined }],
+          },
+        )
+        .run();
+    },
+  })),
 ];
 
 /** Resolve the block range the handle menu should operate on. */
@@ -128,17 +169,20 @@ const resolveBlockRange = (editor: Editor) => {
   };
 };
 
+const LIST_NODE_TYPES = ["bulletList", "orderedList", "taskList"];
+
 const canSinkOrLift = (editor: Editor, action: "sink" | "lift") => {
-  for (const type of ["bulletList", "orderedList", "taskList"]) {
+  for (const type of LIST_NODE_TYPES) {
     if (action === "sink" ? editor.can().sinkListItem(type) : editor.can().liftListItem(type)) {
       return true;
     }
   }
-  return false;
+  // Plain blocks can always be indented by wrapping them in a temporary list.
+  return true;
 };
 
-const runIndent = (editor: Editor, action: "sink" | "lift") => {
-  for (const type of ["bulletList", "orderedList", "taskList"]) {
+const indentListItem = (editor: Editor, action: "sink" | "lift") => {
+  for (const type of LIST_NODE_TYPES) {
     const chain = editor.chain().focus();
     const command = action === "sink" ? chain.sinkListItem(type) : chain.liftListItem(type);
     if (command.run()) {
@@ -146,6 +190,18 @@ const runIndent = (editor: Editor, action: "sink" | "lift") => {
     }
   }
   return false;
+};
+
+/** Indent a non-list block by wrapping it in a bullet list; reduce by unwrapping one level. */
+const indentPlainBlock = (editor: Editor, action: "sink" | "lift") => {
+  const listType = editor.schema.nodes.bulletList;
+  if (!listType) return false;
+  return wrapInList(listType)(editor.state, editor.view.dispatch) && action === "sink";
+};
+
+const runIndent = (editor: Editor, action: "sink" | "lift") => {
+  if (indentListItem(editor, action)) return true;
+  return indentPlainBlock(editor, action);
 };
 
 type AddBelowOption = {
@@ -187,37 +243,48 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
     id: "bullet-list",
     icon: List,
     label: t("editorToolbar.bulletList"),
-    insert: (editor, position) => {
-      editor.chain().focus().insertContentAt(position, { type: "paragraph" }).run();
-      return editor.chain().focus().toggleBulletList().run();
-    },
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph" }] }] })
+        .run(),
   },
   {
     id: "ordered-list",
     icon: ListOrdered,
     label: t("editorToolbar.orderedList"),
-    insert: (editor, position) => {
-      editor.chain().focus().insertContentAt(position, { type: "paragraph" }).run();
-      return editor.chain().focus().toggleOrderedList().run();
-    },
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, { type: "orderedList", content: [{ type: "listItem", content: [{ type: "paragraph" }] }] })
+        .run(),
   },
   {
     id: "task-list",
     icon: ListTodo,
     label: t("editorToolbar.taskList"),
-    insert: (editor, position) => {
-      editor.chain().focus().insertContentAt(position, { type: "paragraph" }).run();
-      return editor.chain().focus().toggleTaskList().run();
-    },
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, {
+          type: "taskList",
+          content: [{ type: "taskItem", attrs: { checked: false }, content: [{ type: "paragraph" }] }],
+        })
+        .run(),
   },
   {
     id: "blockquote",
     icon: Quote,
     label: t("editorToolbar.quote"),
-    insert: (editor, position) => {
-      editor.chain().focus().insertContentAt(position, { type: "paragraph" }).run();
-      return editor.chain().focus().toggleBlockquote().run();
-    },
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, { type: "blockquote", content: [{ type: "paragraph" }] })
+        .run(),
   },
   {
     id: "code-block",
@@ -230,11 +297,46 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
     id: "divider",
     icon: CornerDownLeft,
     label: t("editorToolbar.horizontalRule"),
-    insert: (editor, position) => {
-      editor.chain().focus().insertContentAt(position, { type: "paragraph" }).run();
-      return editor.chain().focus().setHorizontalRule().run();
-    },
+    insert: (editor, position) =>
+      editor.chain().focus().insertContentAt(position, { type: "horizontalRule" }).run(),
   },
+  {
+    id: "fold",
+    icon: ChevronsDownUp,
+    label: t("editorToolbar.fold"),
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, { type: "details", content: [{ type: "detailsSummary" }, { type: "detailsContent", content: [{ type: "paragraph" }] }] })
+        .run(),
+  },
+  {
+    id: "video-embed",
+    icon: Clapperboard,
+    label: t("editorToolbar.videoEmbed"),
+    insert: (editor, position) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, { type: "edgeeverVideoEmbed", attrs: { url: "", provider: "bilibili", videoId: "", start: 0 } })
+        .run(),
+  },
+  ...THEME_BLOCK_KINDS.map(({ kind, icon }) => ({
+    id: `theme-block-${kind}`,
+    icon,
+    label: t(`editorToolbar.themeBlocks.${kind}` as const),
+    insert: (editor: Editor, position: number) =>
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(position, {
+          type: "edgeeverThemeBlock",
+          attrs: { kind },
+          content: [{ type: "paragraph" }],
+        })
+        .run(),
+  })),
 ];
 
 /** Clone the whole block right below itself. */

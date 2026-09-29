@@ -10,6 +10,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChevronsDownUp,
+  Clapperboard,
   Clock3,
   FileUp,
   Heading1,
@@ -18,13 +19,17 @@ import {
   Heading4,
   Heading5,
   Heading6,
+  Images,
   Link,
   List,
   ListOrdered,
   ListTodo,
+  MessageCircle,
   Pilcrow,
   Quote,
   Sigma,
+  Sparkles,
+  StickyNote,
   Table,
 } from "lucide-react";
 import {
@@ -61,7 +66,13 @@ export type SlashCommandId =
   | "current-date-time"
   | "attachment"
   | "note-link"
-  | "external-link";
+  | "external-link"
+  | "video-embed"
+  | "image-gallery"
+  | "theme-block-intro"
+  | "theme-block-key-point"
+  | "theme-block-callout"
+  | "theme-block-chapter";
 
 type SlashCommandGroup = "suggested" | "basic" | "insert";
 type SlashCommandIcon = ComponentType<{ className?: string }>;
@@ -80,6 +91,8 @@ export type SlashCommandActions = {
   openExternalLinkPicker: () => void;
   openNoteLinkPicker: () => void;
   openMathFormula: (kind: "inline" | "block", range?: { from: number; to: number }) => void;
+  openVideoEmbedPicker: () => void;
+  insertImageGallery: () => void;
 };
 
 export type SlashCommandItem = {
@@ -129,6 +142,12 @@ export const createSlashCommandItems = (labels: SlashCommandLabels): SlashComman
   { id: "attachment", command: "upload", group: "insert", icon: FileUp, label: labels.items.attachment, keywords: ["file", "attachment", "文件", "上传", "附件"] },
   { id: "note-link", command: "note", group: "insert", icon: Link, label: labels.items["note-link"], keywords: ["link", "memo", "笔记", "引用"] },
   { id: "external-link", command: "link", group: "insert", icon: Link, label: labels.items["external-link"], keywords: ["url", "web", "链接", "网址"] },
+  { id: "video-embed", command: "video", group: "insert", icon: Clapperboard, label: labels.items["video-embed"], keywords: ["bilibili", "youtube", "video", "视频", "B站", "嵌入"] },
+  { id: "image-gallery", command: "gallery", group: "insert", icon: Images, label: labels.items["image-gallery"], keywords: ["gallery", "carousel", "图册", "图集", "轮播"] },
+  { id: "theme-block-intro", command: "intro", group: "insert", icon: StickyNote, label: labels.items["theme-block-intro"], keywords: ["highlight", "intro", "高亮", "引言", "卡片"] },
+  { id: "theme-block-key-point", command: "keypoint", group: "insert", icon: Sparkles, label: labels.items["theme-block-key-point"], keywords: ["highlight", "key", "重点", "观点"] },
+  { id: "theme-block-callout", command: "callout", group: "insert", icon: MessageCircle, label: labels.items["theme-block-callout"], keywords: ["callout", "tip", "提示", "注意"] },
+  { id: "theme-block-chapter", command: "chapter", group: "insert", icon: Heading2, label: labels.items["theme-block-chapter"], keywords: ["chapter", "章节", "标题块"] },
 ];
 
 export const filterSlashCommandItems = (items: SlashCommandItem[], query: string) => {
@@ -276,6 +295,42 @@ const runSlashCommand = ({
     case "external-link":
       chain.run();
       window.requestAnimationFrame(actions.openExternalLinkPicker);
+      break;
+    case "video-embed":
+      chain.run();
+      window.requestAnimationFrame(actions.openVideoEmbedPicker);
+      break;
+    case "image-gallery":
+      chain.run();
+      actions.insertImageGallery();
+      break;
+    case "theme-block-intro":
+      chain.insertContent({
+        type: "edgeeverThemeBlock",
+        attrs: { kind: "intro" },
+        content: [{ type: "paragraph" }],
+      }).run();
+      break;
+    case "theme-block-key-point":
+      chain.insertContent({
+        type: "edgeeverThemeBlock",
+        attrs: { kind: "key-point" },
+        content: [{ type: "paragraph" }],
+      }).run();
+      break;
+    case "theme-block-callout":
+      chain.insertContent({
+        type: "edgeeverThemeBlock",
+        attrs: { kind: "callout" },
+        content: [{ type: "paragraph" }],
+      }).run();
+      break;
+    case "theme-block-chapter":
+      chain.insertContent({
+        type: "edgeeverThemeBlock",
+        attrs: { kind: "chapter" },
+        content: [{ type: "paragraph" }],
+      }).run();
       break;
   }
 };

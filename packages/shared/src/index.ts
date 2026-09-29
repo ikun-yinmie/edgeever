@@ -30,6 +30,7 @@ export * from "./resource-links";
 export * from "./schemas";
 export * from "./sharing";
 export * from "./text-style";
+export * from "./video-embed";
 export { createEdgeEverCodeBlock } from "./code-block-meta";
 export * from "./sync";
 export * from "./desktop-rpc";

@@ -97,6 +97,7 @@ import { sanitizeAndScopeCss } from "@/lib/css-sandbox";
 import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { ExternalLinkDialog } from "./dialogs/ExternalLinkDialog";
 import { MathFormulaDialog } from "./dialogs/MathFormulaDialog";
+import { VideoEmbedDialog } from "./editor/VideoEmbedDialog";
 import { EditorBlockDragHandle } from "./editor/EditorBlockDragHandle";
 import {
   applyMathFormula,
@@ -466,6 +467,7 @@ const RichEditorPane = ({
     canRemove: false,
   });
   const [mathFormulaOpen, setMathFormulaOpen] = useState(false);
+  const [videoEmbedDialogOpen, setVideoEmbedDialogOpen] = useState(false);
   const [mathFormulaDraft, setMathFormulaDraft] = useState<MathFormulaDraft | null>(null);
   const {
     menuTarget: resourceMenuTarget,
@@ -622,6 +624,7 @@ const RichEditorPane = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openExternalLinkDialogRef = useRef<() => void>(() => undefined);
   const openMathFormulaRef = useRef<(kind?: "inline" | "block", range?: { from: number; to: number }) => void>(() => undefined);
+  const insertImageGalleryAtSelectionRef = useRef<() => void>(() => undefined);
   const mathFormulaDraftRef = useRef<MathFormulaDraft | null>(null);
   const mathClickRef = useRef<(node: { attrs: Record<string, unknown> }, pos: number, kind: "inline" | "block") => void>(() => undefined);
   const mathematicsExtensionsRef = useRef(createEdgeEverMathematics({
@@ -658,6 +661,12 @@ const RichEditorPane = ({
       attachment: "",
       "note-link": "",
       "external-link": "",
+      "video-embed": "",
+      "image-gallery": "",
+      "theme-block-intro": "",
+      "theme-block-key-point": "",
+      "theme-block-callout": "",
+      "theme-block-chapter": "",
     },
   });
   slashCommandLabelsRef.current = {
@@ -694,6 +703,12 @@ const RichEditorPane = ({
       attachment: t("editorToolbar.attachment"),
       "note-link": t("editorToolbar.noteLink"),
       "external-link": t("editorToolbar.externalLink"),
+      "video-embed": t("slashMenu.items.video-embed"),
+      "image-gallery": t("slashMenu.items.image-gallery"),
+      "theme-block-intro": t("slashMenu.items.theme-block-intro"),
+      "theme-block-key-point": t("slashMenu.items.theme-block-key-point"),
+      "theme-block-callout": t("slashMenu.items.theme-block-callout"),
+      "theme-block-chapter": t("slashMenu.items.theme-block-chapter"),
     },
   };
   const slashCommandActionsRef = useRef<SlashCommandActions | null>(null);
@@ -704,6 +719,8 @@ const RichEditorPane = ({
       openExternalLinkPicker: () => openExternalLinkDialogRef.current(),
       openNoteLinkPicker: () => setNoteLinkPickerOpen(true),
       openMathFormula: (kind, range) => openMathFormulaRef.current(kind, range),
+      openVideoEmbedPicker: () => setVideoEmbedDialogOpen(true),
+      insertImageGallery: () => insertImageGalleryAtSelectionRef.current(),
     };
   }
   const slashCommandExtensionRef = useRef<ReturnType<typeof createSlashCommandExtension> | null>(null);
@@ -1430,6 +1447,19 @@ const RichEditorPane = ({
   }, [editor, effectiveReadOnly, useMarkdownSourceEditor, useMobilePlainTextEditor]);
 
   openMathFormulaRef.current = openMathFormula;
+  insertImageGalleryAtSelectionRef.current = () => {
+    if (effectiveReadOnly || !isEditorReady(editor) || useMarkdownSourceEditor || useMobilePlainTextEditor) return;
+    const imageType = editor.schema.nodes.image;
+    if (!imageType) return;
+    // An empty gallery with one placeholder image; users pick files via the gallery UI.
+    const placeholder = imageType.create({ src: "" });
+    if (!placeholder) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: "edgeeverImageGallery", attrs: { layout: "auto" }, content: [placeholder.toJSON()] })
+      .run();
+  };
   mathClickRef.current = (_node, pos, kind) => {
     if (effectiveReadOnly || !isEditorReady(editor) || useMarkdownSourceEditor || useMobilePlainTextEditor) {
       return;
@@ -3505,6 +3535,21 @@ const RichEditorPane = ({
         canRemove={externalLinkDraft.canRemove}
         onApply={applyExternalLink}
         onRemove={removeExternalLink}
+      />
+      <VideoEmbedDialog
+        open={videoEmbedDialogOpen}
+        onOpenChange={setVideoEmbedDialogOpen}
+        onConfirm={(url, title) => {
+          if (!isEditorReady(editor) || effectiveReadOnly || useMarkdownSourceEditor || useMobilePlainTextEditor) return;
+          editor
+            .chain()
+            .focus()
+            .insertContent({
+              type: "edgeeverVideoEmbed",
+              attrs: { url, title, start: 0 },
+            })
+            .run();
+        }}
       />
       <MathFormulaDialog
         open={mathFormulaOpen}

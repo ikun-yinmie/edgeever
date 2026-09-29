@@ -5,6 +5,7 @@ import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { createEdgeEverDetailsExtensions } from "./details";
+import { VideoEmbed } from "./video-embed";
 import { FileAttachment } from "./file-attachment";
 import { ImageGallery } from "./image-gallery";
 import { MergeDivider } from "./merge-divider";
@@ -60,6 +61,7 @@ export const createEdgeEverDocumentExtensions = (
     MergeDivider,
     ...createEdgeEverDetailsExtensions(),
     ...withOptional(options.pluginEmbed, PluginEmbed),
+    VideoEmbed,
     ...options.mathematics,
     ...(options.markdown
       ? [Markdown.configure({ markedOptions: { gfm: true } })]

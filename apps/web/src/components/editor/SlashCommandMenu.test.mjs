@@ -37,6 +37,12 @@ const labels = {
     attachment: "上传附件",
     "note-link": "引用笔记",
     "external-link": "插入超链接",
+    "video-embed": "视频嵌入",
+    "image-gallery": "图册",
+    "theme-block-intro": "高亮块 · 引言卡片",
+    "theme-block-key-point": "高亮块 · 重点观点卡",
+    "theme-block-callout": "高亮块 · 提示块",
+    "theme-block-chapter": "高亮块 · 章节标题块",
   },
 };
 
@@ -47,7 +53,7 @@ describe("slash command menu", () => {
     const unfilteredItems = filterSlashCommandItems(items, "");
     const heading6Index = unfilteredItems.findIndex((item) => item.id === "heading-6");
 
-    expect(unfilteredItems).toHaveLength(24);
+    expect(unfilteredItems).toHaveLength(30);
     expect(unfilteredItems.slice(heading6Index + 1, heading6Index + 4).map((item) => item.id)).toEqual([
       "current-date",
       "current-time",
@@ -90,6 +96,12 @@ describe("slash command menu", () => {
       "upload",
       "note",
       "link",
+      "video",
+      "gallery",
+      "intro",
+      "keypoint",
+      "callout",
+      "chapter",
     ]);
     expect(items.every((item) => /^[a-z][a-z0-9]*$/.test(item.command))).toBe(true);
     expect(new Set(items.map((item) => item.command)).size).toBe(items.length);
@@ -99,6 +111,8 @@ describe("slash command menu", () => {
     expect(filterSlashCommandItems(items, "task").map((item) => item.id)).toEqual(["task-list"]);
     expect(filterSlashCommandItems(items, "公式").map((item) => item.id)).toEqual(["inline-math", "block-math"]);
     expect(filterSlashCommandItems(items, "equation").map((item) => item.id)).toEqual(["block-math"]);
+    expect(filterSlashCommandItems(items, "B站").map((item) => item.id)).toEqual(["video-embed"]);
+    expect(filterSlashCommandItems(items, "图册").map((item) => item.id)).toEqual(["image-gallery"]);
   });
 
   test("formats local date and time as stable static text", () => {
