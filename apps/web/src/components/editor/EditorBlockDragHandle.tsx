@@ -86,6 +86,16 @@ const HEADING_TRANSFORMS: Array<{ level: 1 | 2 | 3 | 4 | 5 | 6; icon: typeof Hea
   { level: 6, icon: Heading6 },
 ];
 
+/**
+ * Transform helpers run against the target block before the transform:
+ * with a caret, re-anchor the selection onto the hovered block; with a
+ * selection, keep it so multi-block transforms still apply.
+ */
+const focusBlockRange = (editor: Editor, range: { from: number; to: number }) => {
+  if (!editor.state.selection.empty) return;
+  editor.chain().focus().setNodeSelection(range.from).run();
+};
+
 const getBlockTransformOptions = (t: (key: string) => string): TransformOption[] => [
   {
     id: "paragraph",
@@ -158,14 +168,41 @@ const getBlockTransformOptions = (t: (key: string) => string): TransformOption[]
   })),
 ];
 
-/** Resolve the block range the handle menu should operate on. */
-const resolveBlockRange = (editor: Editor) => {
-  const { $from, $to } = editor.state.selection;
-  const sharedDepth = Math.min($from.sharedDepth($to.pos), $from.depth);
-  const depth = sharedDepth > 0 ? sharedDepth - 1 : 0;
+/**
+ * Resolve the block range the menu operates on.
+ * - With a multi-block selection: the whole selected span.
+ * - Otherwise: the block the handle is floating next to.
+ */
+const resolveBlockRange = (editor: Editor, hoveredBlockPos: number | null) => {
+  const { from, to, empty } = editor.state.selection;
+  if (!empty) {
+    const $from = editor.state.doc.resolve(from);
+    const $to = editor.state.doc.resolve(to);
+    const sharedDepth = Math.min($from.sharedDepth($to.pos), $from.depth);
+    const depth = sharedDepth > 0 ? sharedDepth - 1 : 0;
+    return {
+      from: $from.before(depth + 1),
+      to: $to.after(depth + 1),
+    };
+  }
+  if (hoveredBlockPos !== null && hoveredBlockPos >= 0) {
+    const $pos = editor.state.doc.resolve(hoveredBlockPos);
+    const depth = $pos.depth > 0 ? $pos.depth - 1 : 0;
+    const node = $pos.node(depth + 1);
+    if (node) {
+      return {
+        from: $pos.before(depth + 1),
+        to: $pos.before(depth + 1) + node.nodeSize,
+      };
+    }
+  }
+  // Fallback: the block around the caret.
+  const { $from } = editor.state.selection;
+  const depth = $from.depth > 0 ? $from.depth - 1 : 0;
+  const node = $from.node(depth + 1);
   return {
     from: $from.before(depth + 1),
-    to: $to.after(depth + 1),
+    to: $from.before(depth + 1) + (node?.nodeSize ?? 0),
   };
 };
 
@@ -340,16 +377,16 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
 ];
 
 /** Clone the whole block right below itself. */
-const duplicateBlock = (editor: Editor) => {
-  const { from, to } = resolveBlockRange(editor);
+const duplicateBlock = (editor: Editor, hoveredBlockPos: number | null) => {
+  const { from, to } = resolveBlockRange(editor, hoveredBlockPos);
   if (to >= editor.state.doc.content.size) return false;
   const content = editor.state.doc.slice(from, to).content;
   return editor.chain().focus().insertContentAt(to, content).run();
 };
 
 /** Clone the block below, then remove the original. */
-const cutBlock = (editor: Editor) => {
-  const { from, to } = resolveBlockRange(editor);
+const cutBlock = (editor: Editor, hoveredBlockPos: number | null) => {
+  const { from, to } = resolveBlockRange(editor, hoveredBlockPos);
   const blockLength = to - from;
   if (to + blockLength > editor.state.doc.content.size) return false;
   const content = editor.state.doc.slice(from, to).content;
@@ -380,24 +417,18 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const handleMenuOpenChange = (open: boolean) => {
     setMenuOpen(open);
     setHandleLocked(open);
-    if (open) {
-      // Aim the menu at the block the handle is floating next to, not the stale selection.
-      const pos = hoveredBlockPosRef.current;
-      if (pos !== null && pos >= 0 && pos < editor.state.doc.content.size) {
-        editor.chain().focus().setNodeSelection(pos).run();
-      }
-    }
   };
 
   const deleteBlock = () => {
-    const { from, to } = resolveBlockRange(editor);
+    const { from, to } = resolveBlockRange(editor, hoveredBlockPosRef.current);
     editor.chain().focus().deleteRange({ from, to }).run();
   };
 
   const addBelow = (insert: (position: number) => boolean) => {
-    const { to } = resolveBlockRange(editor);
+    const { to } = resolveBlockRange(editor, hoveredBlockPosRef.current);
+    if (to <= 0 || to > editor.state.doc.content.size) return;
     if (!insert(to)) return;
-    window.requestAnimationFrame(() => editor.commands.focus("end"));
+    window.requestAnimationFrame(() => editor.commands.focus(to));
   };
 
   const transformOptions = getBlockTransformOptions(t);
@@ -437,7 +468,14 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
               {transformOptions.map((option) => {
                 const Icon = option.icon;
                 return (
-                  <DropdownMenuItem key={option.id} onSelect={() => option.run(editor)}>
+                  <DropdownMenuItem
+                    key={option.id}
+                    onSelect={() => {
+                      const range = resolveBlockRange(editor, hoveredBlockPosRef.current);
+                      focusBlockRange(editor, range);
+                      option.run(editor);
+                    }}
+                  >
                     <Icon className="h-4 w-4 text-slate-500" aria-hidden="true" />
                     {option.label}
                   </DropdownMenuItem>
@@ -450,11 +488,11 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
             <Trash2 className="h-4 w-4 text-slate-500" aria-hidden="true" />
             {t("editor.blockMenu.delete")}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => duplicateBlock(editor)}>
+          <DropdownMenuItem onSelect={() => duplicateBlock(editor, hoveredBlockPosRef.current)}>
             <Copy className="h-4 w-4 text-slate-500" aria-hidden="true" />
             {t("editor.blockMenu.duplicate")}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => cutBlock(editor)}>
+          <DropdownMenuItem onSelect={() => cutBlock(editor, hoveredBlockPosRef.current)}>
             <Scissors className="h-4 w-4 text-slate-500" aria-hidden="true" />
             {t("editor.blockMenu.cut")}
           </DropdownMenuItem>
@@ -470,14 +508,20 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
             <DropdownMenuSubContent className="min-w-40">
               <DropdownMenuItem
                 disabled={!canSinkOrLift(editor, "sink")}
-                onSelect={() => runIndent(editor, "sink")}
+                onSelect={() => {
+                  focusBlockRange(editor, resolveBlockRange(editor, hoveredBlockPosRef.current));
+                  runIndent(editor, "sink");
+                }}
               >
                 <IndentIncrease className="h-4 w-4 text-slate-500" aria-hidden="true" />
                 {t("editor.blockMenu.indentMore")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!canSinkOrLift(editor, "lift")}
-                onSelect={() => runIndent(editor, "lift")}
+                onSelect={() => {
+                  focusBlockRange(editor, resolveBlockRange(editor, hoveredBlockPosRef.current));
+                  runIndent(editor, "lift");
+                }}
               >
                 <IndentDecrease className="h-4 w-4 text-slate-500" aria-hidden="true" />
                 {t("editor.blockMenu.indentLess")}
