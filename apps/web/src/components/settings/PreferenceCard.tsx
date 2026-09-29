@@ -1,7 +1,7 @@
 import { AlignHorizontalJustifyCenter, ChartNoAxesCombined, Image, Keyboard, Languages, MousePointerClick, Palette, Sparkles, SunMoon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import type { EditorContentAlignment, ShortcutSettings } from "@/lib/app-helpers";
+import type { EditorContentAlignment } from "@/lib/app-helpers";
 import {
   EDITOR_LINK_OPEN_MODE_CHANGED_EVENT,
   getStoredEditorLinkOpenMode,
@@ -37,7 +37,6 @@ import {
   supportedLocales,
   type AppLocalePreference,
 } from "@/i18n";
-import { ShortcutSettingsItem } from "./ShortcutSettingsItem";
 import { CustomEditorThemeDialog } from "./CustomEditorThemeDialog";
 import {
   MERMAID_THEME_PREFERENCES,
@@ -54,8 +53,6 @@ import {
 interface PreferenceCardProps {
   imageCompressionEnabled: boolean;
   onImageCompressionChange: (enabled: boolean) => void;
-  shortcutSettings: ShortcutSettings;
-  onShortcutSettingsChange: (settings: ShortcutSettings) => void;
   editorContentAlignment: EditorContentAlignment;
   onEditorContentAlignmentChange: (alignment: EditorContentAlignment) => void;
 }
@@ -63,8 +60,6 @@ interface PreferenceCardProps {
 export const PreferenceCard = ({
   imageCompressionEnabled,
   onImageCompressionChange,
-  shortcutSettings,
-  onShortcutSettingsChange,
   editorContentAlignment,
   onEditorContentAlignmentChange,
 }: PreferenceCardProps) => {
@@ -401,13 +396,6 @@ export const PreferenceCard = ({
               aria-label={t("settings.linkOpenModifierAria")}
             />
           </div>
-        </div>
-
-        <div className="hidden lg:block">
-          <ShortcutSettingsItem
-            shortcutSettings={shortcutSettings}
-            onShortcutSettingsChange={onShortcutSettingsChange}
-          />
         </div>
       </CardContent>
       {!isMobile && editingTheme && (

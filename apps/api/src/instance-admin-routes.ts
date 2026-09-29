@@ -18,6 +18,7 @@ import { resolvePrimaryObjectStorageEncryptionKey } from "./object-storage";
 import { decryptSecret, encryptSecret } from "./secret-encryption";
 import {
   getEditorShortcutsDefault,
+  getAppShortcutsDefault,
   getInstanceSettingsRow,
   getSmtpPassword,
   isRegistrationCodeRequired,
@@ -505,6 +506,21 @@ export const registerInstanceAdminRoutes = (
     }
   });
 
+  // Read-only app shortcut defaults for signed-in users (no sensitive fields).
+  app.get("/api/v1/app-shortcut-defaults", async (context) => {
+    const auth = await dependencies.authenticateRequest(context, true);
+    if (!auth) return unauthorizedResponse(context);
+    const appShortcuts = await getAppShortcutsDefault(context.env.storage.db);
+    if (!appShortcuts) {
+      return context.json({ appShortcuts: null });
+    }
+    try {
+      return context.json({ appShortcuts: JSON.parse(appShortcuts) });
+    } catch {
+      return context.json({ appShortcuts: null });
+    }
+  });
+
   app.patch(
     "/api/v1/admin/instance-settings",
     zValidator("json", InstanceAdminSettingsUpdateSchema),
@@ -555,6 +571,13 @@ export const registerInstanceAdminRoutes = (
           "editor_shortcuts",
           input.editorShortcuts === null ? null : JSON.stringify(input.editorShortcuts),
           "editorShortcuts",
+        );
+      }
+      if (input.appShortcuts !== undefined) {
+        setColumn(
+          "app_shortcuts",
+          input.appShortcuts === null ? null : JSON.stringify(input.appShortcuts),
+          "appShortcuts",
         );
       }
 

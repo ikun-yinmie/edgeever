@@ -754,7 +754,7 @@ export const zhCN = {
     themeToggleToLight: "切换到浅色模式",
     tabs: {
       general: "常规设置",
-      shortcuts: "编辑器快捷键",
+      shortcuts: "快捷键",
       ai: "AI集成",
       data: "导入导出",
       advanced: "高级设置",
@@ -1994,6 +1994,8 @@ export const zhCN = {
     bold: "加粗",
     italic: "斜体",
     strike: "删除线",
+    underline: "下划线",
+    clearFormatting: "清除格式",
     inlineCode: "行内代码",
     bulletList: "无序列表",
     taskList: "任务清单",
@@ -2587,10 +2589,14 @@ export const zhCN = {
     navEmail: "邮件服务",
     navMessages: "提示文案",
     navStorage: "数据存储",
-    navShortcuts: "编辑器快捷键",
+    navShortcuts: "快捷键",
     editorShortcuts: {
       title: "编辑器快捷键默认值",
       description: "为本实例设置编辑器格式快捷键的默认键位。用户个人设置会覆盖这里的默认值。",
+    },
+    appShortcuts: {
+      title: "应用快捷键默认值",
+      description: "为本实例设置新建笔记、搜索等应用级快捷键的默认键位。用户个人设置会覆盖这里的默认值。",
     },
     description: "管理注册策略、邮件服务与公开提示文案。",
     registrationCardDescription: "决定谁能注册，以及注册时的邮箱与验证码规则。",

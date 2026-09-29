@@ -754,7 +754,7 @@ export const ja = {
     themeToggleToLight: "ライトモードに切り替え",
     tabs: {
       general: "一般",
-      shortcuts: "エディターショートカット",
+      shortcuts: "ショートカット",
       ai: "AI 連携",
       data: "インポートとエクスポート",
       advanced: "詳細",
@@ -1996,6 +1996,8 @@ export const ja = {
     bold: "太字",
     italic: "斜体",
     strike: "取り消し線",
+    underline: "下線",
+    clearFormatting: "書式をクリア",
     inlineCode: "インラインコード",
     bulletList: "箇条書き",
     taskList: "タスクリスト",
@@ -2589,10 +2591,14 @@ export const ja = {
     navEmail: "メール配信",
     navMessages: "カスタムメッセージ",
     navStorage: "データストレージ",
-    navShortcuts: "エディターショートカット",
+    navShortcuts: "ショートカット",
     editorShortcuts: {
       title: "エディターショートカットの既定値",
       description: "このインスタンスのエディター書式ショートカットの既定を設定します。個人設定がここでの既定を上書きします。",
+    },
+    appShortcuts: {
+      title: "アプリケーションショートカットの既定値",
+      description: "このインスタンスのアプリケーションレベルのショートカット（ノート作成・検索など）の既定を設定します。個人設定がここでの既定を上書きします。",
     },
     description: "登録ポリシー、メール送信、公開メッセージを管理します。",
     registrationCardDescription: "登録できる人と、登録時のメール・確認コードのルールを設定します。",

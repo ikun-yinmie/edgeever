@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Keyboard, RotateCcw, Save } from "lucide-react";import { useTranslation } from "react-i18next";
+import { Keyboard, RotateCcw, Save } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { ShortcutAction, ShortcutSettings } from "@/lib/app-helpers";
 import {
-  DEFAULT_EDITOR_SHORTCUT_SETTINGS,
-  EDITOR_SHORTCUT_IDS,
-  editorShortcutBindingsEqual,
-  normalizeEditorShortcutSettings,
-  type EditorShortcutId,
-  type EditorShortcutSettings,
-} from "@edgeever/shared";
+  DEFAULT_SHORTCUT_SETTINGS,
+  formatShortcutBinding,
+  getShortcutActionOptions,
+  shortcutBindingFromKeyboardEvent,
+  shortcutBindingsEqual,
+} from "@/lib/app-helpers";
 import { api } from "@/lib/api";
-import { formatShortcutBinding, shortcutBindingFromKeyboardEvent } from "@/lib/app-helpers";
+import { writeInstanceAppShortcutDefaults } from "@/lib/shortcut-settings";
 import { useInstanceAdminSettings } from "./useInstanceAdminSettings";
-import { writeInstanceEditorShortcutDefaults } from "@/lib/editor-shortcuts-settings";
 import { AdminSettingsSaveFooter } from "./AdminSettingsSaveFooter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,51 +20,33 @@ import {
   SETTINGS_ITEM_TITLE_CLASSNAME,
 } from "./settings-ui";
 
-const EDITOR_SHORTCUT_I18N_KEYS: Record<EditorShortcutId, string> = {
-  "heading-1": "editorToolbar.heading1",
-  "heading-2": "editorToolbar.heading2",
-  "heading-3": "editorToolbar.heading3",
-  "heading-4": "editorToolbar.heading4",
-  "heading-5": "editorToolbar.heading5",
-  "heading-6": "editorToolbar.heading6",
-  paragraph: "editorToolbar.paragraph",
-  bold: "editorToolbar.bold",
-  italic: "editorToolbar.italic",
-  underline: "editorToolbar.underline",
-  strikethrough: "editorToolbar.strike",
-  code: "editorToolbar.inlineCode",
-  bulletList: "editorToolbar.bulletList",
-  orderedList: "editorToolbar.orderedList",
-  taskList: "editorToolbar.taskList",
-  blockquote: "editorToolbar.quote",
-  codeBlock: "editorToolbar.codeBlock",
-  horizontalRule: "editorToolbar.horizontalRule",
-  clearFormatting: "editorToolbar.clearFormatting",
-};
-
-export const EditorShortcutsAdminCard = () => {
+/** Owner card for the instance-wide default bindings of the 13 app shortcuts. */
+export const AppShortcutsAdminCard = () => {
   const { t } = useTranslation();
   const { draft, isLoading, isSaving, savedAt, saveError, save } = useInstanceAdminSettings();
   const [showSaveError, setShowSaveError] = useState(false);
-  const [settings, setSettings] = useState<EditorShortcutSettings>(DEFAULT_EDITOR_SHORTCUT_SETTINGS);
-  const [recordingId, setRecordingId] = useState<EditorShortcutId | null>(null);
+  const [settings, setSettings] = useState<ShortcutSettings>(DEFAULT_SHORTCUT_SETTINGS);
+  const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const [captureMessage, setCaptureMessage] = useState("");
+  const shortcutActionOptions = useMemo(() => getShortcutActionOptions(t), [t]);
 
   useEffect(() => {
-    if (draft?.editorShortcuts) {
-      setSettings(normalizeEditorShortcutSettings(draft.editorShortcuts));
-    }
-  }, [draft?.editorShortcuts]);
+    if (!draft) return;
+    setSettings({
+      ...DEFAULT_SHORTCUT_SETTINGS,
+      ...(draft.appShortcuts ?? {}),
+    });
+  }, [draft]);
 
   useEffect(() => {
-    if (!recordingId) return;
+    if (!recordingAction) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
       if (event.key === "Escape") {
-        setRecordingId(null);
+        setRecordingAction(null);
         setCaptureMessage("");
         return;
       }
@@ -75,37 +57,35 @@ export const EditorShortcutsAdminCard = () => {
         return;
       }
 
-      const conflict = EDITOR_SHORTCUT_IDS.find(
-        (id) => id !== recordingId && editorShortcutBindingsEqual(settings[id], binding),
+      const conflict = shortcutActionOptions.find(
+        (item) => item.value !== recordingAction && shortcutBindingsEqual(settings[item.value], binding),
       );
       if (conflict) {
-        setCaptureMessage(t("shortcuts.conflict", { label: t(EDITOR_SHORTCUT_I18N_KEYS[conflict]) }));
+        setCaptureMessage(t("shortcuts.conflict", { label: conflict.label }));
         return;
       }
 
-      setSettings((current) => ({ ...current, [recordingId]: binding }));
-      setRecordingId(null);
+      setSettings((current) => ({ ...current, [recordingAction]: binding }));
+      setRecordingAction(null);
       setCaptureMessage("");
     };
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [recordingId, settings, t]);
+  }, [recordingAction, settings, shortcutActionOptions, t]);
 
   const dirty = useMemo(() => {
     if (!draft) return false;
-    const stored = draft.editorShortcuts
-      ? normalizeEditorShortcutSettings(draft.editorShortcuts)
-      : DEFAULT_EDITOR_SHORTCUT_SETTINGS;
-    return EDITOR_SHORTCUT_IDS.some((id) => !editorShortcutBindingsEqual(stored[id], settings[id]));
-  }, [draft, settings]);
+    const stored = { ...DEFAULT_SHORTCUT_SETTINGS, ...(draft.appShortcuts ?? {}) };
+    return shortcutActionOptions.some((item) => !shortcutBindingsEqual(stored[item.value], settings[item.value]));
+  }, [draft, settings, shortcutActionOptions]);
 
   const handleSave = () => {
     save(
-      { editorShortcuts: settings },
+      { appShortcuts: settings },
       () => {
         // Cache the new instance defaults locally so clients pick them up immediately.
-        writeInstanceEditorShortcutDefaults(settings);
+        writeInstanceAppShortcutDefaults(settings);
       },
     );
   };
@@ -115,8 +95,8 @@ export const EditorShortcutsAdminCard = () => {
       <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-3.5">
         <Keyboard className={SETTINGS_ITEM_ICON_CLASSNAME} />
         <div className="min-w-0 flex-1">
-          <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("adminConsole.editorShortcuts.title")}</div>
-          <p className="mt-0.5 text-xs leading-5 text-slate-500">{t("adminConsole.editorShortcuts.description")}</p>
+          <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("adminConsole.appShortcuts.title")}</div>
+          <p className="mt-0.5 text-xs leading-5 text-slate-500">{t("adminConsole.appShortcuts.description")}</p>
         </div>
       </div>
 
@@ -125,24 +105,24 @@ export const EditorShortcutsAdminCard = () => {
       ) : (
         <>
           <div className="grid gap-2 p-4 sm:grid-cols-2">
-            {EDITOR_SHORTCUT_IDS.map((id) => {
-              const recording = recordingId === id;
+            {shortcutActionOptions.map((item) => {
+              const recording = recordingAction === item.value;
               return (
                 <div
-                  key={id}
+                  key={item.value}
                   className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5"
                 >
-                  <span className="min-w-0 truncate text-sm text-slate-700">{t(EDITOR_SHORTCUT_I18N_KEYS[id])}</span>
+                  <span className="min-w-0 truncate text-sm text-slate-700">{item.label}</span>
                   <Button
                     type="button"
                     variant={recording ? "solid" : "outline"}
                     className={cn("h-8 min-w-28 shrink-0 px-2.5 font-mono text-xs", !recording && "bg-card")}
                     onClick={() => {
-                      setRecordingId(recording ? null : id);
+                      setRecordingAction(recording ? null : item.value);
                       setCaptureMessage("");
                     }}
                   >
-                    {recording ? t("shortcuts.recording") : formatShortcutBinding(settings[id])}
+                    {recording ? t("shortcuts.recording") : formatShortcutBinding(settings[item.value])}
                   </Button>
                 </div>
               );
@@ -176,8 +156,8 @@ export const EditorShortcutsAdminCard = () => {
               variant="ghost"
               className="h-8 px-2 text-xs text-slate-600"
               onClick={() => {
-                setSettings(DEFAULT_EDITOR_SHORTCUT_SETTINGS);
-                setRecordingId(null);
+                setSettings(DEFAULT_SHORTCUT_SETTINGS);
+                setRecordingAction(null);
                 setCaptureMessage("");
               }}
             >

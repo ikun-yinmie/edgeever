@@ -79,6 +79,10 @@ import {
 import { useBrowserBackLayer } from "@/lib/app-hooks";
 import { writeInstanceEditorShortcutDefaults } from "@/lib/editor-shortcuts-settings";
 import { normalizeEditorShortcutSettings } from "@edgeever/shared";
+import {
+  normalizeAppShortcutSettings,
+  writeInstanceAppShortcutDefaults,
+} from "@/lib/shortcut-settings";
 import { updateMemoSummaryInLists, type MemoListQueryData } from "@/lib/memo-list-cache";
 import {
   cacheMemoDetail,
@@ -379,6 +383,19 @@ export const WorkspaceApp = ({
       ? normalizeEditorShortcutSettings(editorShortcutDefaultsQuery.data.editorShortcuts)
       : null);
   }, [editorShortcutDefaultsQuery.data, editorShortcutDefaultsQuery.isSuccess]);
+  // Cache the instance's app shortcut defaults for the local shortcut resolver.
+  const appShortcutDefaultsQuery = useQuery({
+    queryKey: ["app-shortcut-defaults"],
+    queryFn: () => api.getAppShortcutDefaults(),
+    enabled: Boolean(user) && !authRequired,
+    staleTime: 5 * 60_000,
+  });
+  useEffect(() => {
+    if (!appShortcutDefaultsQuery.isSuccess) return;
+    writeInstanceAppShortcutDefaults(appShortcutDefaultsQuery.data?.appShortcuts
+      ? normalizeAppShortcutSettings(appShortcutDefaultsQuery.data.appShortcuts)
+      : null);
+  }, [appShortcutDefaultsQuery.data, appShortcutDefaultsQuery.isSuccess]);
   const runningScheduledTaskIdsRef = useRef(new Set<string>());
   const runnableScheduledTasks = useMemo(() => {
     const commandKeys = new Set(pluginHostSnapshot.commands.map((command) => `${command.pluginId}\0${command.id}`));
@@ -529,7 +546,6 @@ export const WorkspaceApp = ({
     setImageCompressionEnabled,
     setMemoListWidth,
     setNotebookSidebarCollapsed,
-    setShortcutSettings,
     shortcutSettings,
   } = useWorkspacePreferences();
   const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
@@ -3215,8 +3231,6 @@ export const WorkspaceApp = ({
                   onOpenAiPrompts={handleOpenAiPrompts}
                     imageCompressionEnabled={imageCompressionEnabled}
                     onImageCompressionChange={setImageCompressionEnabled}
-                    shortcutSettings={shortcutSettings}
-                    onShortcutSettingsChange={setShortcutSettings}
                     editorContentAlignment={editorContentAlignment}
                     onEditorContentAlignmentChange={setEditorContentAlignment}
                     onLogout={onLogout}

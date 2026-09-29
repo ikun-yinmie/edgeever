@@ -19,7 +19,7 @@ import * as m from "motion/react-m";
 import { SystemInfoDialog } from "@/components/SystemInfoDialog";
 import { Button } from "@/components/ui/button";
 
-import type { EditorContentAlignment, ShortcutSettings } from "@/lib/app-helpers";
+import type { EditorContentAlignment } from "@/lib/app-helpers";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
@@ -32,6 +32,7 @@ import { FeedbackLink } from "./settings/FeedbackLink";
 import { ProductHuntLink } from "./settings/ProductHuntLink";
 import { McpConfigCard } from "./settings/McpConfigCard";
 import { PreferenceCard } from "./settings/PreferenceCard";
+import { ShortcutSettingsItem } from "./settings/ShortcutSettingsItem";
 import { PasswordCard } from "./settings/PasswordCard";
 import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { ObjectStorageCard } from "./settings/ObjectStorageCard";
@@ -50,8 +51,6 @@ interface SettingsPaneProps {
   onOpenAiPrompts: () => void;
   imageCompressionEnabled: boolean;
   onImageCompressionChange: (enabled: boolean) => void;
-  shortcutSettings: ShortcutSettings;
-  onShortcutSettingsChange: (settings: ShortcutSettings) => void;
   editorContentAlignment: EditorContentAlignment;
   onEditorContentAlignmentChange: (alignment: EditorContentAlignment) => void;
   onLogout: () => void;
@@ -90,8 +89,6 @@ export const SettingsPane = ({
   onOpenAiPrompts,
   imageCompressionEnabled,
   onImageCompressionChange,
-  shortcutSettings,
-  onShortcutSettingsChange,
   editorContentAlignment,
   onEditorContentAlignmentChange,
   onLogout,
@@ -199,8 +196,6 @@ export const SettingsPane = ({
             <PreferenceCard
               imageCompressionEnabled={imageCompressionEnabled}
               onImageCompressionChange={onImageCompressionChange}
-              shortcutSettings={shortcutSettings}
-              onShortcutSettingsChange={onShortcutSettingsChange}
               editorContentAlignment={editorContentAlignment}
               onEditorContentAlignmentChange={onEditorContentAlignmentChange}
             />
@@ -223,6 +218,7 @@ export const SettingsPane = ({
         return (
           <SettingsGroup>
             <EditorShortcutSettingsCard />
+            <ShortcutSettingsItem />
           </SettingsGroup>
         );
       case "data":

@@ -260,7 +260,7 @@ export const DEFAULT_SHORTCUT_SETTINGS: ShortcutSettings = {
   toggleOutline: { key: "1", ctrlOrMeta: true, shift: true, alt: false },
 };
 
-const LEGACY_READING_PROTECTION_SHORTCUT: ShortcutBinding = {
+export const LEGACY_READING_PROTECTION_SHORTCUT: ShortcutBinding = {
   key: "l",
   ctrlOrMeta: true,
   shift: true,
@@ -271,7 +271,7 @@ const SHORTCUT_ALIASES: Partial<Record<ShortcutAction, ShortcutBinding[]>> = {
   focusReplace: [{ key: "h", ctrlOrMeta: true, shift: true, alt: false }],
 };
 
-const SHORTCUT_ACTION_VALUES: ShortcutAction[] = [
+export const SHORTCUT_ACTION_VALUES: ShortcutAction[] = [
   "createMemo",
   "createNotebook",
   "focusSearch",

@@ -31,7 +31,7 @@ const EDITOR_SHORTCUT_I18N_KEYS: Record<EditorShortcutId, string> = {
   bold: "editorToolbar.bold",
   italic: "editorToolbar.italic",
   underline: "editorToolbar.underline",
-  strikethrough: "editorToolbar.strikethrough",
+  strikethrough: "editorToolbar.strike",
   code: "editorToolbar.inlineCode",
   bulletList: "editorToolbar.bulletList",
   orderedList: "editorToolbar.orderedList",
@@ -130,8 +130,8 @@ export const EditorShortcutSettingsCard = () => {
         <div className="flex min-w-0 items-start gap-3">
           <Keyboard className={SETTINGS_ITEM_ICON_CLASSNAME} />
           <div className="min-w-0">
-            <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("settings.editorShortcuts.title")}</div>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500">{t("settings.editorShortcuts.description")}</p>
+            <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("shortcuts.editorShortcuts.title")}</div>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500">{t("shortcuts.editorShortcuts.description")}</p>
           </div>
         </div>
         {hasCustomizations && (

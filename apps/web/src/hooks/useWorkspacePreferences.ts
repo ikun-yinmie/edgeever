@@ -7,28 +7,46 @@ import {
   readImageCompressionPreference,
   readMemoListWidthPreference,
   readNotebookSidebarCollapsedPreference,
-  readShortcutSettingsPreference,
   writeDesktopFocusModePreference,
   writeEditorContentAlignmentPreference,
   writeImageCompressionPreference,
   writeMemoListWidthPreference,
   writeNotebookSidebarCollapsedPreference,
-  writeShortcutSettingsPreference,
   type ShortcutSettings,
   type EditorContentAlignment,
 } from "@/lib/app-helpers";
+import {
+  SHORTCUT_SETTINGS_CHANGED_EVENT,
+  resolveShortcutSettings,
+} from "@/lib/shortcut-settings";
 
 export const useWorkspacePreferences = () => {
   const [imageCompressionEnabled, setImageCompressionEnabled] = useState(readImageCompressionPreference);
   const [desktopFocusMode, setDesktopFocusModeState] = useState(readDesktopFocusModePreference);
   const [notebookSidebarCollapsed, setNotebookSidebarCollapsedState] = useState(readNotebookSidebarCollapsedPreference);
   const [editorContentAlignment, setEditorContentAlignmentState] = useState(readEditorContentAlignmentPreference);
-  const [shortcutSettings, setShortcutSettings] = useState<ShortcutSettings>(readShortcutSettingsPreference);
+  const [shortcutSettings, setShortcutSettingsState] = useState<ShortcutSettings>(resolveShortcutSettings);
   const [memoListWidth, setMemoListWidthState] = useState(readMemoListWidthPreference);
 
   useEffect(() => writeImageCompressionPreference(imageCompressionEnabled), [imageCompressionEnabled]);
-  useEffect(() => writeShortcutSettingsPreference(shortcutSettings), [shortcutSettings]);
 
+  // Keep the resolved shortcut settings in sync with personal edits and admin
+  // default updates; both paths broadcast the same change event.
+  useEffect(() => {
+    const syncShortcutSettings = () => setShortcutSettingsState(resolveShortcutSettings());
+    window.addEventListener(SHORTCUT_SETTINGS_CHANGED_EVENT, syncShortcutSettings);
+    window.addEventListener("storage", syncShortcutSettings);
+    return () => {
+      window.removeEventListener(SHORTCUT_SETTINGS_CHANGED_EVENT, syncShortcutSettings);
+      window.removeEventListener("storage", syncShortcutSettings);
+    };
+  }, []);
+
+  /**
+   * Persist a full settings snapshot as personal overrides: entries matching
+   * the effective default (builtin + instance) are dropped so the action
+   * follows the default again.
+   */
   const setDesktopFocusMode = useCallback((enabled: boolean) => {
     setDesktopFocusModeState(enabled);
     writeDesktopFocusModePreference(enabled);
@@ -63,10 +81,9 @@ export const useWorkspacePreferences = () => {
     resetMemoListWidth,
     setDesktopFocusMode,
     setEditorContentAlignment,
-    setNotebookSidebarCollapsed,
     setImageCompressionEnabled,
     setMemoListWidth,
-    setShortcutSettings,
+    setNotebookSidebarCollapsed,
     shortcutSettings,
   };
 };

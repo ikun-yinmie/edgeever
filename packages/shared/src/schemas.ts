@@ -258,6 +258,18 @@ export const InstanceAdminSettingsUpdateSchema = z
       )
       .nullable()
       .optional(),
+    appShortcuts: z
+      .record(
+        z.string().regex(/^[a-zA-Z]+$/),
+        z.object({
+          key: z.string().trim().min(1).max(20),
+          ctrlOrMeta: z.boolean(),
+          shift: z.boolean(),
+          alt: z.boolean(),
+        }),
+      )
+      .nullable()
+      .optional(),
     registrationInviteRequired: z.boolean().optional(),
     codeTtlSeconds: z.number().int().min(30).max(3600).optional(),
     codeResendCooldownSeconds: z.number().int().min(10).max(3600).optional(),

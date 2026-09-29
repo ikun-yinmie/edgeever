@@ -754,7 +754,7 @@ export const enUS = {
     themeToggleToLight: "Switch to light mode",
     tabs: {
       general: "General",
-      shortcuts: "Editor shortcuts",
+      shortcuts: "Shortcuts",
       ai: "AI Integrations",
       data: "Import & Export",
       advanced: "Advanced",
@@ -1996,6 +1996,8 @@ export const enUS = {
     bold: "Bold",
     italic: "Italic",
     strike: "Strikethrough",
+    underline: "Underline",
+    clearFormatting: "Clear formatting",
     inlineCode: "Inline code",
     bulletList: "Bulleted list",
     taskList: "Task list",
@@ -2589,10 +2591,14 @@ export const enUS = {
     navEmail: "Email delivery",
     navMessages: "Custom messages",
     navStorage: "Data storage",
-    navShortcuts: "Editor shortcuts",
+    navShortcuts: "Shortcuts",
     editorShortcuts: {
       title: "Editor shortcut defaults",
       description: "Configure the default editor formatting shortcuts for this instance. Personal settings override these defaults.",
+    },
+    appShortcuts: {
+      title: "App shortcut defaults",
+      description: "Configure the default app-level shortcuts (create memo, search, and more) for this instance. Personal settings override these defaults.",
     },
     description: "Manage registration policy, email delivery and public messages.",
     registrationCardDescription: "Decide who can register, plus the email and verification-code rules for sign-up.",

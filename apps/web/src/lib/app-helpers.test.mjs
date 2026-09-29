@@ -28,7 +28,6 @@ import {
   readEditorToolbarExpandedPreference,
   readEditorPhonePreviewPreference,
   readEditorPhonePreviewFollowPreference,
-  readShortcutSettingsPreference,
   writeEditorContentAlignmentPreference,
   writeNotebookSortPreference,
   writeNotebookTreeCollapsedIdsPreference,
@@ -45,6 +44,15 @@ import {
   getActiveBlockValue,
   parseHeadingBlockValue,
 } from "./app-helpers.ts";
+import {
+  resolveShortcutSettings,
+  resolveShortcutDefaultSettings,
+  updateShortcutSettingsOverride,
+  resetShortcutSettingsCustomizations,
+  readShortcutSettingsCustomizations,
+  writeInstanceAppShortcutDefaults,
+  normalizeAppShortcutSettings,
+} from "./shortcut-settings.ts";
 
 const originalWindow = globalThis.window;
 
@@ -58,6 +66,7 @@ const installLocalStorage = (initialValue = null) => {
     localStorage: {
       getItem: (key) => values.get(key) ?? null,
       setItem: (key, value) => values.set(key, String(value)),
+      removeItem: (key) => values.delete(key),
     },
   };
 
@@ -512,19 +521,12 @@ describe("workspace shortcut preferences", () => {
     });
   });
 
-  test("migrates the unreleased reading protection shortcut without replacing custom bindings", () => {
+  test("keeps legacy stored personal overrides readable through the layered resolver", () => {
     const values = installLocalStorage();
-    values.set(SHORTCUT_SETTINGS_STORAGE_KEY, JSON.stringify({
-      toggleReadingProtection: { key: "l", ctrlOrMeta: true, shift: true, alt: false },
-    }));
-    expect(readShortcutSettingsPreference().toggleReadingProtection).toEqual(
-      DEFAULT_SHORTCUT_SETTINGS.toggleReadingProtection,
-    );
-
     values.set(SHORTCUT_SETTINGS_STORAGE_KEY, JSON.stringify({
       toggleReadingProtection: { key: "r", ctrlOrMeta: true, shift: true, alt: false },
     }));
-    expect(readShortcutSettingsPreference().toggleReadingProtection).toEqual({
+    expect(resolveShortcutSettings().toggleReadingProtection).toEqual({
       key: "r",
       ctrlOrMeta: true,
       shift: true,
@@ -538,7 +540,13 @@ describe("workspace shortcut preferences", () => {
       createMemo: { key: "m", ctrlOrMeta: true, shift: false, alt: false },
     }));
 
-    const settings = readShortcutSettingsPreference();
+    const settings = resolveShortcutSettings();
+    expect(readShortcutSettingsCustomizations().createMemo).toEqual({
+      key: "m",
+      ctrlOrMeta: true,
+      shift: false,
+      alt: false,
+    });
     expect(settings.createMemo.key).toBe("m");
     expect(settings.openAiAssistant).toEqual(DEFAULT_SHORTCUT_SETTINGS.openAiAssistant);
     expect(settings.focusGlobalSearch).toEqual(DEFAULT_SHORTCUT_SETTINGS.focusGlobalSearch);
@@ -549,6 +557,37 @@ describe("workspace shortcut preferences", () => {
     expect(settings.toggleReadingProtection).toEqual(DEFAULT_SHORTCUT_SETTINGS.toggleReadingProtection);
     expect(settings.toggleEditorMode).toEqual(DEFAULT_SHORTCUT_SETTINGS.toggleEditorMode);
     expect(settings.toggleOutline).toEqual(DEFAULT_SHORTCUT_SETTINGS.toggleOutline);
+  });
+
+  test("layers instance defaults under personal overrides in the resolver", () => {
+    installLocalStorage();
+
+    // No admin default, no overrides: everything follows the builtin defaults.
+    expect(resolveShortcutSettings().createMemo).toEqual(DEFAULT_SHORTCUT_SETTINGS.createMemo);
+
+    // Admin default for createMemo: effective default moves, badge stays empty.
+    writeInstanceAppShortcutDefaults(normalizeAppShortcutSettings({
+      createMemo: { key: "q", ctrlOrMeta: true, shift: false, alt: false },
+    }));
+    expect(resolveShortcutDefaultSettings().createMemo.key).toBe("q");
+    expect(readShortcutSettingsCustomizations()).toEqual({});
+    expect(resolveShortcutSettings().createMemo.key).toBe("q");
+
+    // A personal binding equal to the effective default is not a customization.
+    updateShortcutSettingsOverride("createMemo", { key: "q", ctrlOrMeta: true, shift: false, alt: false });
+    expect(readShortcutSettingsCustomizations()).toEqual({});
+
+    // A different personal binding wins over the admin default.
+    updateShortcutSettingsOverride("createMemo", { key: "w", ctrlOrMeta: true, shift: false, alt: false });
+    expect(resolveShortcutSettings().createMemo.key).toBe("w");
+
+    // Resetting personal overrides falls back to the admin default.
+    resetShortcutSettingsCustomizations();
+    expect(resolveShortcutSettings().createMemo.key).toBe("q");
+
+    // Clearing the admin default restores the builtin binding.
+    writeInstanceAppShortcutDefaults(null);
+    expect(resolveShortcutSettings().createMemo).toEqual(DEFAULT_SHORTCUT_SETTINGS.createMemo);
   });
 
   test("recognizes Ctrl and Command variants for the new actions", () => {

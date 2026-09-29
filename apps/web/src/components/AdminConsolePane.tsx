@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
 import { EditorShortcutsAdminCard } from "@/components/settings/EditorShortcutsAdminCard";
+import { AppShortcutsAdminCard } from "@/components/settings/AppShortcutsAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
 import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
 import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
@@ -50,7 +51,12 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
       case "storage":
         return <ObjectStorageCard demoMode={false} />;
       case "shortcuts":
-        return <EditorShortcutsAdminCard />;
+        return (
+          <>
+            <EditorShortcutsAdminCard />
+            <AppShortcutsAdminCard />
+          </>
+        );
       default:
         return <UserManagementCard currentUserId={user.id} demoMode={false} />;
     }
