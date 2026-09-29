@@ -27,6 +27,7 @@ export type InstanceSettingsRow = {
   smtp_from_address: string | null;
   smtp_from_name: string | null;
   share_missing_message: string | null;
+  editor_shortcuts: string | null;
   updated_at: string;
 };
 
@@ -66,6 +67,7 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   smtpFromAddress: row.smtp_from_address,
   smtpFromName: row.smtp_from_name,
   shareMissingMessage: row.share_missing_message,
+  editorShortcuts: row.editor_shortcuts,
 });
 
 const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_required,
@@ -73,7 +75,7 @@ const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_requ
   code_bind_ip, code_bind_device, abuse_guard_enabled, code_ip_hourly_limit,
   code_ip_daily_limit, email_allowlist_enabled, email_allowlist, email_blocklist,
   smtp_host, smtp_port, smtp_secure, smtp_username,
-  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, updated_at
+  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, editor_shortcuts, updated_at
   FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`;
 
 export const getInstanceSettingsRow = async (
@@ -104,8 +106,16 @@ export const getInstanceSettingsRow = async (
     smtp_from_address: null,
     smtp_from_name: null,
     share_missing_message: null,
+    editor_shortcuts: null,
     updated_at: "",
   };
+};
+
+export const getEditorShortcutsDefault = async (database: DatabaseAdapter) => {
+  const row = await database
+    .prepare(`SELECT editor_shortcuts FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
+    .first<{ editor_shortcuts: string | null }>();
+  return row?.editor_shortcuts ?? null;
 };
 
 export const isRegistrationEnabled = async (database: DatabaseAdapter) => {

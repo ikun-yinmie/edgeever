@@ -1334,6 +1334,11 @@ export const enUS = {
     description: "Set key combinations for common note actions. Press Esc to cancel recording.",
     recording: "Press shortcut",
     reset: "Restore defaults",
+    editorSection: "Editor formatting",
+    resetSection: "Reset this section",
+    customized: "Custom",
+    editorSectionEntry: "Editor formatting shortcuts",
+    editorSectionEntryHint: "Headings, lists, clear formatting…",
     requireModifier: "Press a shortcut that includes Ctrl, ⌘, or Alt.",
     conflict: "This shortcut is already used by “{{label}}”.",
     actions: {
@@ -2581,6 +2586,11 @@ export const enUS = {
     navEmail: "Email delivery",
     navMessages: "Custom messages",
     navStorage: "Data storage",
+    navShortcuts: "Editor shortcuts",
+    editorShortcuts: {
+      title: "Editor shortcut defaults",
+      description: "Configure the default editor formatting shortcuts for this instance. Personal settings override these defaults.",
+    },
     description: "Manage registration policy, email delivery and public messages.",
     registrationCardDescription: "Decide who can register, plus the email and verification-code rules for sign-up.",
     emailCardDescription: "Configure the SMTP sender used for verification codes and notification mail.",

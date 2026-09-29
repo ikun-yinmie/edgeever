@@ -1334,6 +1334,11 @@ export const ja = {
     description: "よく使うノート操作のキー組み合わせを設定します。Esc で記録をキャンセルします。",
     recording: "ショートカットを押す",
     reset: "既定に戻す",
+    editorSection: "エディター書式",
+    resetSection: "このセクションを既定に戻す",
+    customized: "カスタム",
+    editorSectionEntry: "エディター書式ショートカット",
+    editorSectionEntryHint: "見出し・リスト・書式クリアなど",
     requireModifier: "Ctrl、⌘、または Alt を含むショートカットを押してください。",
     conflict: "このショートカットはすでに「{{label}}」で使われています。",
     actions: {
@@ -2581,6 +2586,11 @@ export const ja = {
     navEmail: "メール配信",
     navMessages: "カスタムメッセージ",
     navStorage: "データストレージ",
+    navShortcuts: "エディターショートカット",
+    editorShortcuts: {
+      title: "エディターショートカットの既定値",
+      description: "このインスタンスのエディター書式ショートカットの既定を設定します。個人設定がここでの既定を上書きします。",
+    },
     description: "登録ポリシー、メール送信、公開メッセージを管理します。",
     registrationCardDescription: "登録できる人と、登録時のメール・確認コードのルールを設定します。",
     emailCardDescription: "確認コードや通知メールを送信する SMTP サーバーを設定します。",

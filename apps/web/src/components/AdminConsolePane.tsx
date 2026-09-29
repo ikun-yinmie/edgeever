@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowLeft, Database, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, Database, Keyboard, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
+import { EditorShortcutsAdminCard } from "@/components/settings/EditorShortcutsAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
 import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
 import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
@@ -12,7 +13,7 @@ import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "members" | "groups" | "invites" | "registration" | "email" | "messages" | "storage";
+type AdminTabKey = "members" | "groups" | "invites" | "registration" | "email" | "messages" | "storage" | "shortcuts";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
@@ -31,6 +32,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     { key: "email", label: t("adminConsole.navEmail"), icon: Mail },
     { key: "messages", label: t("adminConsole.navMessages"), icon: MessageSquareText },
     { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
+    { key: "shortcuts", label: t("adminConsole.navShortcuts"), icon: Keyboard },
   ];
 
   const renderTab = () => {
@@ -47,6 +49,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
         return <MessagesSettingsCard />;
       case "storage":
         return <ObjectStorageCard demoMode={false} />;
+      case "shortcuts":
+        return <EditorShortcutsAdminCard />;
       default:
         return <UserManagementCard currentUserId={user.id} demoMode={false} />;
     }

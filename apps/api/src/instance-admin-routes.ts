@@ -17,6 +17,7 @@ import { INSTANCE_SETTINGS_ID } from "./instance-settings-service";
 import { resolvePrimaryObjectStorageEncryptionKey } from "./object-storage";
 import { decryptSecret, encryptSecret } from "./secret-encryption";
 import {
+  getEditorShortcutsDefault,
   getInstanceSettingsRow,
   getSmtpPassword,
   isRegistrationCodeRequired,
@@ -489,6 +490,21 @@ export const registerInstanceAdminRoutes = (
     return context.json({ settings: mapInstanceSettingsRow(settings) });
   });
 
+  // Read-only editor shortcut defaults for signed-in users (no sensitive fields).
+  app.get("/api/v1/editor-shortcut-defaults", async (context) => {
+    const auth = await dependencies.authenticateRequest(context, true);
+    if (!auth) return unauthorizedResponse(context);
+    const editorShortcuts = await getEditorShortcutsDefault(context.env.storage.db);
+    if (!editorShortcuts) {
+      return context.json({ editorShortcuts: null });
+    }
+    try {
+      return context.json({ editorShortcuts: JSON.parse(editorShortcuts) });
+    } catch {
+      return context.json({ editorShortcuts: null });
+    }
+  });
+
   app.patch(
     "/api/v1/admin/instance-settings",
     zValidator("json", InstanceAdminSettingsUpdateSchema),
@@ -534,6 +550,13 @@ export const registerInstanceAdminRoutes = (
       if (input.smtpFromAddress !== undefined) setColumn("smtp_from_address", input.smtpFromAddress, "smtpFromAddress");
       if (input.smtpFromName !== undefined) setColumn("smtp_from_name", input.smtpFromName, "smtpFromName");
       if (input.shareMissingMessage !== undefined) setColumn("share_missing_message", input.shareMissingMessage, "shareMissingMessage");
+      if (input.editorShortcuts !== undefined) {
+        setColumn(
+          "editor_shortcuts",
+          input.editorShortcuts === null ? null : JSON.stringify(input.editorShortcuts),
+          "editorShortcuts",
+        );
+      }
 
       if (input.smtpPassword !== undefined) {
         if (input.smtpPassword === null) {

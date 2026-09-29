@@ -167,6 +167,8 @@ import {
   type ShortcutSettings,
 } from "@/lib/app-helpers";
 import { isPaperEditorTheme, publishEditorCssVars, resolvePaperEditorTheme } from "@/lib/publish-layout";
+import { resolveEditorShortcutSettings } from "@/lib/editor-shortcuts-settings";
+import { createEditorShortcutExtension } from "@edgeever/shared";
 import { ThemeBlock } from "./ThemeBlock";
 import { EditorPhonePreview, PhonePreviewGlyph } from "./EditorPhonePreview";
 import {
@@ -1121,6 +1123,13 @@ const RichEditorPane = ({
 
   const pluginEmbedExtension = useMemo(() => createPluginEmbedExtension(pluginHost), [pluginHost]);
   const inlineFieldExtension = useMemo(() => createInlineFieldExtension(i18n.language), [i18n.language]);
+  // Editor formatting shortcuts read the latest settings through a ref (custom → instance default → builtin).
+  const resolveEditorShortcutSettingsRef = useRef<() => ReturnType<typeof resolveEditorShortcutSettings>>(resolveEditorShortcutSettings);
+  resolveEditorShortcutSettingsRef.current = resolveEditorShortcutSettings;
+  const editorShortcutExtension = useMemo(
+    () => createEditorShortcutExtension(() => resolveEditorShortcutSettingsRef.current()),
+    [],
+  );
   const editor = useEditor({
     extensions: [
       ...createEdgeEverDocumentExtensions({
@@ -1156,6 +1165,7 @@ const RichEditorPane = ({
       }),
       slashCommandExtensionRef.current,
       noteLinkSuggestionExtensionRef.current,
+      editorShortcutExtension,
     ],
     content: memo
       ? resolveMemoContentDoc(memo.contentJson, memo.contentMarkdown)

@@ -1334,6 +1334,11 @@ export const zhCN = {
     description: "为常用笔记动作设置组合键。按 Esc 可取消当前录制。",
     recording: "输入组合键",
     reset: "恢复默认",
+    editorSection: "编辑器格式",
+    resetSection: "恢复本组默认",
+    customized: "自定义",
+    editorSectionEntry: "编辑器格式快捷键",
+    editorSectionEntryHint: "标题、列表、清除格式等",
     requireModifier: "请按下包含 Ctrl、⌘ 或 Alt 的组合键。",
     conflict: "这个组合键已用于「{{label}}」。",
     actions: {
@@ -2579,6 +2584,11 @@ export const zhCN = {
     navEmail: "邮件服务",
     navMessages: "提示文案",
     navStorage: "数据存储",
+    navShortcuts: "编辑器快捷键",
+    editorShortcuts: {
+      title: "编辑器快捷键默认值",
+      description: "为本实例设置编辑器格式快捷键的默认键位。用户个人设置会覆盖这里的默认值。",
+    },
     description: "管理注册策略、邮件服务与公开提示文案。",
     registrationCardDescription: "决定谁能注册，以及注册时的邮箱与验证码规则。",
     emailCardDescription: "配置注册验证码与通知邮件所用的 SMTP 发件服务。",

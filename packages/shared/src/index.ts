@@ -31,6 +31,7 @@ export * from "./schemas";
 export * from "./sharing";
 export * from "./text-style";
 export * from "./video-embed";
+export * from "./editor-shortcut-keys";
 export { createEdgeEverCodeBlock } from "./code-block-meta";
 export * from "./sync";
 export * from "./desktop-rpc";

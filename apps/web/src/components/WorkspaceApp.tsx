@@ -77,6 +77,8 @@ import {
   resolveSelectionMoveTargetNotebookId,
 } from "@/lib/app-helpers";
 import { useBrowserBackLayer } from "@/lib/app-hooks";
+import { writeInstanceEditorShortcutDefaults } from "@/lib/editor-shortcuts-settings";
+import { normalizeEditorShortcutSettings } from "@edgeever/shared";
 import { updateMemoSummaryInLists, type MemoListQueryData } from "@/lib/memo-list-cache";
 import {
   cacheMemoDetail,
@@ -364,6 +366,19 @@ export const WorkspaceApp = ({
     enabled: Boolean(scheduledTaskDeviceId && pluginHostReady),
     refetchInterval: 60_000,
   });
+  // Cache the instance's editor shortcut defaults for the local shortcut resolver.
+  const editorShortcutDefaultsQuery = useQuery({
+    queryKey: ["editor-shortcut-defaults"],
+    queryFn: () => api.getEditorShortcutDefaults(),
+    enabled: Boolean(user) && !authRequired,
+    staleTime: 5 * 60_000,
+  });
+  useEffect(() => {
+    if (!editorShortcutDefaultsQuery.isSuccess) return;
+    writeInstanceEditorShortcutDefaults(editorShortcutDefaultsQuery.data?.editorShortcuts
+      ? normalizeEditorShortcutSettings(editorShortcutDefaultsQuery.data.editorShortcuts)
+      : null);
+  }, [editorShortcutDefaultsQuery.data, editorShortcutDefaultsQuery.isSuccess]);
   const runningScheduledTaskIdsRef = useRef(new Set<string>());
   const runnableScheduledTasks = useMemo(() => {
     const commandKeys = new Set(pluginHostSnapshot.commands.map((command) => `${command.pluginId}\0${command.id}`));

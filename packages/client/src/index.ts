@@ -350,6 +350,7 @@ export type InstanceAdminSettings = {
   smtpFromAddress: string | null;
   smtpFromName: string | null;
   shareMissingMessage: string | null;
+  editorShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
 };
 
 export type InstanceAdminSettingsResponse = {
@@ -378,6 +379,7 @@ export type InstanceAdminSettingsUpdatePayload = {
   smtpFromAddress?: string | null;
   smtpFromName?: string | null;
   shareMissingMessage?: string | null;
+  editorShortcuts?: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
 };
 
 export type RegistrationCodeResponse = {
@@ -1521,6 +1523,11 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
 
     getInstanceAdminSettings: () =>
       request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings"),
+
+    getEditorShortcutDefaults: () =>
+      request<{ editorShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null }>(
+        "/api/v1/editor-shortcut-defaults",
+      ),
 
     updateInstanceAdminSettings: (payload: InstanceAdminSettingsUpdatePayload) =>
       request<InstanceAdminSettingsResponse>("/api/v1/admin/instance-settings", {

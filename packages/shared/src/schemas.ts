@@ -246,6 +246,18 @@ export const InstanceAdminSettingsUpdateSchema = z
       .optional(),
     smtpFromName: z.string().trim().max(80).nullable().optional(),
     shareMissingMessage: z.string().trim().max(500).nullable().optional(),
+    editorShortcuts: z
+      .record(
+        z.string().regex(/^[a-z0-9-]+$/),
+        z.object({
+          key: z.string().trim().min(1).max(20),
+          ctrlOrMeta: z.boolean(),
+          shift: z.boolean(),
+          alt: z.boolean(),
+        }),
+      )
+      .nullable()
+      .optional(),
     registrationInviteRequired: z.boolean().optional(),
     codeTtlSeconds: z.number().int().min(30).max(3600).optional(),
     codeResendCooldownSeconds: z.number().int().min(10).max(3600).optional(),
