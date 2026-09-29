@@ -20,7 +20,9 @@ import {
   ListTodo,
   MoreVertical,
   Pilcrow,
+  Plus,
   Quote,
+  RefreshCw,
   Scissors,
   Trash2,
 } from "lucide-react";
@@ -116,19 +118,19 @@ const getBlockTransformOptions = (t: (key: string) => string): TransformOption[]
   },
 ];
 
-/** Resolve the top-level block node around the selection for whole-block operations. */
+/** Resolve the top-level block node range around the selection for whole-block operations. */
 const resolveBlockRange = (editor: Editor) => {
   const { $from, $to } = editor.state.selection;
   const sharedDepth = Math.min($from.sharedDepth($to.pos), $from.depth);
   const depth = sharedDepth > 0 ? sharedDepth - 1 : 0;
-  const from = $from.before(depth + 1);
-  const to = $to.after(depth + 1);
-  return { from, to, depth };
+  return {
+    from: $from.before(depth + 1),
+    to: $to.after(depth + 1),
+  };
 };
 
 const canSinkOrLift = (editor: Editor, action: "sink" | "lift") => {
-  const listTypes = ["bulletList", "orderedList", "taskList"];
-  for (const type of listTypes) {
+  for (const type of ["bulletList", "orderedList", "taskList"]) {
     if (action === "sink" ? editor.can().sinkListItem(type) : editor.can().liftListItem(type)) {
       return true;
     }
@@ -236,18 +238,23 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
   },
 ];
 
+/** Clone the whole top-level block right below itself. */
 const duplicateBlock = (editor: Editor) => {
   const { from, to } = resolveBlockRange(editor);
-  const slice = editor.state.doc.slice(from, to);
-  return editor.chain().focus().insertContentAt(to, slice.content).run();
+  if (to >= editor.state.doc.content.size) return false;
+  const content = editor.state.doc.slice(from, to).content;
+  return editor.chain().focus().insertContentAt(to, content).run();
 };
 
+/** Clone the block below, then remove the original (net effect: move down a copy). */
 const cutBlock = (editor: Editor) => {
   const { from, to } = resolveBlockRange(editor);
-  const slice = editor.state.doc.slice(from, to);
-  const copied = editor.chain().focus().insertContentAt(to, slice.content).run();
-  if (!copied) return false;
-  return editor.chain().focus().deleteRange({ from, to: to + (to - from) }).run();
+  const blockLength = to - from;
+  if (to + blockLength > editor.state.doc.content.size) return false;
+  const content = editor.state.doc.slice(from, to).content;
+  const duplicated = editor.chain().focus().insertContentAt(to, content).run();
+  if (!duplicated) return false;
+  return editor.chain().focus().deleteRange({ from, to }).run();
 };
 
 export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
@@ -277,21 +284,23 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const addBelowOptions = getAddBelowOptions(t);
 
   return (
-    <DragHandle
-      editor={editor}
-      className={BLOCK_DRAG_HANDLE_CLASS_NAME}
-      nested
-    >
-      <span className="sr-only">{t("editor.dragHandle")}</span>
-      <GripVertical aria-hidden="true" className="h-4 w-4" />
+    <div className="edgeever-block-tools">
+      <DragHandle
+        editor={editor}
+        className={BLOCK_DRAG_HANDLE_CLASS_NAME}
+        nested
+      >
+        <span className="sr-only">{t("editor.dragHandle")}</span>
+        <GripVertical aria-hidden="true" className="h-4 w-4" />
+      </DragHandle>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             className={BLOCK_MENU_TRIGGER_CLASS_NAME}
             aria-label={t("editor.blockMenu.trigger")}
+            aria-haspopup="menu"
             onMouseDown={(event) => event.preventDefault()}
-            onDragStart={(event) => event.stopPropagation()}
             draggable={false}
           >
             <MoreVertical aria-hidden="true" className="h-4 w-4" />
@@ -300,7 +309,7 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
         <DropdownMenuContent align="start" side="right" sideOffset={6} className="min-w-52">
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
-              <CornerDownLeft className="h-4 w-4 text-slate-500" aria-hidden="true" />
+              <RefreshCw className="h-4 w-4 text-slate-500" aria-hidden="true" />
               <span>{t("editor.blockMenu.transform")}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="max-h-80 min-w-44 overflow-y-auto">
@@ -324,13 +333,16 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
             <Copy className="h-4 w-4 text-slate-500" aria-hidden="true" />
             {t("editor.blockMenu.duplicate")}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void cutBlock(editor)}>
+          <DropdownMenuItem onSelect={() => cutBlock(editor)}>
             <Scissors className="h-4 w-4 text-slate-500" aria-hidden="true" />
             {t("editor.blockMenu.cut")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2" disabled={!canSinkOrLift(editor, "sink") && !canSinkOrLift(editor, "lift")}>
+            <DropdownMenuSubTrigger
+              className="gap-2"
+              disabled={!canSinkOrLift(editor, "sink") && !canSinkOrLift(editor, "lift")}
+            >
               <IndentIncrease className="h-4 w-4 text-slate-500" aria-hidden="true" />
               <span>{t("editor.blockMenu.indent")}</span>
             </DropdownMenuSubTrigger>
@@ -353,14 +365,17 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
           </DropdownMenuSub>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
-              <Copy className="h-4 w-4 rotate-45 text-slate-500" aria-hidden="true" />
+              <Plus className="h-4 w-4 text-slate-500" aria-hidden="true" />
               <span>{t("editor.blockMenu.addBelow")}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="max-h-80 min-w-44 overflow-y-auto">
               {addBelowOptions.map((option) => {
                 const Icon = option.icon;
                 return (
-                  <DropdownMenuItem key={option.id} onSelect={() => addBelow((position) => option.insert(editor, position))}>
+                  <DropdownMenuItem
+                    key={option.id}
+                    onSelect={() => addBelow((position) => option.insert(editor, position))}
+                  >
                     <Icon className="h-4 w-4 text-slate-500" aria-hidden="true" />
                     {option.label}
                   </DropdownMenuItem>
@@ -370,6 +385,6 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
           </DropdownMenuSub>
         </DropdownMenuContent>
       </DropdownMenu>
-    </DragHandle>
+    </div>
   );
 };
