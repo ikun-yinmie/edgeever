@@ -1,9 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import DragHandle from "@tiptap/extension-drag-handle-react";
 import {
   Braces,
-  ChevronRight,
   Copy,
   CornerDownLeft,
   GripVertical,
@@ -118,7 +117,7 @@ const getBlockTransformOptions = (t: (key: string) => string): TransformOption[]
   },
 ];
 
-/** Resolve the top-level block node range around the selection for whole-block operations. */
+/** Resolve the block range the handle menu should operate on. */
 const resolveBlockRange = (editor: Editor) => {
   const { $from, $to } = editor.state.selection;
   const sharedDepth = Math.min($from.sharedDepth($to.pos), $from.depth);
@@ -238,7 +237,7 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
   },
 ];
 
-/** Clone the whole top-level block right below itself. */
+/** Clone the whole block right below itself. */
 const duplicateBlock = (editor: Editor) => {
   const { from, to } = resolveBlockRange(editor);
   if (to >= editor.state.doc.content.size) return false;
@@ -246,7 +245,7 @@ const duplicateBlock = (editor: Editor) => {
   return editor.chain().focus().insertContentAt(to, content).run();
 };
 
-/** Clone the block below, then remove the original (net effect: move down a copy). */
+/** Clone the block below, then remove the original. */
 const cutBlock = (editor: Editor) => {
   const { from, to } = resolveBlockRange(editor);
   const blockLength = to - from;
@@ -259,6 +258,8 @@ const cutBlock = (editor: Editor) => {
 
 export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hoveredBlockPosRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.addEventListener("dragstart", retainBlockDragDataTransfer);
@@ -268,6 +269,23 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   if (editor.isDestroyed || !editor.isEditable) {
     return null;
   }
+
+  /** The plugin hides the floating handle on editor mouseleave/keydown; lock it while the menu is open. */
+  const setHandleLocked = (locked: boolean) => {
+    editor.view.dispatch(editor.state.tr.setMeta("lockDragHandle", locked));
+  };
+
+  const handleMenuOpenChange = (open: boolean) => {
+    setMenuOpen(open);
+    setHandleLocked(open);
+    if (open) {
+      // Aim the menu at the block the handle is floating next to, not the stale selection.
+      const pos = hoveredBlockPosRef.current;
+      if (pos !== null && pos >= 0 && pos < editor.state.doc.content.size) {
+        editor.chain().focus().setNodeSelection(pos).run();
+      }
+    }
+  };
 
   const deleteBlock = () => {
     const { from, to } = resolveBlockRange(editor);
@@ -284,16 +302,17 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const addBelowOptions = getAddBelowOptions(t);
 
   return (
-    <div className="edgeever-block-tools">
-      <DragHandle
-        editor={editor}
-        className={BLOCK_DRAG_HANDLE_CLASS_NAME}
-        nested
-      >
-        <span className="sr-only">{t("editor.dragHandle")}</span>
-        <GripVertical aria-hidden="true" className="h-4 w-4" />
-      </DragHandle>
-      <DropdownMenu>
+    <DragHandle
+      editor={editor}
+      className={BLOCK_DRAG_HANDLE_CLASS_NAME}
+      nested
+      onNodeChange={({ pos }) => {
+        hoveredBlockPosRef.current = pos >= 0 ? pos : null;
+      }}
+    >
+      <span className="sr-only">{t("editor.dragHandle")}</span>
+      <GripVertical aria-hidden="true" className="h-4 w-4" />
+      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -385,6 +404,6 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
           </DropdownMenuSub>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </DragHandle>
   );
 };
