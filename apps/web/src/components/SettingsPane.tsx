@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Database,
   Info,
+  Keyboard,
   LayoutTemplate,
   Shield,
   ShieldCheck,
@@ -34,6 +35,7 @@ import { PreferenceCard } from "./settings/PreferenceCard";
 import { PasswordCard } from "./settings/PasswordCard";
 import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { ObjectStorageCard } from "./settings/ObjectStorageCard";
+import { EditorShortcutSettingsCard } from "./settings/EditorShortcutSettingsCard";
 import { AiModelCard } from "./settings/AiModelCard";
 import { AiTagSuggestionPromptCard } from "./settings/AiTagSuggestionPromptCard";
 import { ThemeToggle } from "./ThemeToggle";
@@ -69,7 +71,7 @@ const SettingsGroup = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-type TabKey = "general" | "data" | "ai" | "account";
+type TabKey = "general" | "shortcuts" | "data" | "ai" | "account";
 
 interface TabItem {
   key: TabKey;
@@ -114,6 +116,15 @@ export const SettingsPane = ({
       key: "general",
       label: t("settings.tabs.general"),
       icon: SlidersHorizontal,
+      colorClass: "text-emerald-700",
+      bgColorClass: "bg-emerald-50/80",
+      hoverColorClass: "hover:bg-emerald-50/40",
+      iconColorClass: "text-emerald-600",
+    },
+    {
+      key: "shortcuts",
+      label: t("settings.tabs.shortcuts"),
+      icon: Keyboard,
       colorClass: "text-emerald-700",
       bgColorClass: "bg-emerald-50/80",
       hoverColorClass: "hover:bg-emerald-50/40",
@@ -206,6 +217,12 @@ export const SettingsPane = ({
             ) : null}
             <FeedbackLink className="hidden lg:flex" />
             <ProductHuntLink className="hidden lg:flex" />
+          </SettingsGroup>
+        );
+      case "shortcuts":
+        return (
+          <SettingsGroup>
+            <EditorShortcutSettingsCard />
           </SettingsGroup>
         );
       case "data":

@@ -754,6 +754,7 @@ export const ja = {
     themeToggleToLight: "ライトモードに切り替え",
     tabs: {
       general: "一般",
+      shortcuts: "エディターショートカット",
       ai: "AI 連携",
       data: "インポートとエクスポート",
       advanced: "詳細",
@@ -1337,8 +1338,10 @@ export const ja = {
     editorSection: "エディター書式",
     resetSection: "このセクションを既定に戻す",
     customized: "カスタム",
-    editorSectionEntry: "エディター書式ショートカット",
-    editorSectionEntryHint: "見出し・リスト・書式クリアなど",
+    editorShortcuts: {
+      title: "エディターショートカット",
+      description: "見出し・リスト・書式クリアなどのショートカットを設定します。この端末の現在のアカウントに適用されます。",
+    },
     requireModifier: "Ctrl、⌘、または Alt を含むショートカットを押してください。",
     conflict: "このショートカットはすでに「{{label}}」で使われています。",
     actions: {

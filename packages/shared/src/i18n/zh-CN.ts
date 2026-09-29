@@ -754,6 +754,7 @@ export const zhCN = {
     themeToggleToLight: "切换到浅色模式",
     tabs: {
       general: "常规设置",
+      shortcuts: "编辑器快捷键",
       ai: "AI集成",
       data: "导入导出",
       advanced: "高级设置",
@@ -1337,8 +1338,10 @@ export const zhCN = {
     editorSection: "编辑器格式",
     resetSection: "恢复本组默认",
     customized: "自定义",
-    editorSectionEntry: "编辑器格式快捷键",
-    editorSectionEntryHint: "标题、列表、清除格式等",
+    editorShortcuts: {
+      title: "编辑器快捷键",
+      description: "为标题、列表、清除格式等编辑器操作设置组合键，仅对本设备的当前账号生效。",
+    },
     requireModifier: "请按下包含 Ctrl、⌘ 或 Alt 的组合键。",
     conflict: "这个组合键已用于「{{label}}」。",
     actions: {

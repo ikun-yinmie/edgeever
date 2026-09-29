@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { Keyboard, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   DEFAULT_EDITOR_SHORTCUT_SETTINGS,
@@ -16,17 +16,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  SETTINGS_ITEM_DESCRIPTION_CLASSNAME,
+  SETTINGS_ITEM_ICON_CLASSNAME,
   SETTINGS_ITEM_TITLE_CLASSNAME,
 } from "./settings-ui";
-
-type EditorShortcutSectionProps = {
-  recordingId: EditorShortcutId | null;
-  onRecordingChange: (id: EditorShortcutId | null) => void;
-  captureMessage: string;
-  onCaptureMessageChange: (message: string) => void;
-  captureButtonRef: (node: HTMLButtonElement | null) => void;
-};
 
 const EDITOR_SHORTCUT_I18N_KEYS: Record<EditorShortcutId, string> = {
   "heading-1": "editorToolbar.heading1",
@@ -50,7 +42,8 @@ const EDITOR_SHORTCUT_I18N_KEYS: Record<EditorShortcutId, string> = {
   clearFormatting: "editorToolbar.clearFormatting",
 };
 
-export const useEditorShortcutSettingsState = () => {
+/** Personal editor-shortcut customizations merged over the defaults, persisted to localStorage. */
+const useEditorShortcutSettingsState = () => {
   const [customizations, setCustomizations] = useState<Partial<EditorShortcutSettings>>(() =>
     readEditorShortcutCustomizations() ?? {},
   );
@@ -81,15 +74,17 @@ export const useEditorShortcutSettingsState = () => {
   return { settings, customizations, updateBinding, reset };
 };
 
-export const EditorShortcutSettingsSection = ({
-  recordingId,
-  onRecordingChange,
-  captureMessage,
-  onCaptureMessageChange,
-  captureButtonRef,
-}: EditorShortcutSectionProps) => {
+/** Standalone personal settings card for editor formatting shortcuts. */
+export const EditorShortcutSettingsCard = () => {
   const { t } = useTranslation();
   const { settings, customizations, updateBinding, reset } = useEditorShortcutSettingsState();
+  const [recordingId, setRecordingId] = useState<EditorShortcutId | null>(null);
+  const [captureMessage, setCaptureMessage] = useState("");
+  const [captureButtonNode, setCaptureButtonNode] = useState<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    captureButtonNode?.focus();
+  }, [recordingId, captureButtonNode]);
 
   useEffect(() => {
     if (!recordingId) return;
@@ -99,14 +94,14 @@ export const EditorShortcutSettingsSection = ({
       event.stopPropagation();
 
       if (event.key === "Escape") {
-        onRecordingChange(null);
-        onCaptureMessageChange("");
+        setRecordingId(null);
+        setCaptureMessage("");
         return;
       }
 
       const binding = shortcutBindingFromKeyboardEvent(event);
       if (!binding) {
-        onCaptureMessageChange(t("shortcuts.requireModifier"));
+        setCaptureMessage(t("shortcuts.requireModifier"));
         return;
       }
 
@@ -114,38 +109,41 @@ export const EditorShortcutSettingsSection = ({
         (id) => id !== recordingId && editorShortcutBindingsEqual(settings[id], binding),
       );
       if (conflict) {
-        onCaptureMessageChange(
-          t("shortcuts.conflict", { label: t(EDITOR_SHORTCUT_I18N_KEYS[conflict]) }),
-        );
+        setCaptureMessage(t("shortcuts.conflict", { label: t(EDITOR_SHORTCUT_I18N_KEYS[conflict]) }));
         return;
       }
 
       updateBinding(recordingId, binding);
-      onRecordingChange(null);
-      onCaptureMessageChange("");
+      setRecordingId(null);
+      setCaptureMessage("");
     };
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingId, settings]);
+  }, [recordingId, settings, t, updateBinding]);
 
-  const hasCustomizations = Object.keys(customizations).length > 0;
+  const hasCustomizations = useMemo(() => Object.keys(customizations).length > 0, [customizations]);
 
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center justify-between">
-        <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("shortcuts.editorSection")}</div>
+    <div className="rounded-xl border border-slate-200 bg-card">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
+        <div className="flex min-w-0 items-start gap-3">
+          <Keyboard className={SETTINGS_ITEM_ICON_CLASSNAME} />
+          <div className="min-w-0">
+            <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("settings.editorShortcuts.title")}</div>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500">{t("settings.editorShortcuts.description")}</p>
+          </div>
+        </div>
         {hasCustomizations && (
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
+            className="h-8 shrink-0 px-2 text-xs text-slate-600"
             onClick={() => {
               reset();
-              onRecordingChange(null);
-              onCaptureMessageChange("");
+              setRecordingId(null);
+              setCaptureMessage("");
             }}
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -153,42 +151,44 @@ export const EditorShortcutSettingsSection = ({
           </Button>
         )}
       </div>
-      {EDITOR_SHORTCUT_IDS.map((id) => {
-        const recording = recordingId === id;
-        const customized = id in customizations;
 
-        return (
-          <div
-            key={id}
-            className="flex min-w-0 flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0">
-              <div className={cn(SETTINGS_ITEM_TITLE_CLASSNAME, "flex items-center gap-2")}>
-                {t(EDITOR_SHORTCUT_I18N_KEYS[id])}
+      <div className="grid gap-2 p-4 sm:grid-cols-2">
+        {EDITOR_SHORTCUT_IDS.map((id) => {
+          const recording = recordingId === id;
+          const customized = id in customizations;
+
+          return (
+            <div
+              key={id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-sm text-slate-700">
+                <span className="truncate">{t(EDITOR_SHORTCUT_I18N_KEYS[id])}</span>
                 {customized && (
-                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                  <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
                     {t("shortcuts.customized")}
                   </span>
                 )}
-              </div>
+              </span>
+              <Button
+                ref={recording ? setCaptureButtonNode : undefined}
+                type="button"
+                variant={recording ? "solid" : "outline"}
+                className={cn("h-8 min-w-28 shrink-0 px-2.5 font-mono text-xs", !recording && "bg-card")}
+                onClick={() => {
+                  setRecordingId(recording ? null : id);
+                  setCaptureMessage("");
+                }}
+              >
+                {recording ? t("shortcuts.recording") : formatShortcutBinding(settings[id])}
+              </Button>
             </div>
-            <Button
-              ref={recording ? captureButtonRef : undefined}
-              type="button"
-              variant={recording ? "solid" : "outline"}
-              className={cn("h-9 min-w-32 px-3 font-mono text-xs", !recording && "bg-card")}
-              onClick={() => {
-                onRecordingChange(recording ? null : id);
-                onCaptureMessageChange("");
-              }}
-            >
-              {recording ? t("shortcuts.recording") : formatShortcutBinding(settings[id])}
-            </Button>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
       {captureMessage ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+        <div className="mx-4 mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
           {captureMessage}
         </div>
       ) : null}

@@ -754,6 +754,7 @@ export const enUS = {
     themeToggleToLight: "Switch to light mode",
     tabs: {
       general: "General",
+      shortcuts: "Editor shortcuts",
       ai: "AI Integrations",
       data: "Import & Export",
       advanced: "Advanced",
@@ -1337,8 +1338,10 @@ export const enUS = {
     editorSection: "Editor formatting",
     resetSection: "Reset this section",
     customized: "Custom",
-    editorSectionEntry: "Editor formatting shortcuts",
-    editorSectionEntryHint: "Headings, lists, clear formatting…",
+    editorShortcuts: {
+      title: "Editor shortcuts",
+      description: "Set shortcuts for headings, lists, clear formatting and more. Applies to the current account on this device.",
+    },
     requireModifier: "Press a shortcut that includes Ctrl, ⌘, or Alt.",
     conflict: "This shortcut is already used by “{{label}}”.",
     actions: {

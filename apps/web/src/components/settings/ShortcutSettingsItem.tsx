@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, RotateCcw } from "lucide-react";
-import { type EditorShortcutId } from "@edgeever/shared";
-import { EditorShortcutSettingsSection } from "./EditorShortcutSettingsSection";
 import { useTranslation } from "react-i18next";
 import type { ShortcutAction, ShortcutBinding, ShortcutSettings } from "@/lib/app-helpers";
 import {
@@ -42,12 +40,9 @@ const getConflictAction = (
 export const ShortcutSettingsItem = ({ shortcutSettings, onShortcutSettingsChange }: ShortcutSettingsItemProps) => {
   const { t } = useTranslation();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [recordingAction, setRecordingAction] = useState<ShortcutAction | EditorShortcutId | "editor" | null>(null);
+  const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const [captureMessage, setCaptureMessage] = useState("");
   const captureButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [editorRecordingId, setEditorRecordingId] = useState<EditorShortcutId | null>(null);
-  const [editorCaptureMessage, setEditorCaptureMessage] = useState("");
-  const editorCaptureButtonRef = useRef<HTMLButtonElement | null>(null);
   const shortcutActionOptions = useMemo(() => getShortcutActionOptions(t), [t]);
 
   const shortcutSummary = useMemo(
@@ -59,7 +54,7 @@ export const ShortcutSettingsItem = ({ shortcutSettings, onShortcutSettingsChang
   );
 
   useEffect(() => {
-    if (!recordingAction || recordingAction === "editor") {
+    if (!recordingAction) {
       return;
     }
 
@@ -67,7 +62,7 @@ export const ShortcutSettingsItem = ({ shortcutSettings, onShortcutSettingsChang
   }, [recordingAction]);
 
   useEffect(() => {
-    if (!recordingAction || recordingAction === "editor") {
+    if (!recordingAction) {
       return;
     }
 
@@ -87,9 +82,7 @@ export const ShortcutSettingsItem = ({ shortcutSettings, onShortcutSettingsChang
         return;
       }
 
-      const conflictAction = typeof recordingAction === "string" && recordingAction in shortcutSettings
-        ? getConflictAction(recordingAction as ShortcutAction, nextBinding, shortcutSettings, shortcutActionOptions)
-        : undefined;
+      const conflictAction = getConflictAction(recordingAction, nextBinding, shortcutSettings, shortcutActionOptions);
       if (conflictAction) {
         setCaptureMessage(t("shortcuts.conflict", { label: conflictAction.label }));
         return;
@@ -174,33 +167,11 @@ export const ShortcutSettingsItem = ({ shortcutSettings, onShortcutSettingsChang
             })}
           </div>
 
-          {recordingAction !== "editor" && captureMessage ? (
+          {captureMessage ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
               {captureMessage}
             </div>
           ) : null}
-
-          <div className="h-px bg-slate-200" />
-          {recordingAction === "editor" ? (
-            <EditorShortcutSettingsSection
-              recordingId={editorRecordingId}
-              onRecordingChange={(id) => setEditorRecordingId(id)}
-              captureMessage={editorCaptureMessage}
-              onCaptureMessageChange={setEditorCaptureMessage}
-              captureButtonRef={(node) => { editorCaptureButtonRef.current = node; }}
-            />
-          ) : (
-            <button
-              type="button"
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-3 text-left transition hover:bg-slate-100/60"
-              onClick={() => {
-                setRecordingAction("editor");
-              }}
-            >
-              <span className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("shortcuts.editorSectionEntry")}</span>
-              <span className="text-xs text-slate-400">{t("shortcuts.editorSectionEntryHint")}</span>
-            </button>
-          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleResetShortcuts}>
