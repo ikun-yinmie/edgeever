@@ -775,6 +775,62 @@ textarea {
   color: #34d399;
 }
 
+/* Yuque-style block actions trigger, shown next to the drag handle. */
+.edgeever-block-menu-trigger {
+  z-index: 20;
+  display: none;
+  width: 1.25rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #94a3b8;
+}
+
+.edgeever-block-menu-trigger:hover,
+.edgeever-block-menu-trigger:focus-visible,
+.edgeever-block-menu-trigger[data-state="open"] {
+  background: #f1f5f9;
+  color: #16a06e;
+  outline: none;
+}
+
+.edgeever-block-drag-handle:hover + .edgeever-block-menu-trigger,
+.edgeever-block-drag-handle:focus-visible + .edgeever-block-menu-trigger,
+.edgeever-block-menu-trigger:hover,
+.edgeever-block-menu-trigger:focus-visible,
+.edgeever-block-menu-trigger[data-state="open"] {
+  display: flex;
+}
+
+@media (min-width: 1024px) {
+  .edgeever-block-menu-trigger {
+    display: none;
+  }
+
+  .edgeever-block-drag-handle:hover + .edgeever-block-menu-trigger,
+  .edgeever-block-drag-handle:focus-visible + .edgeever-block-menu-trigger,
+  .edgeever-block-menu-trigger:hover,
+  .edgeever-block-menu-trigger:focus-visible,
+  .edgeever-block-menu-trigger[data-state="open"] {
+    display: flex;
+  }
+}
+
+:root.dark .edgeever-block-menu-trigger {
+  color: #64748b;
+}
+
+:root.dark .edgeever-block-menu-trigger:hover,
+:root.dark .edgeever-block-menu-trigger:focus-visible,
+:root.dark .edgeever-block-menu-trigger[data-state="open"] {
+  background: #1e293b;
+  color: #34d399;
+}
+
 :root.dark .ProseMirror-selectednoderange {
   background: rgb(52 211 153 / 0.1);
   outline-color: rgb(52 211 153 / 0.35);
