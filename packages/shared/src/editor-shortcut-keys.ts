@@ -1,5 +1,6 @@
 import { Extension } from "@tiptap/core";
 import type { Editor } from "@tiptap/core";
+import { keymap } from "@tiptap/pm/keymap";
 
 /**
  * Editor formatting shortcuts (Yuque-style), separate from the app-level
@@ -90,6 +91,27 @@ export const editorShortcutBindingFromEvent = (event: {
 export const editorShortcutBindingsEqual = (a: EditorShortcutBinding, b: EditorShortcutBinding) =>
   a.key === b.key && a.ctrlOrMeta === b.ctrlOrMeta && a.shift === b.shift && a.alt === b.alt;
 
+/**
+ * Builds the ProseMirror keymap name for a binding, e.g. "Alt-Ctrl-1" or
+ * "Mod-Shift-8". Keymap names must only contain the Mod/Alt/Shift/Ctrl-Mod
+ * modifiers recognized by prosemirror-keymap, so action ids like
+ * "heading-1" must never be used as keymap names (doing so throws
+ * "Unrecognized modifier name" when the editor mounts).
+ */
+export const editorShortcutBindingToKeymapName = (binding: EditorShortcutBinding): string | null => {
+  const rawKey = normalizeKey(binding.key);
+  if (!rawKey) return null;
+  // prosemirror-keymap matches " " against the name "Space" (keyName() output).
+  const key = rawKey === "space" ? "Space" : rawKey;
+  const parts = [
+    binding.ctrlOrMeta ? "Mod" : null,
+    binding.alt ? "Alt" : null,
+    binding.shift ? "Shift" : null,
+    key,
+  ];
+  return parts.filter(Boolean).join("-");
+};
+
 export const normalizeEditorShortcutSettings = (value: unknown): EditorShortcutSettings => {
   if (!value || typeof value !== "object") return DEFAULT_EDITOR_SHORTCUT_SETTINGS;
   const input = value as Partial<Record<EditorShortcutId, Partial<EditorShortcutBinding>>>;
@@ -147,23 +169,28 @@ export const createEditorShortcutExtension = (getSettings: () => EditorShortcutS
   Extension.create({
     name: "edgeeverEditorShortcuts",
     priority: 1000,
-    addKeyboardShortcuts() {
+    addProseMirrorPlugins() {
       const bindings: Record<string, () => boolean> = {};
       for (const id of EDITOR_SHORTCUT_IDS) {
-        bindings[id] = () => {
-          const settings = getSettings();
-          const binding = settings[id];
-          if (!binding) return false;
+        const binding = getSettings()[id];
+        if (!binding) continue;
+        const keymapName = editorShortcutBindingToKeymapName(binding);
+        if (!keymapName) continue;
+        // The runtime setting (not the mount-time snapshot) decides whether the
+        // pressed keys match, so customized shortcuts apply without remounting.
+        bindings[keymapName] = () => {
+          const current = getSettings()[id];
+          if (!current) return false;
           const event = this.editor.view.dom.ownerDocument.defaultView?.event as KeyboardEvent | null;
           if (!event) return false;
           const actual = editorShortcutBindingFromEvent(event);
-          if (!actual || !editorShortcutBindingsEqual(actual, binding)) {
+          if (!actual || !editorShortcutBindingsEqual(actual, current)) {
             return false;
           }
           return runEditorShortcut(this.editor, id);
         };
       }
-      return bindings;
+      return [keymap(bindings)];
     },
   });
 
