@@ -1,6 +1,7 @@
 import { AlertTriangle, Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type CollabConflictBarProps = {
   /** The person/actor who currently owns the note, when known. */
@@ -49,15 +50,17 @@ export const CollabPresenceBadge = ({ peerNames }: { peerNames: string[] }) => {
   const { t } = useTranslation();
   if (peerNames.length === 0) return null;
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-      title={peerNames.join("、")}
-    >
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-      </span>
-      {t("collab.editingNow", "{{names}} 正在编辑", { names: peerNames.join("、") })}
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-default items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          {t("collab.editingNow", "{{names}} 正在编辑", { names: peerNames.join("、") })}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{peerNames.join("、")}</TooltipContent>
+    </Tooltip>
   );
 };
