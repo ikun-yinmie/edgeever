@@ -25,7 +25,7 @@
 | 实时房间 | `apps/api/src/collab-realtime.ts`、`scripts/self-hosted-server.mjs`（`/collab-ws`） | 每笔记一篇 Yjs 文档，y-websocket 帧（sync/awareness），只读成员服务端强制不可变更 |
 | 种子与写回 | `apps/api/src/collab-seed.ts`、`collab-memo-writer.ts`、`collab-document-store.ts` | 房间创建时服务端单次播种（无 schema 转换）；flush 节流写回 `memo_contents` 并推进 revision，关停时 sweep 补尾 |
 | 前端实时 | `apps/web/src/components/editor/collab-realtime.ts`、`EditorPane.tsx` | y-websocket + Collaboration 扩展 + 远端光标；正文走 CRDT，标题/标签走直连元数据保存；进出实时才重建编辑器 |
-| 在场提示 | `apps/api/src/collab-presence-service.ts`、`memo-routes.ts`（`/collab-heartbeat`、`/collab-state`、`/collab-release`） | `memo_collab_presence` 表，30s TTL，纯 advisory；实时 live 后自动让位 |
+| 在场提示 | `apps/api/src/collab-presence-service.ts`、`memo-routes.ts`（`/collab-heartbeat`、`/collab-state`、`/collab-release`） | `memo_collab_presence` 表，30s TTL，纯 advisory，10% 概率惰性清理过期行；实时 live 后自动让位 |
 | 前端在场条 | `apps/web/src/components/editor/collab-presence.ts`、`CollabConflictBar.tsx` | 实时 peers 优先，在场轮询做连接/断线窗口的兜底 |
 | 冲突保护 | 保存链路（`memo_edit_sessions` 乐观锁 + `revision` / `content_hash`） | 降级模式的后保存者不覆盖：返回 409 `revision_conflict`，协作条给「载入最新（保留我的修改）/ 复制我的版本 / 仍要覆盖」 |
 | 公共群组账号 | `group-account-service.ts` | `account_type='group'`，同设备多会话并存，用于多人共用一个账号协作 |

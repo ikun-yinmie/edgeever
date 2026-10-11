@@ -58,7 +58,18 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Build local image
-        run: docker build --build-arg EDGE_EVER_BUILD_ID="${GITHUB_SHA}" --tag edgeever:ci .
+        # Base-image pulls and registry fetches flake on shared runners; a
+        # fast failure here is almost never the code, so retry a few times
+        # before calling the build broken.
+        run: |
+          for attempt in 1 2 3; do
+            if docker build --build-arg EDGE_EVER_BUILD_ID="${GITHUB_SHA}" --tag edgeever:ci .; then
+              exit 0
+            fi
+            echo "docker build attempt ${attempt} failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
 
       - name: Start container
         run: |
