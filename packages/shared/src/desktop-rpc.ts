@@ -113,7 +113,13 @@ export type DesktopRpcResponses = {
   "memo.pinBatch": { ok: true; updated: number };
   "memo.merge": { memo: MemoDetail };
   "memo.list": { memos: MemoSummary[]; totalCount: number; nextCursor: string | null };
-  "memo.get": { memo: MemoDetail };
+  "memo.get": {
+    memo: MemoDetail;
+    displayPolicy?: {
+      html: "rendered" | "source" | "hidden";
+      markdown: "rendered" | "source" | "hidden";
+    } | null;
+  };
   "memo.create": { memo: MemoDetail };
   "memo.update": { memo: MemoDetail };
   "memo.delete": { ok: true };

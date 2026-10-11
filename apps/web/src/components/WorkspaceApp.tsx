@@ -27,7 +27,7 @@ import { QuickMemoSwitcher } from "./QuickMemoSwitcher";
 import { AppConfirmDialog, MemoDeleteConfirmDialog, NotebookNameDialog } from "./dialogs/ConfirmDialogs";
 import { PluginPanelDialog } from "./plugins/PluginPanelDialog";
 import { shouldDiscardPluginNoteSearchRequest } from "./editor/note-search";
-import { api, getOrCreateClientDeviceId } from "@/lib/api";
+import { api, getConfiguredDesktopApiBaseUrl, getOrCreateClientDeviceId } from "@/lib/api";
 import { MarkdownExportMemoryLimitError, type MarkdownExportProgress } from "@/lib/markdown-export";
 import { exportSelectedMemosAsMarkdownZip } from "@/lib/selected-markdown-export";
 import { createPluginScheduleAdapter } from "@/lib/plugins/plugin-schedule-adapter";
@@ -1202,6 +1202,27 @@ export const WorkspaceApp = ({
     retry: false,
   });
   const memoAccess = memoAccessQuery.data?.access ?? null;
+
+  // Realtime collaboration needs a runtime that serves collaboration sockets
+  // (self-hosted Bun/Docker). The health endpoint answers without auth; when
+  // it is unreachable the editor stays on the presence-only mode.
+  const collabRuntimeQuery = useQuery({
+    queryKey: ["collab-runtime"],
+    queryFn: async () => {
+      try {
+        const baseUrl = getConfiguredDesktopApiBaseUrl();
+        const response = await fetch(`${baseUrl}/api/health`);
+        if (!response.ok) return { runtime: null as string | null };
+        const body = (await response.json().catch(() => null)) as { runtime?: unknown } | null;
+        return { runtime: typeof body?.runtime === "string" ? body.runtime : null };
+      } catch {
+        return { runtime: null as string | null };
+      }
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const realtimeCapable = collabRuntimeQuery.data?.runtime === "self-hosted-bun";
 
   const handleSaveSharedCopy = useCallback(async (memo: MemoDetail) => {
     const targetNotebookId = memoView === "notebook" && selectedNotebookId
@@ -3356,6 +3377,9 @@ export const WorkspaceApp = ({
                     notebooks={notebooks}
                     isLoading={memoQuery.isLoading}
                     sharedAccess={memoAccess?.shared ? memoAccess : null}
+                    sharedDisplayPolicy={memoQuery.data?.displayPolicy ?? null}
+                    collabDisplayName={user?.displayName || user?.username || ""}
+                    realtimeCapable={realtimeCapable}
                     onSaveSharedCopy={handleSaveSharedCopy}
                     contentSearchQuery={search}
                     searchFocusToken={noteSearchFocusToken}

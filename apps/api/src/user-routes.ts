@@ -1,10 +1,24 @@
-import { UserBulkUpdateSchema, UserCreateSchema, UserUpdateSchema, type InstanceUser } from "@edgeever/shared";
+import {
+  GroupAccountCreateSchema,
+  GroupAccountUpdateSchema,
+  UserBulkUpdateSchema,
+  UserCreateSchema,
+  UserUpdateSchema,
+  type GroupAccount,
+  type InstanceUser,
+} from "@edgeever/shared";
 import { zValidator } from "@hono/zod-validator";
 import type { Hono } from "hono";
 import { auditStatement } from "./audit";
 import type { AppContext, AppEnv, AuthContext } from "./api-context";
 import { hashPassword } from "./auth-crypto";
 import { isProtectedDemoAccount } from "./demo-mode";
+import {
+  addGroupAccountToGroups,
+  createGroupAccount,
+  listGroupAccountGroups,
+  listGroupAccounts,
+} from "./group-account-service";
 import { createId, isoNow } from "./entity-utils";
 import { badRequest, conflict, forbidden, notFound, unauthorized } from "./http-errors";
 import { deleteStoredObjects } from "./object-storage";
@@ -26,6 +40,7 @@ export type InstanceUserRow = {
   last_login_at: string | null;
   created_at: string;
   role: "owner" | "member";
+  account_type: "user" | "group" | null;
 };
 
 type UserRouteDependencies = {
@@ -43,6 +58,7 @@ export const mapInstanceUser = (row: InstanceUserRow): InstanceUser => ({
   isDeleted: Boolean(row.is_deleted),
   lastLoginAt: row.last_login_at,
   createdAt: row.created_at,
+  accountType: row.account_type === "group" ? "group" : "user",
 });
 
 /**
@@ -411,5 +427,129 @@ export const registerUserRoutes = (
     );
 
     return context.json({ ok: true });
+  });
+
+  // --- Shared (public) group accounts: one credential, many live sessions ---
+
+  app.get("/api/v1/group-accounts", async (context) => {
+    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    if (denied) return denied;
+
+    const rows = await listGroupAccounts(context.env.storage.db);
+    const accounts: GroupAccount[] = rows.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      isDisabled: Boolean(row.is_disabled),
+      createdAt: row.created_at,
+      groupCount: row.group_count,
+    }));
+    return context.json({ accounts });
+  });
+
+  app.post("/api/v1/group-accounts", zValidator("json", GroupAccountCreateSchema), async (context) => {
+    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    if (denied) return denied;
+    const auth = context.get("auth")!;
+    const input = context.req.valid("json");
+
+    // Only existing groups can be joined; group ids are validated in one query.
+    if (input.groupIds.length > 0) {
+      const placeholders = input.groupIds.map(() => "?").join(", ");
+      const found = await context.env.storage.db
+        .prepare(`SELECT id FROM groups WHERE id IN (${placeholders})`)
+        .bind(...input.groupIds)
+        .all<{ id: string }>();
+      const known = new Set((found.results ?? []).map((row) => row.id));
+      const missing = input.groupIds.filter((groupId) => !known.has(groupId));
+      if (missing.length > 0) return notFound(context, "Group not found");
+    }
+
+    const created = await createGroupAccount(context.env.storage.db, {
+      name: input.name,
+      displayName: input.displayName ?? null,
+      password: input.password,
+      createdBy: auth.actorId,
+    });
+    if (!created.ok) {
+      return conflict(context, "username_exists", "Username already exists.");
+    }
+    await addGroupAccountToGroups(context.env.storage.db, created.userId, input.groupIds);
+
+    return context.json({ username: created.username }, 201);
+  });
+
+  app.patch("/api/v1/group-accounts/:id", zValidator("json", GroupAccountUpdateSchema), async (context) => {
+    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    if (denied) return denied;
+    const database = context.env.storage.db;
+    const accountId = context.req.param("id");
+
+    const current = await database
+      .prepare(`SELECT id, username, account_type FROM users WHERE id = ? AND account_type = 'group' AND is_deleted = 0`)
+      .bind(accountId)
+      .first<{ id: string; username: string; account_type: "user" | "group" | null }>();
+    if (!current) return notFound(context, "Shared account not found");
+
+    const input = context.req.valid("json");
+    const updates: string[] = [];
+    const binds: unknown[] = [];
+    if (input.displayName !== undefined) {
+      updates.push("display_name = ?");
+      binds.push(input.displayName);
+    }
+    if (input.password !== undefined) {
+      updates.push("password_hash = ?");
+      binds.push(await hashPassword(input.password));
+    }
+    if (input.isDisabled !== undefined) {
+      updates.push("is_disabled = ?");
+      binds.push(input.isDisabled ? 1 : 0);
+    }
+
+    const statements = [];
+    if (updates.length > 0) {
+      updates.push("updated_at = ?");
+      binds.push(isoNow(), accountId);
+      statements.push(
+        database.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...binds),
+        auditStatement(database, "user", context.get("auth")!.actorId, "user.update_group_account", "user", accountId, {
+          passwordReset: input.password !== undefined,
+          isDisabled: input.isDisabled ?? null,
+        }),
+      );
+    }
+    // Revoking sessions locks everyone sharing the credential out immediately.
+    if (input.password !== undefined || input.isDisabled === true) {
+      statements.push(
+        database
+          .prepare(`UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`)
+          .bind(isoNow(), accountId),
+      );
+    }
+    if (input.groupIds !== undefined) {
+      const placeholders = input.groupIds.map(() => "?").join(", ");
+      if (input.groupIds.length > 0) {
+        const found = await database
+          .prepare(`SELECT id FROM groups WHERE id IN (${placeholders})`)
+          .bind(...input.groupIds)
+          .all<{ id: string }>();
+        const known = new Set((found.results ?? []).map((row) => row.id));
+        const missing = input.groupIds.filter((groupId) => !known.has(groupId));
+        if (missing.length > 0) return notFound(context, "Group not found");
+      }
+      statements.push(
+        database.prepare(`DELETE FROM group_members WHERE user_id = ?`).bind(accountId),
+      );
+      if (input.groupIds.length > 0) {
+        await addGroupAccountToGroups(database, accountId, input.groupIds);
+      }
+    }
+    if (statements.length > 0) {
+      await database.batch(statements);
+    }
+
+    const groups = await listGroupAccountGroups(database, accountId);
+    return context.json({ ok: true, groups });
   });
 };

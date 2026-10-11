@@ -254,6 +254,7 @@ export const registerGroupRoutes = (
           sourceWorkspaceId: workspaceId,
           editMode: input.editMode,
           editorUserIds: input.editMode === "group" ? editors : [],
+          displayPolicy: input.displayPolicy ?? { html: "rendered", markdown: "rendered" },
           note: input.note ?? null,
           createdBy: auth.actorId,
         });
@@ -291,6 +292,7 @@ export const registerGroupRoutes = (
         editorUserIds: input.editorUserIds
           ? input.editorUserIds.filter((userId) => memberIds.has(userId))
           : undefined,
+        displayPolicy: input.displayPolicy,
         note: input.note,
       });
       return context.json({ ok: true });

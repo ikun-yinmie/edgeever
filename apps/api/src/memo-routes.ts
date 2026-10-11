@@ -16,6 +16,17 @@ import { AppError } from "./app-error";
 import { apiError, notFound } from "./http-errors";
 import type { ListMemosInput, ListMemosResult } from "./memo-list-service";
 import { resolveMemoAccess, type SharedAccess } from "./group-service";
+import {
+  listCollabPeers,
+  releaseCollabPresence,
+  touchCollabPresence,
+} from "./collab-presence-service";
+import {
+  applyShareDisplayPolicyToDoc,
+  isDefaultShareDisplayPolicy,
+  parseShareDisplayPolicy,
+  type ShareDisplayPolicy,
+} from "./share-display-policy";
 import { getActorLabel, getAuditActor, getWorkspaceId, requireScopes } from "./request-auth";
 import type { DatabaseAdapter } from "./storage-contract";
 
@@ -183,13 +194,30 @@ export const registerMemoRoutes = (
     const scope = await resolveMemoScope(context, context.req.param("id"));
     if ("response" in scope) return scope.response;
 
-    const memo = await dependencies.getMemoDetail(
+    let memo = await dependencies.getMemoDetail(
       context.env.storage.db,
       scope.access.workspaceId,
       context.req.param("id"),
       context.req.query("includeDeleted") === "1" && scope.access.isOwner,
     );
     if (!memo) return notFound(context, "Memo not found");
+
+    // Group shares honour the share's display policy: the audience-visible
+    // document is filtered server-side, exactly like public link shares.
+    // Owners and personal reads never pass through this branch.
+    let displayPolicy: ShareDisplayPolicy | null = null;
+    if (!scope.access.isOwner && scope.access.shareId) {
+      const shareRow = await context.env.storage.db
+        .prepare(`SELECT display_policy_json FROM group_shares WHERE id = ?`)
+        .bind(scope.access.shareId)
+        .first<{ display_policy_json: string | null }>();
+      const policy = parseShareDisplayPolicy(shareRow?.display_policy_json);
+      if (!isDefaultShareDisplayPolicy(policy)) {
+        memo = { ...memo, contentJson: applyShareDisplayPolicyToDoc(memo.contentJson, policy) as typeof memo.contentJson };
+        displayPolicy = policy;
+      }
+    }
+
     // Group-shared notes live in the author's workspace. Tell the client so it
     // keeps them out of the viewer's own notebooks until they save a copy.
     return context.json({
@@ -201,6 +229,7 @@ export const registerMemoRoutes = (
           groupId: scope.access.groupId,
           groupName: scope.access.groupName,
         },
+        ...(displayPolicy ? { displayPolicy } : {}),
       }),
     });
   });
@@ -413,5 +442,81 @@ export const registerMemoRoutes = (
     } catch (error) {
       return handleAppError(context, error);
     }
+  });
+
+  // --- Yuque-style collaboration presence ---
+  // Advisory only: the optimistic-lock save path stays authoritative. The
+  // heartbeat lets every open editor show who else is writing right now.
+
+  const collabScope = async (context: AppContext, memoId: string, write: boolean) => {
+    const denied = requireScopes(context, write ? "write:memos" : "read:memos");
+    if (denied) return denied;
+    const scope = await resolveMemoScope(context, memoId);
+    if ("response" in scope) return scope.response;
+    if (write && !scope.access.canEdit) {
+      return apiError(context, "shared_read_only", "This note is shared with you for reading only.", 403);
+    }
+    return null;
+  };
+
+  app.post("/api/v1/memos/:id/collab-heartbeat", async (context) => {
+    const denied = await collabScope(context, context.req.param("id"), true);
+    if (denied) return denied;
+
+    const memoId = context.req.param("id");
+    const auth = context.get("auth");
+    await touchCollabPresence(context.env.storage.db, {
+      memoId,
+      actorId: auth?.actorId ?? "",
+      actorType: auth?.actorType === "agent" ? "agent" : "user",
+      displayName: auth?.displayName ?? auth?.username ?? null,
+    });
+    const peers = await listCollabPeers(context.env.storage.db, memoId, auth?.actorId ?? "");
+    return context.json({ peers });
+  });
+
+  app.get("/api/v1/memos/:id/collab-state", async (context) => {
+    const denied = await collabScope(context, context.req.param("id"), false);
+    if (denied) return denied;
+
+    const memoId = context.req.param("id");
+    const auth = context.get("auth");
+    const peers = await listCollabPeers(context.env.storage.db, memoId, auth?.actorId ?? "");
+    return context.json({ peers });
+  });
+
+  app.post("/api/v1/memos/:id/collab-release", async (context) => {
+    const denied = await collabScope(context, context.req.param("id"), false);
+    if (denied) return denied;
+
+    const memoId = context.req.param("id");
+    const auth = context.get("auth");
+    await releaseCollabPresence(context.env.storage.db, memoId, auth?.actorId ?? "");
+    return context.json({ ok: true });
+  });
+
+  // --- Realtime collaboration socket handshake ---
+  // A browser cannot set custom headers on a websocket upgrade, and the socket
+  // runtime must not re-implement authentication or share permissions. So the
+  // socket replays its upgrade request against this endpoint with the same
+  // cookie and only joins the note's CRDT room once this answers.
+  app.get("/api/v1/memos/:id/collab-session", async (context) => {
+    const denied = requireScopes(context, "read:memos");
+    if (denied) return denied;
+
+    const scope = await resolveMemoScope(context, context.req.param("id"));
+    if ("response" in scope) return scope.response;
+
+    const auth = context.get("auth");
+    return context.json({
+      memoId: context.req.param("id"),
+      canEdit: scope.access.canEdit,
+      workspaceId: scope.access.workspaceId,
+      groupId: scope.access.groupId,
+      groupName: scope.access.groupName,
+      actorId: auth?.actorId ?? null,
+      displayName: auth?.displayName ?? auth?.username ?? null,
+      accountType: auth?.accountType ?? "user",
+    });
   });
 };

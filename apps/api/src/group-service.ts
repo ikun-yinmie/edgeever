@@ -13,6 +13,7 @@
 
 import { createId, isoNow } from "./entity-utils";
 import type { ResourceRow } from "./resource-service";
+import { DEFAULT_SHARE_DISPLAY_POLICY, type ShareDisplayPolicy } from "./share-display-policy";
 import type { DatabaseAdapter } from "./storage-contract";
 
 export type GroupRow = {
@@ -41,6 +42,7 @@ export type GroupShareRow = {
   source_workspace_id: string;
   edit_mode: "author" | "group";
   editor_user_ids: string;
+  display_policy_json: string | null;
   note: string | null;
   created_by: string | null;
   created_at: string;
@@ -57,6 +59,7 @@ export type GroupShareView = {
   title: string;
   editMode: "author" | "group";
   editorUserIds: string[];
+  displayPolicy: ShareDisplayPolicy;
   note: string | null;
   createdAt: string;
   authorUsername: string | null;
@@ -439,7 +442,7 @@ export const removeGroupMember = async (database: DatabaseAdapter, groupId: stri
 };
 
 const SHARE_SELECT = `SELECT s.id, s.group_id, s.target_type, s.target_id, s.source_workspace_id,
-    s.edit_mode, s.editor_user_ids, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
+    s.edit_mode, s.editor_user_ids, s.display_policy_json, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
     g.name AS group_name,
     COALESCE(n.name, m.title, '') AS target_title,
     u.username AS author_username, u.display_name AS author_display_name
@@ -463,11 +466,26 @@ const mapShareView = (row: GroupShareRow & {
   title: row.target_title,
   editMode: row.edit_mode,
   editorUserIds: parseEditorIds(row.editor_user_ids),
+  displayPolicy: parseShareDisplayPolicyView(row.display_policy_json),
   note: row.note,
   createdAt: row.created_at,
   authorUsername: row.author_username,
   authorDisplayName: row.author_display_name,
 });
+
+const parseShareDisplayPolicyView = (raw: string | null | undefined): ShareDisplayPolicy => {
+  if (!raw) return DEFAULT_SHARE_DISPLAY_POLICY;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ShareDisplayPolicy> | null;
+    if (!parsed || typeof parsed !== "object") return DEFAULT_SHARE_DISPLAY_POLICY;
+    return {
+      html: parsed.html === "source" || parsed.html === "hidden" ? parsed.html : "rendered",
+      markdown: parsed.markdown === "source" || parsed.markdown === "hidden" ? parsed.markdown : "rendered",
+    };
+  } catch {
+    return DEFAULT_SHARE_DISPLAY_POLICY;
+  }
+};
 
 export const listGroupShares = async (database: DatabaseAdapter, groupId: string) => {
   const rows = await database
@@ -489,7 +507,7 @@ export const getGroupShareRow = async (database: DatabaseAdapter, shareId: strin
   database
     .prepare(
       `SELECT id, group_id, target_type, target_id, source_workspace_id, edit_mode,
-              editor_user_ids, note, created_by, created_at, updated_at, revoked_at
+              editor_user_ids, display_policy_json, note, created_by, created_at, updated_at, revoked_at
        FROM group_shares WHERE id = ?`,
     )
     .bind(shareId)
@@ -504,17 +522,19 @@ export const createGroupShare = async (
     sourceWorkspaceId: string;
     editMode: "author" | "group";
     editorUserIds: string[];
+    displayPolicy: ShareDisplayPolicy;
     note: string | null;
     createdBy: string | null;
   },
 ) => {
   const id = createId("shr");
   const now = isoNow();
+  const displayPolicy = input.displayPolicy ?? DEFAULT_SHARE_DISPLAY_POLICY;
   await database
     .prepare(
       `INSERT INTO group_shares (id, group_id, target_type, target_id, source_workspace_id,
-          edit_mode, editor_user_ids, note, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          edit_mode, editor_user_ids, display_policy_json, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -524,6 +544,7 @@ export const createGroupShare = async (
       input.sourceWorkspaceId,
       input.editMode,
       JSON.stringify(input.editorUserIds),
+      JSON.stringify(displayPolicy),
       input.note,
       input.createdBy,
       now,
@@ -536,7 +557,12 @@ export const createGroupShare = async (
 export const updateGroupShare = async (
   database: DatabaseAdapter,
   shareId: string,
-  input: { editMode?: "author" | "group"; editorUserIds?: string[]; note?: string | null },
+  input: {
+    editMode?: "author" | "group";
+    editorUserIds?: string[];
+    displayPolicy?: ShareDisplayPolicy;
+    note?: string | null;
+  },
 ) => {
   const updates: string[] = [];
   const binds: unknown[] = [];
@@ -547,6 +573,10 @@ export const updateGroupShare = async (
   if (input.editorUserIds !== undefined) {
     updates.push("editor_user_ids = ?");
     binds.push(JSON.stringify(input.editorUserIds));
+  }
+  if (input.displayPolicy !== undefined) {
+    updates.push("display_policy_json = ?");
+    binds.push(JSON.stringify(input.displayPolicy));
   }
   if (input.note !== undefined) {
     updates.push("note = ?");

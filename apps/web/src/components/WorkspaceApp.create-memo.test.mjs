@@ -26,9 +26,15 @@ describe("desktop create-note wiring", () => {
 
   test("reuses the TipTap view when switching memos and resets the document instead of remounting", () => {
     expect(editorSource).toContain("resetEditorDocument");
-    expect(editorSource).toContain("switching notes now");
-    expect(editorSource).toContain("also reuses it and resets undo history via resetEditorDocument");
+    expect(editorSource).toContain("is reused across memo switches");
+    expect(editorSource).toContain("resets via resetEditorDocument");
     expect(editorSource).not.toContain("an actual memo switch still receives a fresh undo history.");
+  });
+
+  test("remounts the TipTap view only when entering or leaving realtime collaboration", () => {
+    expect(editorSource).toContain("collabBinding,");
+    expect(editorSource).toContain("Entering or");
+    expect(editorSource).toContain("realtime mode is the only remount, because the Collaboration");
   });
 
   test("prefetches memo detail when a list card is pressed", () => {

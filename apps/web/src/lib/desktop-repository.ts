@@ -16,6 +16,7 @@ import {
   stagedResourceIdFromUrl,
 } from "@/lib/staged-resource-repair";
 import type { ResourceListItem, ResourceStorageSummary } from "@edgeever/shared";
+import type { ShareDisplayPolicySummary } from "@edgeever/client";
 import { notifySyncQueueDeferred } from "@/lib/sync-events";
 
 const resolveResourceUrls = <T extends { resources: Array<{ url: string }> }>(result: T): T => {
@@ -257,17 +258,19 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
   },
 
   getMemo: async (memoId, includeDeleted = false) => {
-    let result: { memo: MemoDetail };
+    let result: { memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null };
     try {
       result = await request("memo.get", { memoId, includeDeleted });
     } catch (error) {
       // Notes shared through a group live in their author's workspace and are
       // never mirrored into the local sidecar database. Fetch them from the
-      // API so the shared reader can still open them.
+      // API so the shared reader can still open them. The group share display
+      // policy rides along so realtime collaboration can stay out of filtered
+      // views (it would otherwise leak the raw shared document).
       const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw error; });
-      return { memo: await repairDisplayedMemo(remote.memo) };
+      return { memo: await repairDisplayedMemo(remote.memo), displayPolicy: remote.displayPolicy ?? null };
     }
-    return { memo: await repairDisplayedMemo(result.memo) };
+    return { memo: await repairDisplayedMemo(result.memo), displayPolicy: result.displayPolicy ?? null };
   },
 
   createMemo: (input) => {

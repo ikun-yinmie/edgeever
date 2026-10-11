@@ -163,6 +163,7 @@
     "hono": "latest",
     "i18next": "^26.3.4",
     "katex": "0.16.22",
+    "lib0": "0.2.117",
     "lucide-react": "latest",
     "marked": "^18.0.5",
     "p-limit": "^6.2.0",
@@ -179,7 +180,10 @@
     "vaul": "^1.1.2",
     "webdav": "^5.10.0",
     "workbox-window": "^7.4.1",
+    "y-protocols": "1.0.7",
+    "y-websocket": "3.1.0",
     "yet-another-react-lightbox": "^3.32.0",
+    "yjs": "13.6.32",
     "zod": "latest"
   },
   "devDependencies": {

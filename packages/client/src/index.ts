@@ -250,6 +250,11 @@ export type CollaborationGroupMember = {
   createdAt: string;
 };
 
+export type ShareDisplayPolicySummary = {
+  html: "rendered" | "source" | "hidden";
+  markdown: "rendered" | "source" | "hidden";
+};
+
 export type GroupShareSummary = {
   id: string;
   groupId: string;
@@ -259,6 +264,7 @@ export type GroupShareSummary = {
   title: string;
   editMode: "author" | "group";
   editorUserIds: string[];
+  displayPolicy: ShareDisplayPolicySummary;
   note: string | null;
   createdAt: string;
   authorUsername: string | null;
@@ -269,6 +275,23 @@ export type MemoLinkShareListItem = MemoShare & {
   memoTitle: string | null;
   memoUpdatedAt: string;
   memoDeleted: boolean;
+};
+
+export type CollabPeer = {
+  actorId: string;
+  actorType: "user" | "agent";
+  displayName: string | null;
+  lastSeenAt: string;
+  isSelf: boolean;
+};
+
+export type GroupAccountSummary = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  isDisabled: boolean;
+  createdAt: string;
+  groupCount: number;
 };
 
 export type SharedWithMeGroup = {
@@ -410,6 +433,8 @@ export type MemoResponse = {
   memo: MemoDetail;
   /** Present when the note lives in another workspace and is readable through a group share. */
   access?: SharedMemoAccess;
+  /** Present when a group share display policy filtered this view. */
+  displayPolicy?: ShareDisplayPolicySummary;
 };
 
 export type ListTemplatesResponse = {
@@ -1391,6 +1416,37 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         body: JSON.stringify(payload),
       }),
 
+    listGroupAccounts: () =>
+      request<{ accounts: GroupAccountSummary[] }>("/api/v1/group-accounts"),
+
+    createGroupAccount: (payload: {
+      name: string;
+      displayName?: string | null;
+      password: string;
+      groupIds?: string[];
+    }) =>
+      request<{ username: string }>("/api/v1/group-accounts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    updateGroupAccount: (
+      accountId: string,
+      payload: {
+        displayName?: string | null;
+        password?: string;
+        isDisabled?: boolean;
+        groupIds?: string[];
+      },
+    ) =>
+      request<{ ok: true; groups: { id: string; name: string }[] }>(
+        `/api/v1/group-accounts/${encodeURIComponent(accountId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        },
+      ),
+
     getRegistrationConfig: () =>
       request<RegistrationConfigResponse>("/api/v1/public/registration"),
 
@@ -1485,6 +1541,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         targetId: string;
         editMode: "author" | "group";
         editorUserIds?: string[];
+        displayPolicy?: ShareDisplayPolicySummary;
         note?: string | null;
       },
     ) =>
@@ -1914,6 +1971,35 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         method: "POST",
         body: JSON.stringify({}),
       }),
+
+    collabHeartbeat: (memoId: string) =>
+      request<{ peers: CollabPeer[] }>(`/api/v1/memos/${memoId}/collab-heartbeat`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+
+    collabState: (memoId: string) =>
+      request<{ peers: CollabPeer[] }>(`/api/v1/memos/${memoId}/collab-state`),
+
+    collabRelease: (memoId: string) =>
+      request<{ ok: true }>(`/api/v1/memos/${memoId}/collab-release`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+
+    getShareDisplayPolicy: (memoId: string) =>
+      request<{ displayPolicy: ShareDisplayPolicySummary }>(
+        `/api/v1/memos/${memoId}/share-display-policy`,
+      ),
+
+    updateShareDisplayPolicy: (memoId: string, displayPolicy: ShareDisplayPolicySummary) =>
+      request<{ displayPolicy: ShareDisplayPolicySummary }>(
+        `/api/v1/memos/${memoId}/share-display-policy`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ displayPolicy }),
+        },
+      ),
 
     listMemoRevisions: (memoId: string) => request<ListMemoRevisionsResponse>(`/api/v1/memos/${memoId}/revisions`),
 

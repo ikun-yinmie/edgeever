@@ -51,6 +51,7 @@
         "hono": "latest",
         "i18next": "^26.3.4",
         "katex": "0.16.22",
+        "lib0": "0.2.117",
         "lucide-react": "latest",
         "marked": "^18.0.5",
         "p-limit": "^6.2.0",
@@ -67,7 +68,10 @@
         "vaul": "^1.1.2",
         "webdav": "^5.10.0",
         "workbox-window": "^7.4.1",
+        "y-protocols": "1.0.7",
+        "y-websocket": "3.1.0",
         "yet-another-react-lightbox": "^3.32.0",
+        "yjs": "13.6.32",
         "zod": "latest",
       },
       "devDependencies": {
@@ -4192,6 +4196,8 @@
     "xxhash-wasm": ["xxhash-wasm@1.1.0", "", {}, "sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA=="],
 
     "y-protocols": ["y-protocols@1.0.7", "", { "dependencies": { "lib0": "^0.2.85" }, "peerDependencies": { "yjs": "^13.0.0" } }, "sha512-YSVsLoXxO67J6eE/nV4AtFtT3QEotZf5sK5BHxFBXso7VDUT3Tx07IfA6hsu5Q5OmBdMkQVmFZ9QOA7fikWvnw=="],
+
+    "y-websocket": ["y-websocket@3.1.0", "", { "dependencies": { "lib0": "^0.2.102", "y-protocols": "^1.0.5" }, "peerDependencies": { "yjs": "^13.5.6" } }, "sha512-ZNzwH84Ysxv7zjpFNZHjTJvrBZgcAqMljTe+6zrWciAML9LQ18aVylyPNH9faxCXqEOV8I0JY4TGtrIHFX+Xwg=="],
 
     "y18n": ["y18n@5.0.8", "", {}, "sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA=="],
 

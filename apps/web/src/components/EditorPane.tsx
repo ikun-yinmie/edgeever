@@ -109,7 +109,7 @@ import {
 import { memoShareQueryKey, ShareMemoDialog } from "./dialogs/ShareMemoDialog";
 import { ShareNoteImageDialog } from "./dialogs/ShareNoteImageDialog";
 import { AiAssistantDialog, type AiAssistantAnchor } from "./dialogs/AiAssistantDialog";
-import { api } from "@/lib/api";
+import { api, getOrCreateClientDeviceId } from "@/lib/api";
 import { isDesktopResourceRuntime, stageDesktopResource, toDesktopResourceDownloadUrl, toDesktopResourceUrl } from "@/lib/desktop-resources";
 import { contentReferencesStagedResourceUrl, findMatchingMemoResource, repairMemoStagedResourceUrls, repairTiptapStagedResourceUrls } from "@/lib/staged-resource-repair";
 import { cn, formatDateTime, parseTagsText } from "@/lib/utils";
@@ -232,6 +232,16 @@ import { useEditorDocumentActions } from "./editor/useEditorDocumentActions";
 import { useEditorSaveStatus } from "./editor/useEditorSaveStatus";
 import { getEditorSaveChrome } from "./editor/editor-save-chrome";
 import { classifyEditorSaveFailure, shouldLeaveEditorAfterSaveError } from "./editor/editor-save-failure";
+import { useCollabPresence, type CollabConflictInfo } from "./editor/collab-presence";
+import {
+  createCollabCursorExtension,
+  shouldEnableCollabRealtime,
+  useCollabRealtimeSession,
+  COLLAB_DOCUMENT_FIELD,
+} from "./editor/collab-realtime";
+import { Collaboration } from "@tiptap/extension-collaboration";
+import type { ShareDisplayPolicySummary } from "@edgeever/client";
+import { CollabConflictBar, CollabPresenceBadge } from "./editor/CollabConflictBar";
 import { useEditorSaveConflictActions } from "./editor/useEditorSaveConflictActions";
 import { useEditorNoteSearchController } from "./editor/useEditorNoteSearchController";
 import { EditorNoteLinkPicker } from "./editor/EditorNoteLinkPicker";
@@ -293,6 +303,12 @@ type EditorPaneProps = {
   repository: EdgeEverRepository;
   /** Present when the open note lives in another workspace via a group share. */
   sharedAccess?: { canEdit: boolean; groupId: string | null; groupName: string | null } | null;
+  /** Group share display policy for this view, when the server filtered it. */
+  sharedDisplayPolicy?: ShareDisplayPolicySummary | null;
+  /** Display name shown on our caret and in peers' lists during realtime editing. */
+  collabDisplayName?: string;
+  /** True when the API runtime serves collaboration sockets (self-hosted). */
+  realtimeCapable?: boolean;
   /** Save a copy of the shared note into the viewer's own workspace. */
   onSaveSharedCopy?: (memo: MemoDetail) => Promise<MemoDetail>;
   desktopFocusMode: boolean;
@@ -415,6 +431,9 @@ const RichEditorPane = ({
   onOpenExecutionCenter,
   onRequestMobileNativeEdit,
   sharedAccess,
+  sharedDisplayPolicy = null,
+  collabDisplayName = "",
+  realtimeCapable = false,
   onSaveSharedCopy,
 }: RichEditorPaneProps) => {
   const { t, i18n } = useTranslation();
@@ -1123,6 +1142,40 @@ const RichEditorPane = ({
 
   const pluginEmbedExtension = useMemo(() => createPluginEmbedExtension(pluginHost), [pluginHost]);
   const inlineFieldExtension = useMemo(() => createInlineFieldExtension(i18n.language), [i18n.language]);
+  // --- Yuque-style realtime collaboration binding (must precede useEditor) ---
+  // Eligibility only needs props and viewport state, so the Yjs document
+  // exists on the very first render and the Collaboration extension can bind
+  // to it when the editor instance is created below.
+  const collabRealtimeEligible = shouldEnableCollabRealtime({
+    isGroupShared: isGroupSharedNote,
+    canEdit: Boolean(sharedAccess?.canEdit),
+    isDeleted: Boolean(memo?.isDeleted),
+    displayPolicy: sharedDisplayPolicy,
+    runtimeSupportsRealtime: Boolean(realtimeCapable) && !isMobileViewport,
+  });
+  const collabColorSeed = useMemo(
+    () => `${getOrCreateClientDeviceId()}:${collabDisplayName}`,
+    [collabDisplayName],
+  );
+  const {
+    binding: collabBinding,
+    status: collabSessionStatus,
+    peers: collabRealtimePeers,
+  } = useCollabRealtimeSession({
+    memoId: collabRealtimeEligible ? memo?.id ?? null : null,
+    enabled: collabRealtimeEligible,
+    displayName: collabDisplayName || t("collab.someone"),
+    colorSeed: collabColorSeed,
+  });
+  // Before the initial sync lands the bound editor must stay non-editable and
+  // skip hydration. When the socket proves unreachable the session reports
+  // unavailable and every gate below falls back to the presence-only mode.
+  const collabRealtimeBound = Boolean(collabBinding) && collabSessionStatus !== "unavailable";
+  const collabRealtimeLive = collabRealtimeBound && collabSessionStatus === "live";
+  const collabRealtimeBoundRef = useRef(collabRealtimeBound);
+  collabRealtimeBoundRef.current = collabRealtimeBound;
+  const collabRealtimeLiveRef = useRef(collabRealtimeLive);
+  collabRealtimeLiveRef.current = collabRealtimeLive;
   // Editor formatting shortcuts read the latest settings through a ref (custom → instance default → builtin).
   const resolveEditorShortcutSettingsRef = useRef<() => ReturnType<typeof resolveEditorShortcutSettings>>(resolveEditorShortcutSettings);
   resolveEditorShortcutSettingsRef.current = resolveEditorShortcutSettings;
@@ -1138,6 +1191,9 @@ const RichEditorPane = ({
           codeBlock: false,
           link: false,
           dropcursor: { color: "#16A06E", width: 2 },
+          // The Yjs undo manager owns history while realtime is bound; the
+          // stock history extension would fight it over Mod-z.
+          ...(collabBinding ? { history: false } : {}),
         },
         image: false,
         gallery: EditableImageGallery,
@@ -1166,10 +1222,24 @@ const RichEditorPane = ({
       slashCommandExtensionRef.current,
       noteLinkSuggestionExtensionRef.current,
       editorShortcutExtension,
+      // Realtime binding: the Yjs document owns the body while these two are
+      // attached, so remote keystrokes and carets render through them.
+      ...(collabBinding
+        ? [
+            Collaboration.configure({ document: collabBinding.doc, field: COLLAB_DOCUMENT_FIELD }),
+            createCollabCursorExtension(collabBinding.awareness),
+          ]
+        : []),
     ],
-    content: memo
-      ? resolveMemoContentDoc(memo.contentJson, memo.contentMarkdown)
-      : { type: "doc", content: [{ type: "paragraph" }] },
+    // A bound editor must start from the canonical empty document. The
+    // sync plugin pushes initial content into Yjs whenever it differs from
+    // an empty doc, so any other initial content here would seed a duplicate
+    // of the document the server already seeded.
+    content: collabBinding
+      ? { type: "doc", content: [{ type: "paragraph" }] }
+      : memo
+        ? resolveMemoContentDoc(memo.contentJson, memo.contentMarkdown)
+        : { type: "doc", content: [{ type: "paragraph" }] },
     editable: Boolean(memo && !effectiveReadOnly && editorIsHydratedForCurrentMemo),
     editorProps: {
       attributes: {
@@ -1306,9 +1376,11 @@ const RichEditorPane = ({
       },
     },
   }, [
-    // Keep one TipTap view for the pane lifetime. A newly created memo already
-    // reuses this instance across local→durable id remaps; switching notes now
-    // also reuses it and resets undo history via resetEditorDocument.
+    // The TipTap view is reused across memo switches (content is replaced in
+    // place and undo history resets via resetEditorDocument). Entering or
+    // leaving realtime mode is the only remount, because the Collaboration
+    // binding is fixed at creation time and cannot be swapped afterwards.
+    collabBinding,
   ]);
 
   const {
@@ -1328,7 +1400,7 @@ const RichEditorPane = ({
     getMemoId: () => memoRef.current?.id,
     hydratingRef,
   });
-  const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode;
+  const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode && !collabRealtimeBound;
 
   useEffect(() => {
     const syncPreference = (event?: Event) => {
@@ -2315,6 +2387,27 @@ const RichEditorPane = ({
 
     memoRef.current = memo;
 
+    // Realtime mode: the Yjs document owns the body, so hydration never
+    // touches editor content and never restores drafts — doing either would
+    // clobber concurrent remote edits with a stale snapshot. Title and tags
+    // still hydrate, and remote title/tags are adopted on a clean slate so a
+    // peer's rename converges without fighting local keystrokes.
+    if (collabRealtimeBoundRef.current && !memo.isDeleted) {
+      if (cancelled) return;
+      editingMemoIdRef.current = memo.id;
+      appliedEditorSourceKeyRef.current = `collab:${memo.id}:${memo.revision}`;
+      hydratedMemoIdRef.current = memo.id;
+      setHydratedEditorMemoId(memo.id);
+      editSessionRef.current = null;
+      if (!hasUnsavedChangesRef.current) {
+        setTitle(memo.title ?? "");
+        setTagsText((memo.tags ?? []).join(", "));
+        setSaveState("idle");
+        setSaveConflictInfo(null);
+      }
+      return;
+    }
+
     void (async () => {
       let [indexedDbDraft, queuedUpdate] = memo.isDeleted
         ? [null, null]
@@ -2542,9 +2635,12 @@ const RichEditorPane = ({
           hydratedEditorMemoId,
           memo.id,
         )
+        // A bound editor stays non-editable until the initial sync lands, so
+        // the note never shows an empty document that accepts keystrokes.
+        && (!collabRealtimeBound || collabSessionStatus === "live")
       ));
     }
-  }, [editor, effectiveReadOnly, hydratedEditorMemoId, memo]);
+  }, [editor, effectiveReadOnly, hydratedEditorMemoId, memo, collabRealtimeBound, collabSessionStatus]);
 
   useEffect(() => {
     if (!isEditorReady(editor) || !memo) {
@@ -2553,6 +2649,12 @@ const RichEditorPane = ({
 
     const persistDraft = () => {
       if (hydratingRef.current || memoRef.current?.isDeleted) {
+        return;
+      }
+      // Realtime mode persists the body through the CRDT room; a local draft
+      // here would only arm a full-document save that fights the merge.
+      // Title/tags inputs still mark dirty directly for their metadata save.
+      if (collabRealtimeBoundRef.current) {
         return;
       }
       persistCurrentDraft();
@@ -2739,9 +2841,9 @@ const RichEditorPane = ({
     mutationFn: async () => {
       const currentMemo = memoRef.current;
       const contentJson = getCurrentContentJson();
-      const editSession = editSessionRef.current;
+      const realtime = collabRealtimeBoundRef.current;
 
-      if (!currentMemo || !contentJson || !editSession || hydratedMemoIdRef.current !== currentMemo.id) {
+      if (!currentMemo || !contentJson || hydratedMemoIdRef.current !== currentMemo.id) {
         throw new Error("No memo selected");
       }
 
@@ -2752,6 +2854,23 @@ const RichEditorPane = ({
       const snapshot = currentSnapshot();
       if (!snapshot) {
         throw new Error("Editor is not ready");
+      }
+
+      // Realtime mode: the CRDT room owns the body, so this save carries
+      // metadata only (title/tags), straight through the API. No edit
+      // session and no revision binding — the merged body converges through
+      // the socket instead of the optimistic-lock path.
+      if (realtime) {
+        const { memo: savedMemo } = await api.updateMemo(currentMemo.id, {
+          title,
+          tags: parseTagsText(tagsText),
+        });
+        return { memo: savedMemo, snapshot, queued: false };
+      }
+
+      const editSession = editSessionRef.current;
+      if (!editSession) {
+        throw new Error("No memo selected");
       }
 
       const payload: MemoUpdateSyncPayload = {
@@ -2806,6 +2925,27 @@ const RichEditorPane = ({
       }
 
       await onSaved(savedMemo);
+
+      // Realtime mode: content converges through the socket, so the snapshot
+      // comparison below (which includes the live body) would never settle.
+      // A metadata save only clears metadata dirtiness — and only when no
+      // newer title/tags edit landed mid-save.
+      if (collabRealtimeBoundRef.current) {
+        const savedSnapshot = JSON.parse(snapshot) as { title?: string; tagsText?: string };
+        if (title === (savedSnapshot.title ?? "") && tagsText === (savedSnapshot.tagsText ?? "")) {
+          setHasUnsavedChanges(false);
+        } else {
+          persistCurrentDraft();
+          setHasUnsavedChanges(true);
+        }
+        void localDb.drafts.delete(savedMemo.id).catch(() => undefined);
+        setSaveConflictInfo(null);
+        setSaveState(queued ? "queued" : "saved");
+        if (!queued) {
+          window.setTimeout(() => setSaveState("idle"), 1400);
+        }
+        return;
+      }
 
       if (currentSnapshot() === snapshot) {
         setMobilePlainText(docToMarkdown(savedMemo.contentJson));
@@ -2963,12 +3103,14 @@ const RichEditorPane = ({
     }
 
     handledEditorModeToggleTokenRef.current = editorModeToggleToken;
-    if (editorShortcutBlocked || useMobilePlainTextEditor) {
+    // Markdown source mode rewrites the whole document through setContent,
+    // which would clobber concurrent remote edits while realtime is bound.
+    if (editorShortcutBlocked || useMobilePlainTextEditor || collabRealtimeBound) {
       return;
     }
 
     handleMarkdownModeChange();
-  }, [editorModeToggleToken, editorShortcutBlocked, handleMarkdownModeChange, useMobilePlainTextEditor]);
+  }, [editorModeToggleToken, collabRealtimeBound, editorShortcutBlocked, handleMarkdownModeChange, useMobilePlainTextEditor]);
 
   useEffect(() => {
     if (handledOutlineToggleTokenRef.current === outlineToggleToken) {
@@ -3329,6 +3471,60 @@ const RichEditorPane = ({
     title,
   });
 
+  // --- Yuque-style collaboration presence (shared notes only) ---
+  // The heartbeat keeps running until the realtime session goes live, so the
+  // peer badge never blinks during connect and reconnect windows.
+  const collabEnabled = isGroupSharedNote && Boolean(sharedAccess?.canEdit) && !memo?.isDeleted;
+  const { peers: collabPeers } = useCollabPresence({
+    memoId: collabEnabled && !collabRealtimeLive ? memo?.id ?? null : null,
+    enabled: collabEnabled && !collabRealtimeLive,
+  });
+  const collabPeerNames = collabRealtimeLive && collabRealtimePeers.length > 0
+    ? collabRealtimePeers.map((peer) => peer.name)
+    : collabPeers
+      .filter((peer) => !peer.isSelf)
+      .map((peer) => peer.displayName || peer.actorId);
+  const collabConflictPeerNames = collabPeerNames.length > 0 ? collabPeerNames : [t("collab.someone")];
+  const [collabConflict, setCollabConflict] = useState<CollabConflictInfo | null>(null);
+  const [collabCopiedMine, setCollabCopiedMine] = useState(false);
+
+  // A conscious overwrite after a collaboration conflict: refresh the local
+  // edit session against the remote revision, then save the local draft again.
+  const forceOverwriteAfterConflict = useCallback(async () => {
+    const currentMemo = memoRef.current;
+    if (!currentMemo) return;
+    try {
+      const remote = await api.getMemo(currentMemo.id);
+      const fresh = remote.memo;
+      memoRef.current = fresh;
+      editSessionRef.current = null;
+      const session = await api.createMemoEditSession(fresh.id);
+      editSessionRef.current = session.editSession;
+      setSaveConflictInfo(null);
+      setSaveState("idle");
+      markDirty();
+      setHasUnsavedChanges(true);
+      // Re-arm the autosave path against the fresh revision.
+      window.setTimeout(() => saveMutation.mutate(), 0);
+    } catch {
+      setSaveState("error");
+    }
+  }, [markDirty, saveMutation, setHasUnsavedChanges, setSaveConflictInfo, setSaveState]);
+
+  // Surface collaborative conflicts through the Yuque-style bar instead of
+  // the generic conflict UI. Personal notes keep the existing behaviour.
+  useEffect(() => {
+    if (saveState === "conflict" && isGroupSharedNote && saveConflictInfo) {
+      setCollabConflict({
+        currentRevision: null,
+        occurredAt: Date.now(),
+      });
+    }
+    if (saveState !== "conflict") {
+      // Keep the bar when the user queued a follow-up; clear on recovery.
+    }
+  }, [isGroupSharedNote, saveConflictInfo, saveState]);
+
   if (isSelectionMode) {
     return (
       <div className="flex h-full min-w-0 flex-col bg-card">
@@ -3362,11 +3558,24 @@ const RichEditorPane = ({
     );
   }
 
-  const { saveLabel, saveStateClassName } = getEditorSaveChrome({
+  const { saveLabel: baseSaveLabel, saveStateClassName: baseSaveStateClassName } = getEditorSaveChrome({
     hasUnsavedChanges,
     saveState,
     t,
   });
+
+  // Realtime mode reports socket sync instead of save state: when the pill
+  // says synced, the body has already converged through the CRDT room.
+  // (collabRealtimeBound already excludes the unavailable status.)
+  const collabSyncing = collabRealtimeBound && collabSessionStatus !== "live";
+  const saveLabel = collabRealtimeBound
+    ? collabSessionStatus === "live"
+      ? t("collab.synced")
+      : t("collab.syncing")
+    : baseSaveLabel;
+  const saveStateClassName = collabRealtimeBound
+    ? "bg-emerald-50 text-emerald-700"
+    : baseSaveStateClassName;
 
   const imageUploadLabel =
     imageUploadState === "error"
@@ -3666,7 +3875,7 @@ const RichEditorPane = ({
               aria-label={saveState === "conflict" && saveConflictReason ? `${saveLabel}. ${saveConflictReason}` : undefined}
               {...statusSettleMotion}
             >
-              {saveState === "saving" ? (
+              {saveState === "saving" || collabSyncing ? (
                 <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
               ) : saveState === "error" || saveState === "conflict" || saveState === "queued" ? (
                 <CircleAlert className="h-3 w-3" aria-hidden="true" />
@@ -3931,6 +4140,25 @@ const RichEditorPane = ({
           </div>
         </div>
 
+        {collabConflict && memo ? (
+          <CollabConflictBar
+            peerNames={collabConflictPeerNames}
+            onCopyMine={() => {
+              void navigator.clipboard?.writeText(getLocalDraftMarkdown()).then(() => {
+                setCollabCopiedMine(true);
+                window.setTimeout(() => setCollabCopiedMine(false), 2000);
+              }).catch(() => undefined);
+            }}
+            onLoadLatest={async () => {
+              setCollabConflict(null);
+              await handleAdoptCloudAndReload();
+            }}
+            onOverwrite={async () => {
+              setCollabConflict(null);
+              await forceOverwriteAfterConflict();
+            }}
+          />
+        ) : null}
         {isGroupSharedNote ? (
           <div
             className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900"
@@ -3942,6 +4170,7 @@ const RichEditorPane = ({
                 ? t("editor.groupSharedNote", { group: sharedAccess.groupName })
                 : t("editor.groupSharedNoteNoGroup")}
             </span>
+            <CollabPresenceBadge peerNames={collabPeerNames} />
             <Button
               className="h-7 shrink-0 px-2 text-xs"
               disabled={saveCopyState === "saving" || saveCopyState === "saved"}
@@ -4041,7 +4270,7 @@ const RichEditorPane = ({
             editor={editor}
             readOnly={effectiveReadOnly}
             markdownMode={useMarkdownSourceEditor}
-            onMarkdownModeChange={handleMarkdownModeChange}
+            onMarkdownModeChange={collabRealtimeBound ? undefined : handleMarkdownModeChange}
             markdownModeShortcut={shortcutSettings.toggleEditorMode}
             onPickAttachment={() => fileInputRef.current?.click()}
             onPickExternalLink={openExternalLinkDialog}
