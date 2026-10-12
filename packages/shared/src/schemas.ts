@@ -192,6 +192,31 @@ export const UserCreateSchema = z.object({
   password: z.string().min(8).max(512),
 });
 
+/** How a shared HTML/Markdown block reaches the audience of a share. */
+export const ShareDisplayModeSchema = z.enum(["rendered", "source", "hidden"]);
+
+export const ShareDisplayPolicySchema = z.object({
+  html: ShareDisplayModeSchema.default("rendered"),
+  markdown: ShareDisplayModeSchema.default("rendered"),
+});
+
+/** Shared (public) group account: one credential, many simultaneous sign-ins. */
+export const GroupAccountCreateSchema = z.object({
+  name: z.string().trim().min(1).max(66),
+  displayName: z.string().trim().max(80).nullable().optional(),
+  password: z.string().min(8).max(512),
+  groupIds: z.array(z.string().trim().min(1).max(80)).max(100).default([]),
+});
+
+export const GroupAccountUpdateSchema = z
+  .object({
+    displayName: z.string().trim().max(80).nullable().optional(),
+    password: z.string().min(8).max(512).optional(),
+    isDisabled: z.boolean().optional(),
+    groupIds: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
+  })
+  .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
 export const RegisterSchema = z
   .object({
     username: z
@@ -331,6 +356,7 @@ export const GroupShareCreateSchema = z.object({
   editMode: z.enum(["author", "group"]).default("author"),
   editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).default([]),
   note: z.string().trim().max(200).nullable().optional(),
+  displayPolicy: ShareDisplayPolicySchema.optional(),
 });
 
 export const GroupShareUpdateSchema = z
@@ -338,8 +364,13 @@ export const GroupShareUpdateSchema = z
     editMode: z.enum(["author", "group"]).optional(),
     editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).optional(),
     note: z.string().trim().max(200).nullable().optional(),
+    displayPolicy: ShareDisplayPolicySchema.optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
+
+export const MemoShareDisplayPolicyUpdateSchema = z.object({
+  displayPolicy: ShareDisplayPolicySchema,
+});
 
 export const UserBulkUpdateSchema = z
   .object({
@@ -561,6 +592,8 @@ export type LoginInput = z.infer<typeof LoginSchema>;
 export type LoginDeviceSessionUpdateInput = z.infer<typeof LoginDeviceSessionUpdateSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 export type UserCreateInput = z.infer<typeof UserCreateSchema>;
+export type GroupAccountCreateInput = z.infer<typeof GroupAccountCreateSchema>;
+export type GroupAccountUpdateInput = z.infer<typeof GroupAccountUpdateSchema>;
 export type UserUpdateInput = z.infer<typeof UserUpdateSchema>;
 export type ApiTokenCreateInput = z.infer<typeof ApiTokenCreateSchema>;
 export type TagRenameInput = z.infer<typeof TagRenameSchema>;
@@ -588,3 +621,5 @@ export type GroupUpdateInput = z.infer<typeof GroupUpdateSchema>;
 export type GroupMembersAddInput = z.infer<typeof GroupMembersAddSchema>;
 export type GroupShareCreateInput = z.infer<typeof GroupShareCreateSchema>;
 export type GroupShareUpdateInput = z.infer<typeof GroupShareUpdateSchema>;
+export type ShareDisplayMode = z.infer<typeof ShareDisplayModeSchema>;
+export type ShareDisplayPolicy = z.infer<typeof ShareDisplayPolicySchema>;

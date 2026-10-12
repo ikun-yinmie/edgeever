@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink, Link2, LoaderCircle, RefreshCw, Share2, Trash2, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ShareDisplayPolicySummary } from "@edgeever/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
-import { ShareToGroupForm } from "./ShareToGroupDialog";
+import { DEFAULT_SHARE_DISPLAY_POLICY, ShareDisplayPolicyPicker, ShareToGroupForm } from "./ShareToGroupDialog";
 
 const getPublicShareUrl = (token: string) => {
   const baseUrl = getConfiguredDesktopApiBaseUrl() || window.location.origin;
@@ -97,6 +98,15 @@ export const ShareMemoDialog = ({
       setRevealedPassword("");
       queryClient.setQueryData(queryKey, { share: null });
     },
+  });
+  const displayPolicyQuery = useQuery({
+    queryKey: ["memo-share-display-policy", memoId],
+    queryFn: () => api.getShareDisplayPolicy(memoId),
+    enabled: open && mode === "link",
+  });
+  const displayPolicyMutation = useMutation({
+    mutationFn: (displayPolicy: ShareDisplayPolicySummary) => api.updateShareDisplayPolicy(memoId, displayPolicy),
+    onSuccess: (data) => queryClient.setQueryData(["memo-share-display-policy", memoId], data),
   });
   useEffect(() => {
     createMutation.reset();
@@ -277,6 +287,14 @@ export const ShareMemoDialog = ({
                     ) : null}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 px-3 py-3">
+                <ShareDisplayPolicyPicker
+                  disabled={displayPolicyMutation.isPending}
+                  value={displayPolicyQuery.data?.displayPolicy ?? DEFAULT_SHARE_DISPLAY_POLICY}
+                  onChange={(next) => displayPolicyMutation.mutate(next)}
+                />
               </div>
 
               <p className="text-xs leading-5 text-slate-500">{t("sharing.liveContentHint")}</p>

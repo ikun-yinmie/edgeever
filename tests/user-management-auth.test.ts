@@ -73,6 +73,7 @@ describe("member management authentication", () => {
           isDeleted: false,
           lastLoginAt: owner.last_login_at,
           createdAt: owner.created_at,
+          accountType: "user",
         }],
       },
     });

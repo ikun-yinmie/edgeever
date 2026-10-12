@@ -16,6 +16,8 @@ export type Bindings = {
   EDGE_EVER_AUTH_PASSWORD_HASH?: string;
   EDGE_EVER_AUTH_PASSWORD_FALLBACK?: string;
   EDGE_EVER_SESSION_TTL_DAYS?: string;
+  /** Session lifetime for shared group accounts (multi-device sign-in). */
+  EDGE_EVER_GROUP_SESSION_TTL_DAYS?: string;
   EDGE_EVER_AUTH_LOGIN_WINDOW_SECONDS?: string;
   EDGE_EVER_AUTH_LOGIN_USERNAME_MAX_ATTEMPTS?: string;
   EDGE_EVER_AUTH_LOGIN_USERNAME_COOLDOWN_SECONDS?: string;
@@ -42,6 +44,8 @@ export type AuthContext = {
   scopes: string[];
   workspaceId: string;
   role: "owner" | "member";
+  /** "group" marks a shared account that may hold many concurrent sessions. */
+  accountType: "user" | "group";
   sessionId?: string;
   tokenId?: string;
 };

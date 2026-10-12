@@ -22,6 +22,13 @@ import {
   SHARE_ACCESS_MAX_AGE_SECONDS,
 } from "./share-access";
 import { generateSharePassword } from "./share-password";
+import { MemoShareDisplayPolicyUpdateSchema } from "@edgeever/shared";
+import {
+  applyShareDisplayPolicyToDoc,
+  isDefaultShareDisplayPolicy,
+  parseShareDisplayPolicy,
+  type ShareDisplayPolicy,
+} from "./share-display-policy";
 
 const SHARE_TOKEN_BYTES = 32;
 const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -41,6 +48,7 @@ type PublicMemoShareRow = {
   tags_json: string;
   updated_at: string;
   password_hash: string | null;
+  display_policy_json: string | null;
 };
 type ShareGateRow = {
   workspace_id: string;
@@ -141,7 +149,8 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
     if (!token) return shareMissing(c, "Shared note not found");
 
     const row = await c.env.storage.db.prepare(
-      `SELECT ms.workspace_id, m.title, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash
+      `SELECT ms.workspace_id, m.title, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
+              ms.display_policy_json
        FROM memo_shares ms
        INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
        INNER JOIN memo_contents mc ON mc.memo_id = m.id
@@ -153,7 +162,13 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
       return sharePasswordRequired(c);
     }
 
-    const contentJson = JSON.parse(row.content_json) as TiptapDoc;
+    // The display policy is the authoritative front for what the audience may
+    // see; HTML/Markdown blocks are rewritten before anything is serialized.
+    const displayPolicy = parseShareDisplayPolicy(row.display_policy_json);
+    const rawContentJson = JSON.parse(row.content_json) as TiptapDoc;
+    const contentJson = isDefaultShareDisplayPolicy(displayPolicy)
+      ? rawContentJson
+      : (applyShareDisplayPolicyToDoc(rawContentJson, displayPolicy) as TiptapDoc);
     const referencedMemoIds = collectMemoLinkIds(resolveMemoContentDoc(contentJson, row.content_markdown));
     const memoShareTokens: Record<string, string> = {};
     for (let offset = 0; offset < referencedMemoIds.length; offset += 80) {
@@ -355,6 +370,39 @@ export const registerMemoShareRoutes = (app: Hono<AppEnv>) => {
       await audit(c.env.storage.db, actor.actorType, actor.actorId, "memo.share_create", "memo", memoId, {});
     }
     return c.json({ share: mapMemoShare(created) }, isNewShare ? 201 : 200);
+  });
+
+  app.patch("/api/v1/memos/:id/share-display-policy", zValidator("json", MemoShareDisplayPolicyUpdateSchema), async (c) => {
+    const denied = requireUser(c);
+    if (denied) return denied;
+
+    const memoId = c.req.param("id");
+    const workspaceId = getWorkspaceId(c);
+    const existing = await c.env.storage.db.prepare(
+      `SELECT memo_id, token FROM memo_shares WHERE memo_id = ? AND workspace_id = ?`,
+    ).bind(memoId, workspaceId).first<{ memo_id: string; token: string }>();
+    if (!existing) return notFound(c, "Active share not found");
+
+    const policy = c.req.valid("json").displayPolicy;
+    await c.env.storage.db.prepare(
+      `UPDATE memo_shares SET display_policy_json = ?, updated_at = ? WHERE memo_id = ? AND workspace_id = ?`,
+    ).bind(JSON.stringify(policy), isoNow(), memoId, workspaceId).run();
+
+    const actor = getAuditActor(c);
+    await audit(c.env.storage.db, actor.actorType, actor.actorId, "memo.share_display_policy", "memo", memoId, { policy });
+    return c.json({ displayPolicy: policy });
+  });
+
+  app.get("/api/v1/memos/:id/share-display-policy", async (c) => {
+    const denied = requireUser(c);
+    if (denied) return denied;
+
+    const row = await c.env.storage.db.prepare(
+      `SELECT ms.display_policy_json FROM memo_shares ms WHERE ms.memo_id = ? AND ms.workspace_id = ?`,
+    ).bind(c.req.param("id"), getWorkspaceId(c)).first<{ display_policy_json: string | null }>();
+    return c.json({
+      displayPolicy: parseShareDisplayPolicy(row?.display_policy_json),
+    });
   });
 
   app.patch("/api/v1/memos/:id/share", zValidator("json", MemoShareUpdateSchema), async (c) => {

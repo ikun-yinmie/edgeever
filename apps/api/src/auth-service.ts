@@ -10,6 +10,7 @@ import {
   resolveInstanceAuthMode,
   type InstanceAuthMode,
 } from "./auth-state";
+import { isGroupAccount } from "./group-account-service";
 import type { ApiTokenRow } from "./api-token-routes";
 import type { AppContext, AuthContext, Bindings } from "./api-context";
 import { AppError } from "./app-error";
@@ -24,6 +25,7 @@ import { ensureUserWorkspace } from "./workspace-provisioning";
 type SessionRow = {
   id: string;
   user_id: string;
+  account_type: "user" | "group" | null;
   username: string;
   display_name: string | null;
   expires_at: string;
@@ -33,6 +35,7 @@ type SessionRow = {
 };
 
 const SESSION_COOKIE = "edgeever_session";
+const DEFAULT_GROUP_SESSION_TTL_DAYS = 30;
 const DEFAULT_SESSION_TTL_DAYS = 400;
 const MAX_SESSION_TTL_DAYS = 400;
 const SESSION_LAST_SEEN_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
@@ -176,7 +179,7 @@ export const verifyLogin = async (env: Bindings, username: string, password: str
 const getUserByUsername = async (db: DatabaseAdapter, username: string) =>
   db
     .prepare(
-      `SELECT id, username, password_hash, display_name, is_disabled
+      `SELECT id, username, password_hash, display_name, is_disabled, account_type
        FROM users
        WHERE username = ? AND is_disabled = 0`
     )
@@ -186,7 +189,7 @@ const getUserByUsername = async (db: DatabaseAdapter, username: string) =>
 const getUserByEmail = async (db: DatabaseAdapter, email: string) =>
   db
     .prepare(
-      `SELECT id, username, password_hash, display_name, is_disabled
+      `SELECT id, username, password_hash, display_name, is_disabled, account_type
        FROM users
        WHERE email = ? AND is_disabled = 0`
     )
@@ -196,7 +199,7 @@ const getUserByEmail = async (db: DatabaseAdapter, email: string) =>
 export const getInstanceUser = (db: DatabaseAdapter, userId: string) =>
   db.prepare(
     `SELECT u.id, u.username, u.password_hash, u.display_name, u.is_disabled,
-            u.last_login_at, u.created_at, wm.role
+            u.last_login_at, u.created_at, u.account_type, wm.role
      FROM users u
      INNER JOIN workspace_members wm ON wm.user_id = u.id
      WHERE u.id = ?`
@@ -206,7 +209,8 @@ export const createSession = async (c: AppContext, user: UserRow, requestedDevic
   const token = randomToken(SESSION_TOKEN_BYTES);
   const id = createId("sess");
   const now = isoNow();
-  const maxAge = getSessionMaxAge(c.env);
+  const isSharedAccount = isGroupAccount((user as { account_type?: string | null }).account_type);
+  const maxAge = isSharedAccount ? getGroupSessionMaxAge(c.env) : getSessionMaxAge(c.env);
   const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString();
   const userAgent = c.req.header("User-Agent") ?? null;
   const deviceId = resolveSessionDeviceId(requestedDeviceId, userAgent, id);
@@ -216,17 +220,27 @@ export const createSession = async (c: AppContext, user: UserRow, requestedDevic
   const ipCountry = c.req.header("CF-IPCountry") ?? cf?.country ?? null;
   const ipRegion = cf?.region ?? null;
 
-  await c.env.storage.db.batch([
-    c.env.storage.db.prepare(
-      `UPDATE sessions SET revoked_at = ?
-       WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL`
-    ).bind(now, user.id, deviceId),
+  const statements = [
+    // A personal account keeps one live session per device: a fresh sign-in
+    // replaces the previous one. Shared group accounts never revoke — every
+    // sign-in, anywhere, is meant to coexist so several people can collaborate
+    // through the same credential at the same time.
+    ...(isSharedAccount
+      ? []
+      : [
+          c.env.storage.db.prepare(
+            `UPDATE sessions SET revoked_at = ?
+             WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL`
+          ).bind(now, user.id, deviceId),
+        ]),
     c.env.storage.db.prepare(
       `INSERT INTO sessions (
         id, user_id, token_hash, device_id, user_agent, ip_hash, device_label, ip_address, ip_country, ip_region, expires_at, created_at, last_seen_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, user.id, await sha256(token), deviceId, userAgent, ipHash, null, ip ?? null, ipCountry, ipRegion, expiresAt, now, now),
-  ]);
+  ];
+
+  await c.env.storage.db.batch(statements);
 
   return { id, token, maxAge };
 };
@@ -308,6 +322,7 @@ const authenticateBearerToken = async (c: AppContext, touch: boolean): Promise<A
     scopes: parseJsonArray(row.scopes_json),
     workspaceId: row.workspace_id,
     role: "member",
+    accountType: "user",
     tokenId: row.id,
   };
 };
@@ -316,7 +331,7 @@ const authenticateSessionToken = async (c: AppContext, token: string, touch: boo
   const now = isoNow();
   const row = await c.env.storage.db.prepare(
     `SELECT s.id, s.user_id, u.username, u.display_name, s.expires_at, s.last_seen_at,
-            wm.workspace_id, wm.role
+            u.account_type, wm.workspace_id, wm.role
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
      LEFT JOIN workspace_members wm ON wm.user_id = s.user_id
@@ -358,6 +373,7 @@ const authenticateSessionToken = async (c: AppContext, token: string, touch: boo
     scopes: [],
     workspaceId: workspace.workspaceId,
     role: workspace.role,
+    accountType: row.account_type === "group" ? "group" : "user",
     sessionId: row.id,
   };
 };
@@ -385,5 +401,15 @@ export const getBearerToken = (c: AppContext) => {
 
 const getSessionMaxAge = (env: Bindings) => {
   const days = clampNumber(Number(env.EDGE_EVER_SESSION_TTL_DAYS ?? DEFAULT_SESSION_TTL_DAYS), 1, MAX_SESSION_TTL_DAYS);
+  return days * 24 * 60 * 60;
+};
+
+/** Shared group accounts sign in from many places at once, so they use their own TTL. */
+const getGroupSessionMaxAge = (env: Bindings) => {
+  const days = clampNumber(
+    Number(env.EDGE_EVER_GROUP_SESSION_TTL_DAYS ?? DEFAULT_GROUP_SESSION_TTL_DAYS),
+    1,
+    MAX_SESSION_TTL_DAYS,
+  );
   return days * 24 * 60 * 60;
 };

@@ -42,6 +42,7 @@ export type UserRow = {
   password_hash: string;
   display_name: string | null;
   is_disabled: number;
+  account_type: "user" | "group" | null;
 };
 
 type LoginSession = {
@@ -303,6 +304,7 @@ export const registerAuthRoutes = (
         username: user.username,
         displayName: user.display_name,
         role: workspace.role,
+        accountType: user.account_type === "group" ? "group" : "user",
       },
     });
   });
@@ -319,7 +321,7 @@ export const registerAuthRoutes = (
 
       const input = context.req.valid("json");
       const user = await context.env.storage.db.prepare(
-        `SELECT id, username, password_hash, display_name, is_disabled
+        `SELECT id, username, password_hash, display_name, is_disabled, account_type
          FROM users
          WHERE id = ? AND is_disabled = 0`,
       ).bind(auth.actorId).first<UserRow>();

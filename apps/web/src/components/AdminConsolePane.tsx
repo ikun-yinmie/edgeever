@@ -3,6 +3,7 @@ import { ArrowLeft, Database, Keyboard, KeyRound, Mail, MessageSquareText, Shiel
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
+import { GroupAccountsCard } from "@/components/settings/GroupAccountsCard";
 import { EditorShortcutsAdminCard } from "@/components/settings/EditorShortcutsAdminCard";
 import { AppShortcutsAdminCard } from "@/components/settings/AppShortcutsAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
@@ -39,7 +40,12 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const renderTab = () => {
     switch (activeTab) {
       case "groups":
-        return <GroupManagementCard />;
+        return (
+          <>
+            <GroupManagementCard />
+            <GroupAccountsCard />
+          </>
+        );
       case "invites":
         return <RegistrationInvitesCard />;
       case "registration":

@@ -297,6 +297,7 @@ app.use("/api/v1/*", async (c, next) => {
       displayName: "Owner",
       scopes: [],
       workspaceId: DEFAULT_WORKSPACE_ID,
+      accountType: "user",
       role: "owner",
     });
     await next();

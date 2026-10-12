@@ -1,14 +1,70 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, FileText } from "lucide-react";
+import { BookOpen, Code2, EyeOff, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CollaborationGroupMember } from "@/lib/api";
 import { ApiRequestError, api } from "@/lib/api";
+import type { ShareDisplayPolicySummary } from "@edgeever/client";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+export const DEFAULT_SHARE_DISPLAY_POLICY: ShareDisplayPolicySummary = {
+  html: "rendered",
+  markdown: "rendered",
+};
+
+/** Display-mode picker shared by group shares and public link shares. */
+export const ShareDisplayPolicyPicker = ({
+  disabled,
+  value,
+  onChange,
+}: {
+  disabled?: boolean;
+  value: ShareDisplayPolicySummary;
+  onChange: (next: ShareDisplayPolicySummary) => void;
+}) => {
+  const { t } = useTranslation();
+  const modes: { key: ShareDisplayPolicySummary["html"]; label: string; icon: typeof Code2 }[] = [
+    { key: "rendered", label: t("sharedPane.displayPolicyRendered"), icon: BookOpen },
+    { key: "source", label: t("sharedPane.displayPolicySource"), icon: Code2 },
+    { key: "hidden", label: t("sharedPane.displayPolicyHidden"), icon: EyeOff },
+  ];
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-slate-700">{t("sharedPane.displayPolicyTitle")}</p>
+      <p className="text-xs text-slate-500">{t("sharedPane.displayPolicyDescription")}</p>
+      {(["html", "markdown"] as const).map((kind) => (
+        <div className="flex items-center gap-2" key={kind}>
+          <span className="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400">{kind}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {modes.map(({ key, label, icon: Icon }) => (
+              <button
+                className={cn(
+                  "flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition",
+                  disabled
+                    ? "cursor-not-allowed opacity-60"
+                    : value[kind] === key
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                      : "border-slate-200 bg-card text-slate-600 hover:bg-slate-50",
+                )}
+                disabled={disabled}
+                key={key}
+                onClick={() => onChange({ ...value, [kind]: key })}
+                type="button"
+              >
+                <Icon className="h-3 w-3" aria-hidden />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const RECENT_MEMO_LIMIT = 50;
 
@@ -33,6 +89,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
   const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
   const [editMode, setEditMode] = useState<"author" | "group">("author");
   const [editorIds, setEditorIds] = useState<string[]>([]);
+  const [displayPolicy, setDisplayPolicy] = useState<ShareDisplayPolicySummary>(DEFAULT_SHARE_DISPLAY_POLICY);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +112,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
         targetId,
         editMode,
         editorUserIds: editMode === "group" ? editorIds : [],
+        displayPolicy,
       }),
     onSuccess: onShared,
     onError: (mutationError) => {
@@ -84,6 +142,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
 
   return {
     createMutation,
+    displayPolicy,
     editMode,
     editorIds,
     error,
@@ -94,6 +153,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
     needle,
     notebookOptions,
     search,
+    setDisplayPolicy,
     setEditMode,
     setEditorIds,
     setGroupId,
@@ -275,6 +335,11 @@ export const ShareToGroupForm = ({ groups, memoId, memoTitle, onCancel, onShared
               </div>
             ) : null}
           </div>
+
+          <ShareDisplayPolicyPicker
+            value={form.displayPolicy}
+            onChange={form.setDisplayPolicy}
+          />
 
           {form.error ? <p className="text-sm font-medium text-rose-600">{form.error}</p> : null}
         </div>

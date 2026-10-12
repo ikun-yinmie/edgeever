@@ -266,6 +266,8 @@ export type AuthUser = {
   username: string;
   displayName: string | null;
   role: "owner" | "member";
+  /** "group" marks a shared account that allows many concurrent sign-ins. */
+  accountType?: "user" | "group";
 };
 
 export type InstanceUser = AuthUser & {
@@ -274,6 +276,16 @@ export type InstanceUser = AuthUser & {
   isDeleted: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  accountType: "user" | "group";
+};
+
+export type GroupAccount = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  isDisabled: boolean;
+  createdAt: string;
+  groupCount: number;
 };
 
 export type AuthSession = {
