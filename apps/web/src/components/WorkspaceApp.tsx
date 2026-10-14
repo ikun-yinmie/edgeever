@@ -2452,6 +2452,20 @@ export const WorkspaceApp = ({
     }
   };
 
+  // Shared group accounts own nothing but the groups they collaborate in, so
+  // their landing view is shared-with-me instead of an empty personal
+  // workspace. Explicit navigation (a selected memo, a settings/plugins
+  // route) always wins over this default.
+  const groupLandingUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (user?.accountType !== "group") return;
+    if (groupLandingUserRef.current === user.id) return;
+    if (selectedMemoId) return;
+    if (isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute) return;
+    groupLandingUserRef.current = user.id;
+    handleOpenShared();
+  }, [user?.accountType, user?.id, selectedMemoId, isInitialSettingsRoute, isInitialPluginsRoute, isInitialTemplatesRoute, isInitialAiPromptsRoute, isInitialExecutionCenterRoute, handleOpenShared]);
+
   const handleOpenPluginManager = () => {
     clearHiddenMobileSearch();
     navigateWorkspacePlugins();

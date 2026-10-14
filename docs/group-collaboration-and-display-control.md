@@ -86,8 +86,13 @@ worker 仍是纯 fetch handler，不含任何协同状态。语雀模式“多�
   - 公共群组账号：**不再吊销**同设备旧会话，每个登录都产生独立会话 → 天然支持多地同时在线。
   - 会话 TTL 独立可配（`EDGE_EVER_GROUP_SESSION_TTL_DAYS`，默认 30 天，上限 400）。
 - 权限差异：公共账号 `role = 'member'`，没有个人工作区内容（有个人 workspace 但仅作占位），
-  登录后主视图为 **“共享_with_me”** 视角；禁止创建 API Token、禁止作为群组管理员（manager 仅可被管理员授予）。
+  登录后主视图为 **“共享”** 视角（Web 端按账号类型默认进 shared-with-me）；禁止创建 API Token、
+  禁止作为群组管理员（manager 仅可被管理员授予，加成员写死 `member`，无提权接口）。
   - 服务端 `requireUser` 放行公共账号（它们是交互会话），`requireOwner` 拒绝。
+  - `POST /api/v1/api-tokens` 对公共账号返回 403；改密码/禁用时连同其 API Token
+    一起吊销（否则 Token 会绕过“重置即全部失效”）。
+  - `shared_` 前缀被个人建号三处（公开注册、管理员建成员、成员改名）同时保留，
+    防抢注与冒充。
   - 写审计：`actor = user:{id}`，正常落库。
 - 登录限流沿用 username+IP 维度，无新面。
 - 风险：中。密码共享给多人是产品权衡（这正是需求本意）；技术面不新增存储路径，
@@ -143,7 +148,9 @@ CREATE INDEX IF NOT EXISTS idx_memo_collab_presence_expiry ON memo_collab_presen
 - `bun run typecheck`、`bun run test:bulk`（group/memo/share 相关测试全量）、`bun run build:web`。
 - 新增测试（已按实际文件名落地）：
   - `apps/api/src/group-collab-http.test.mjs`：群组编辑冲突 → 不丢数据；presence 写入与过期；collab-session 握手鉴权。
-  - `apps/api/src/group-account-service.test.mjs`：公共账号多地登录会话并存；越权面（owner API、API token）拒绝。
+  - `apps/api/src/group-account-service.test.mjs`：公共账号创建、加群；多地登录会话并存。
+  - `apps/api/src/group-account-guards.test.mjs`：公共账号建 Token 403、私人账号不受影响；
+    改密码/禁用连带吊销 sessions + API Token；`shared_` 前缀三处保留。
   - `apps/api/src/share-display-policy.test.mjs`：服务端过滤 contentJson（rendered/source/hidden × 公开/群组两路）。
 - 实时协同测试（已落地）：
   - `apps/api/src/collab-realtime.test.mjs`：房间合并、只读隔离、在场清理、持久化重放。

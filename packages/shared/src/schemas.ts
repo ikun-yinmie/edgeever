@@ -186,10 +186,21 @@ export const ChangePasswordSchema = z
     path: ["confirmPassword"],
   });
 
+/**
+ * The shared-account namespace is reserved: personal accounts may neither
+ * register nor be renamed into it, otherwise anyone could squat the name an
+ * administrator needs — or impersonate the team's shared credential.
+ */
+export const isReservedSharedAccountName = (username: string) =>
+  username.trim().toLowerCase().startsWith("shared_");
+
 export const UserCreateSchema = z.object({
   username: z.string().trim().min(1).max(80),
   displayName: z.string().trim().max(80).nullable().optional(),
   password: z.string().min(8).max(512),
+}).refine((input) => !isReservedSharedAccountName(input.username), {
+  message: "Usernames starting with 'shared_' are reserved for shared group accounts.",
+  path: ["username"],
 });
 
 /** How a shared HTML/Markdown block reaches the audience of a share. */
@@ -235,6 +246,10 @@ export const RegisterSchema = z
   .refine((input) => !input.displayName || !input.displayName.includes(":"), {
     message: "Display name may not contain colons.",
     path: ["displayName"],
+  })
+  .refine((input) => !isReservedSharedAccountName(input.username), {
+    message: "Usernames starting with 'shared_' are reserved for shared group accounts.",
+    path: ["username"],
   });
 
 export const RegistrationEmailCodeRequestSchema = z.object({
@@ -317,6 +332,9 @@ export const UserUpdateSchema = z
       .min(2, "Username must be at least 2 characters.")
       .max(80)
       .regex(/^[a-zA-Z0-9_-]+$/, "Username may only contain letters, numbers, dashes and underscores.")
+      .refine((value) => !isReservedSharedAccountName(value), {
+        message: "Usernames starting with 'shared_' are reserved for shared group accounts.",
+      })
       .optional(),
     displayName: z.string().trim().max(80).nullable().optional(),
     email: z

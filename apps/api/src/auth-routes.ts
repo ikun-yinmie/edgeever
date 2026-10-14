@@ -123,6 +123,7 @@ export const registerAuthRoutes = (
         username: auth.username,
         displayName: auth.displayName,
         role: auth.role,
+        accountType: auth.accountType,
       } : null,
     });
   });

@@ -520,11 +520,20 @@ export const registerUserRoutes = (
       );
     }
     // Revoking sessions locks everyone sharing the credential out immediately.
+    // API tokens would survive a password rotation, so they are revoked too.
     if (input.password !== undefined || input.isDisabled === true) {
       statements.push(
         database
           .prepare(`UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`)
           .bind(isoNow(), accountId),
+        database
+          .prepare(
+            `UPDATE api_tokens SET is_revoked = 1
+             WHERE is_revoked = 0 AND workspace_id IN (
+               SELECT workspace_id FROM workspace_members WHERE user_id = ?
+             )`,
+          )
+          .bind(accountId),
       );
     }
     if (input.groupIds !== undefined) {

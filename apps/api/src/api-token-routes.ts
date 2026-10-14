@@ -15,6 +15,7 @@ import {
   getAuditActor,
   getWorkspaceId,
   normalizeTokenScopes,
+  requirePersonalAccount,
   requireUser,
 } from "./request-auth";
 import type { DatabaseAdapter } from "./storage-contract";
@@ -87,6 +88,8 @@ export const registerApiTokenRoutes = (
     async (context) => {
       const userOnly = requireUser(context);
       if (userOnly) return userOnly;
+      const personalOnly = requirePersonalAccount(context);
+      if (personalOnly) return personalOnly;
 
       const input = context.req.valid("json");
       const scopes = normalizeTokenScopes(input.scopes);

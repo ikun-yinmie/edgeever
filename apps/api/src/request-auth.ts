@@ -44,6 +44,18 @@ export const requireUser = (c: AppContext) => {
     : forbidden(c, "Only an interactive user session can manage this resource.");
 };
 
+/**
+ * Shared group accounts collaborate through interactive sessions only: a
+ * long-lived API token would survive the password rotation that is supposed
+ * to lock everyone out at once, so minting one is refused outright.
+ */
+export const requirePersonalAccount = (c: AppContext) => {
+  const auth = c.get("auth");
+  return auth?.accountType === "group"
+    ? forbidden(c, "Shared group accounts cannot manage API tokens.")
+    : null;
+};
+
 export const hasScopes = (auth: AuthContext, scopes: TokenScope[]) =>
   auth.kind === "user" || scopes.every((scope) => auth.scopes.includes(scope));
 
