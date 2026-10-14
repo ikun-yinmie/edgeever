@@ -1,5 +1,4 @@
 import {
-  lazy,
   Suspense,
   useState,
   useCallback,
@@ -28,6 +27,7 @@ import { AppConfirmDialog, MemoDeleteConfirmDialog, NotebookNameDialog } from ".
 import { PluginPanelDialog } from "./plugins/PluginPanelDialog";
 import { shouldDiscardPluginNoteSearchRequest } from "./editor/note-search";
 import { api, getConfiguredDesktopApiBaseUrl, getOrCreateClientDeviceId } from "@/lib/api";
+import { lazyWithChunkRetry } from "@/lib/lazy-retry";
 import { MarkdownExportMemoryLimitError, type MarkdownExportProgress } from "@/lib/markdown-export";
 import { exportSelectedMemosAsMarkdownZip } from "@/lib/selected-markdown-export";
 import { createPluginScheduleAdapter } from "@/lib/plugins/plugin-schedule-adapter";
@@ -143,22 +143,22 @@ import { createScreenshotMemo, screenshotFileFromImportPayload, screenshotImport
 import { isDesktopResourceRuntime, stageDesktopResource, toDesktopResourceUrl } from "@/lib/desktop-resources";
 import { findMatchingMemoResource } from "@/lib/staged-resource-repair";
 
-const EditorPane = lazy(() => import("./EditorPane").then((module) => ({ default: module.EditorPane })));
-const DiagramEditorPane = lazy(() => import("./DiagramEditorPane"));
-const AssetsPane = lazy(() => import("./AssetsPane").then((module) => ({ default: module.AssetsPane })));
-const SettingsPane = lazy(() => import("./SettingsPane").then((module) => ({ default: module.SettingsPane })));
-const PluginMarketplacePane = lazy(() => import("./PluginMarketplacePane").then((module) => ({ default: module.PluginMarketplacePane })));
-const NotebookPane = lazy(() => import("./NotebookPane").then((module) => ({ default: module.NotebookPane })));
-const EvernoteImportGuidePane = lazy(() =>
+const EditorPane = lazyWithChunkRetry("EditorPane", () => import("./EditorPane").then((module) => ({ default: module.EditorPane })));
+const DiagramEditorPane = lazyWithChunkRetry("DiagramEditorPane", () => import("./DiagramEditorPane"));
+const AssetsPane = lazyWithChunkRetry("AssetsPane", () => import("./AssetsPane").then((module) => ({ default: module.AssetsPane })));
+const SettingsPane = lazyWithChunkRetry("SettingsPane", () => import("./SettingsPane").then((module) => ({ default: module.SettingsPane })));
+const PluginMarketplacePane = lazyWithChunkRetry("PluginMarketplacePane", () => import("./PluginMarketplacePane").then((module) => ({ default: module.PluginMarketplacePane })));
+const NotebookPane = lazyWithChunkRetry("NotebookPane", () => import("./NotebookPane").then((module) => ({ default: module.NotebookPane })));
+const EvernoteImportGuidePane = lazyWithChunkRetry("EvernoteImportGuidePane", () =>
   import("./EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
-const TagsPane = lazy(() => import("./TagsPane").then((module) => ({ default: module.TagsPane })));
-const SharedWithMePane = lazy(() =>
+const TagsPane = lazyWithChunkRetry("TagsPane", () => import("./TagsPane").then((module) => ({ default: module.TagsPane })));
+const SharedWithMePane = lazyWithChunkRetry("SharedWithMePane", () =>
   import("./SharedWithMePane").then((module) => ({ default: module.SharedWithMePane }))
 );
-const TemplatesPane = lazy(() => import("./TemplatesPane").then((module) => ({ default: module.TemplatesPane })));
-const AiPromptsPane = lazy(() => import("./AiPromptsPane").then((module) => ({ default: module.AiPromptsPane })));
-const ExecutionCenterPane = lazy(() =>
+const TemplatesPane = lazyWithChunkRetry("TemplatesPane", () => import("./TemplatesPane").then((module) => ({ default: module.TemplatesPane })));
+const AiPromptsPane = lazyWithChunkRetry("AiPromptsPane", () => import("./AiPromptsPane").then((module) => ({ default: module.AiPromptsPane })));
+const ExecutionCenterPane = lazyWithChunkRetry("ExecutionCenterPane", () =>
   import("./execution/ExecutionCenterPane").then((module) => ({ default: module.ExecutionCenterPane }))
 );
 
