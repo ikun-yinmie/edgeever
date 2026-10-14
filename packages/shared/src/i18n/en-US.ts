@@ -705,7 +705,20 @@ export const enUS = {
       importErrors: {
         invalidFile: "Import failed: this is not a valid EdgeEver editor theme file.",
         unsupportedVersion: "Import failed: this editor theme file version is not supported.",
-        fileTooLarge: "Import failed: the editor theme file exceeds 64 KiB.",
+        fileTooLarge: "Import failed: the editor theme file exceeds 512 KiB.",
+      },
+      backgroundImageTitle: "Background image",
+      backgroundImageDescription: "Upload a picture as the editor backdrop. It is compressed automatically and works on desktop and web.",
+      backgroundImageUpload: "Upload image",
+      backgroundImageChange: "Replace image",
+      backgroundImageRemove: "Remove",
+      backgroundImageOverlay: "Scrim strength",
+      backgroundImageErrors: {
+        invalidType: "Please choose an image file.",
+        fileTooLarge: "The image exceeds 12 MB. Please pick a smaller one.",
+        processFailed: "Could not process this image. Please try another one.",
+        outputTooLarge: "Still too large after compression. Please try a simpler picture.",
+        quotaExceeded: "The theme is too large for browser storage. Remove the background image or trim custom CSS.",
       },
     },
     mermaidThemes: {

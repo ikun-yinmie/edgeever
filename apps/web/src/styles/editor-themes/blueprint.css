@@ -1,0 +1,135 @@
+/* blueprint editor theme (夜蓝制图 — technical drawing grid, day and night) */
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: #f4f7fb;
+  --editor-theme-text: #3d4650;
+  --editor-theme-muted: #495464;
+  --editor-theme-heading: #272d35;
+  --editor-theme-accent: #4271b3;
+  --editor-theme-soft: #f9fafa;
+  --editor-theme-border: #d7dde5;
+  --editor-theme-code-bg: #eef3f8;
+  --editor-theme-code-text: #2f578a;
+  --editor-theme-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --editor-theme-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --editor-theme-radius: 4px;
+}
+
+:root.dark .edgeever-editor[data-editor-theme="blueprint"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: var(--workspace-editor);
+  --editor-theme-text: #d6e1f0;
+  --editor-theme-muted: #93a6c0;
+  --editor-theme-heading: #eff5fc;
+  --editor-theme-accent: #82aae2;
+  --editor-theme-soft: #1c2635;
+  --editor-theme-border: #34465f;
+  --editor-theme-code-bg: #141c29;
+  --editor-theme-code-text: #9dbff0;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror {
+  background-image:
+    linear-gradient(var(--publish-accent-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--publish-accent-grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror p {
+  color: var(--editor-theme-text);
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h1,
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h2,
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h3,
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h4,
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h5,
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h6 {
+  color: var(--editor-theme-heading);
+  font-family: var(--editor-theme-font);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.35;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h1 {
+  font-size: 1.7rem;
+  border-bottom: 3px solid var(--editor-theme-accent);
+  padding-bottom: 0.55rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h2 {
+  font-size: 1.3rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror h2::before {
+  content: "§ ";
+  color: var(--editor-theme-accent);
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror a {
+  color: var(--editor-theme-code-text);
+  font-family: var(--editor-theme-mono);
+  font-size: 0.92em;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 3px;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror strong {
+  color: var(--editor-theme-heading);
+  font-weight: 800;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror code {
+  border: 1px solid var(--editor-theme-border);
+  border-radius: 3px;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  font-family: var(--editor-theme-mono);
+  font-size: 0.875rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror pre {
+  border: 1px dashed var(--editor-theme-accent);
+  border-radius: 4px;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  padding: 0.75rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror blockquote {
+  margin: 1rem 0;
+  border: 1px dashed var(--editor-theme-accent);
+  border-radius: 4px;
+  background: var(--editor-theme-soft);
+  color: var(--editor-theme-muted);
+  padding: 0.7rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror hr:not([data-edgeever-merge-divider]) {
+  height: 0;
+  border: 0;
+  border-top: 2px dashed var(--editor-theme-accent);
+  margin: 1.75rem 0;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror li::marker {
+  color: var(--editor-theme-accent);
+  font-family: var(--editor-theme-mono);
+  font-weight: 700;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror th {
+  background: var(--editor-theme-soft);
+  color: var(--editor-theme-heading);
+  font-family: var(--editor-theme-mono);
+  font-weight: 700;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="blueprint"]:not([data-editor-theme="default"]) .ProseMirror .edgeever-theme-block {
+  --theme-block-bg: var(--editor-theme-soft);
+  --theme-block-border: var(--editor-theme-border);
+  border-radius: 4px;
+}

@@ -1,0 +1,118 @@
+/* outline editor theme (堇色目录 — violet outliner, structured and indexed) */
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: #f8f8fe;
+  --editor-theme-text: #3f3f46;
+  --editor-theme-muted: #3f3f46;
+  --editor-theme-heading: #18181b;
+  --editor-theme-accent: #7567f8;
+  --editor-theme-soft: #f4f4f5;
+  --editor-theme-border: #e1deff;
+  --editor-theme-code-bg: #f3f1ff;
+  --editor-theme-code-text: #5b4ee0;
+  --editor-theme-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --editor-theme-radius: 8px;
+}
+
+:root.dark .edgeever-editor[data-editor-theme="outline"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: var(--workspace-editor);
+  --editor-theme-text: #dddafb;
+  --editor-theme-muted: #9c94c6;
+  --editor-theme-heading: #f2f0ff;
+  --editor-theme-accent: #a597ff;
+  --editor-theme-soft: #242237;
+  --editor-theme-border: #3d3959;
+  --editor-theme-code-bg: #1c1b2b;
+  --editor-theme-code-text: #b4a9ff;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror p {
+  color: var(--editor-theme-text);
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h1,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h2,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h3,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h4,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h5,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h6 {
+  color: var(--editor-theme-heading);
+  font-family: var(--editor-theme-font);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h1 {
+  font-size: 1.8rem;
+  letter-spacing: -0.02em;
+  background: var(--editor-theme-soft);
+  border: 1px solid var(--editor-theme-border);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror h2 {
+  font-size: 1.38rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror a {
+  color: var(--editor-theme-code-text);
+  text-decoration: underline;
+  text-decoration-color: var(--editor-theme-accent);
+  text-underline-offset: 3px;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror strong {
+  color: var(--editor-theme-code-text);
+  font-weight: 800;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror blockquote {
+  margin: 1rem 0 1rem 0.5rem;
+  border-left: 3px solid var(--editor-theme-accent);
+  color: var(--editor-theme-muted);
+  padding: 0.2rem 0 0.2rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror code {
+  border-radius: 5px;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror pre {
+  border: 1px solid var(--editor-theme-border);
+  border-left: 3px solid var(--editor-theme-accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  padding: 0.75rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror hr:not([data-edgeever-merge-divider]) {
+  height: 1px;
+  border: 0;
+  background: var(--editor-theme-border);
+  margin: 1.75rem 0;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror ul > li::marker,
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror ol > li::marker {
+  color: var(--editor-theme-accent);
+  font-weight: 800;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror th {
+  background: var(--editor-theme-soft);
+  color: var(--editor-theme-heading);
+  font-weight: 700;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="outline"]:not([data-editor-theme="default"]) .ProseMirror .edgeever-theme-block {
+  --theme-block-bg: var(--editor-theme-soft);
+  --theme-block-border: var(--editor-theme-border);
+  border-radius: 8px;
+}

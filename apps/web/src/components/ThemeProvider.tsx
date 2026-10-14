@@ -3,6 +3,7 @@ import {
   DEFAULT_CUSTOM_DARK_COLORS,
   DEFAULT_CUSTOM_EDITOR_THEME,
   DEFAULT_CUSTOM_LIGHT_COLORS,
+  normalizeThemeBackgroundImage,
   normalizeThemeColors,
   type CustomEditorTheme,
   type ThemeColors,
@@ -232,6 +233,7 @@ const normalizeCustomEditorTheme = (theme: CustomEditorTheme): CustomEditorTheme
   ...theme,
   light: normalizeThemeColors(theme.light, DEFAULT_CUSTOM_LIGHT_COLORS),
   dark: normalizeThemeColors(theme.dark, DEFAULT_CUSTOM_DARK_COLORS),
+  backgroundImage: normalizeThemeBackgroundImage(theme.backgroundImage),
 });
 
 export const getStoredCustomEditorThemes = (): CustomEditorTheme[] => {
@@ -342,14 +344,27 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
           nextThemes.push(updatedTheme);
         }
       }
-      window.localStorage.setItem(CUSTOM_EDITOR_THEMES_STORAGE_KEY, JSON.stringify(nextThemes));
+      try {
+        window.localStorage.setItem(CUSTOM_EDITOR_THEMES_STORAGE_KEY, JSON.stringify(nextThemes));
+      } catch {
+        // Same backstop as setCustomEditorThemes: keep the session working even
+        // when the browser store is full.
+        console.warn("Custom editor themes exceed browser storage and will not persist.");
+      }
       return nextThemes;
     });
   }, []);
 
   const setCustomEditorThemes = useCallback((nextThemes: CustomEditorTheme[]) => {
     setCustomEditorThemesState(nextThemes);
-    window.localStorage.setItem(CUSTOM_EDITOR_THEMES_STORAGE_KEY, JSON.stringify(nextThemes));
+    try {
+      window.localStorage.setItem(CUSTOM_EDITOR_THEMES_STORAGE_KEY, JSON.stringify(nextThemes));
+    } catch {
+      // Image-backed themes can exhaust the ~5MB localStorage budget. The
+      // in-memory theme keeps working for this session; the dialog pre-checks
+      // sizes so this is only a backstop against a full store.
+      console.warn("Custom editor themes exceed browser storage and will not persist.");
+    }
   }, []);
 
   const mermaidTheme = resolveMermaidTheme(mermaidThemePreference, resolvedTheme);

@@ -27,6 +27,21 @@
   --editor-theme-border: var(--editor-theme-light-border);
 }
 
+/* Custom theme backdrop image: layered under a scrim of the theme's own
+   background color so text stays readable at any overlay strength. Only
+   active when the editor carries an image (data-theme-bg-image), so plain
+   custom themes render exactly as before. */
+.edgeever-editor[data-editor-theme="custom"][data-theme-bg-image="true"]:not([data-editor-theme="default"]) .ProseMirror {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--editor-theme-bg) var(--editor-theme-bg-overlay, 82%), transparent),
+      color-mix(in srgb, var(--editor-theme-bg) var(--editor-theme-bg-overlay, 82%), transparent)
+    ),
+    var(--editor-theme-bg-image);
+  background-size: cover;
+  background-position: center;
+}
+
 :root.dark .edgeever-editor[data-editor-theme="custom"]:not([data-editor-theme="default"]) {
   --editor-theme-bg: var(--editor-theme-dark-bg);
   --editor-theme-text: var(--editor-theme-dark-text);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, Moon, RotateCcw, Sun, Upload } from "lucide-react";
+import { Download, ImagePlus, Moon, RotateCcw, Sun, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,11 +17,18 @@ import {
   DEFAULT_CUSTOM_LIGHT_COLORS,
   DEFAULT_CUSTOM_DARK_COLORS,
   MAX_CUSTOM_EDITOR_THEME_FILE_BYTES,
+  MAX_CUSTOM_THEME_DRAFT_BYTES,
+  THEME_BACKGROUND_IMAGE_DEFAULT_OVERLAY,
+  THEME_BACKGROUND_IMAGE_MAX_DATA_URL_BYTES,
+  THEME_BACKGROUND_IMAGE_MAX_OVERLAY,
+  buildBackgroundImageVars,
   customEditorThemeFileName,
+  downscaleImageToDataUrl,
   getEditorThemeContrastIssues,
   isValidThemeColors,
   parseCustomEditorThemeFile,
   serializeCustomEditorTheme,
+  validateBackgroundImageFile,
   type CustomEditorTheme,
   type ThemeColors,
 } from "@/lib/custom-editor-theme";
@@ -59,12 +66,17 @@ export const CustomEditorThemeDialog = ({
   const [draft, setDraft] = useState<CustomEditorTheme>(theme);
   const [activeMode, setActiveMode] = useState<"light" | "dark">("light");
   const [importError, setImportError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageProcessing, setImageProcessing] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setDraft(theme);
       setActiveMode("light");
       setImportError(null);
+      setImageError(null);
+      setImageProcessing(false);
     }
   }, [open, theme]);
 
@@ -133,6 +145,52 @@ export const CustomEditorThemeDialog = ({
       dark: DEFAULT_CUSTOM_DARK_COLORS,
       customCss: "",
     }));
+  };
+
+  const handleBackgroundImageFile = async (file: File | undefined) => {
+    if (!file) return;
+    setImageError(null);
+    const problem = validateBackgroundImageFile(file);
+    if (problem === "invalidType" || problem === "fileTooLarge") {
+      setImageError(t(`settings.customEditorTheme.backgroundImageErrors.${problem}`));
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      return;
+    }
+    setImageProcessing(true);
+    try {
+      const dataUrl = await downscaleImageToDataUrl(file);
+      if (new TextEncoder().encode(dataUrl).byteLength > THEME_BACKGROUND_IMAGE_MAX_DATA_URL_BYTES) {
+        setImageError(t("settings.customEditorTheme.backgroundImageErrors.outputTooLarge"));
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        backgroundImage: {
+          dataUrl,
+          overlay: current.backgroundImage?.overlay ?? THEME_BACKGROUND_IMAGE_DEFAULT_OVERLAY,
+        },
+      }));
+    } catch {
+      setImageError(t("settings.customEditorTheme.backgroundImageErrors.processFailed"));
+    } finally {
+      setImageProcessing(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveBackgroundImage = () => {
+    setDraft((current) => ({ ...current, backgroundImage: undefined }));
+    setImageError(null);
+  };
+
+  const handleSave = () => {
+    const next = { ...draft, name: draft.name.trim() };
+    if (new TextEncoder().encode(JSON.stringify(next)).byteLength > MAX_CUSTOM_THEME_DRAFT_BYTES) {
+      setImageError(t("settings.customEditorTheme.backgroundImageErrors.quotaExceeded"));
+      return;
+    }
+    onSave(next);
+    onOpenChange(false);
   };
 
   return (
@@ -217,6 +275,74 @@ export const CustomEditorThemeDialog = ({
           ) : null}
           {importError ? <p className="rounded-md bg-red-50 px-2.5 py-2 text-[11px] leading-4 text-red-700" role="alert">{importError}</p> : null}
 
+          {/* Background image */}
+          <div className="grid gap-2 rounded-lg border border-slate-200 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-700">
+                {t("settings.customEditorTheme.backgroundImageTitle")}
+              </span>
+              {draft.backgroundImage ? (
+                <div className="flex gap-1.5">
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={imageProcessing} onClick={() => imageInputRef.current?.click()}>
+                    {t("settings.customEditorTheme.backgroundImageChange")}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-slate-500 hover:text-slate-800" onClick={handleRemoveBackgroundImage}>
+                    <Trash2 className="mr-1 h-3.5 w-3.5" aria-hidden />
+                    {t("settings.customEditorTheme.backgroundImageRemove")}
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={imageProcessing} onClick={() => imageInputRef.current?.click()}>
+                  <ImagePlus className="mr-1 h-3.5 w-3.5" aria-hidden />
+                  {imageProcessing
+                    ? t("settings.customEditorTheme.backgroundImageUpload") + "…"
+                    : t("settings.customEditorTheme.backgroundImageUpload")}
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] leading-4 text-slate-500">
+              {t("settings.customEditorTheme.backgroundImageDescription")}
+            </p>
+            {draft.backgroundImage ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={draft.backgroundImage.dataUrl}
+                  alt=""
+                  aria-hidden
+                  className="h-14 w-20 shrink-0 rounded-md border border-slate-200 object-cover"
+                />
+                <label className="grid flex-1 gap-1 text-[11px] font-medium text-slate-600">
+                  <span className="flex items-center justify-between">
+                    {t("settings.customEditorTheme.backgroundImageOverlay")}
+                    <span className="font-mono tabular-nums">{draft.backgroundImage.overlay}%</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={THEME_BACKGROUND_IMAGE_MAX_OVERLAY}
+                    value={draft.backgroundImage.overlay}
+                    onChange={(event) => {
+                      const overlay = Number(event.target.value);
+                      setDraft((current) => current.backgroundImage
+                        ? { ...current, backgroundImage: { ...current.backgroundImage, overlay } }
+                        : current);
+                    }}
+                    className="w-full accent-emerald-600"
+                    aria-label={t("settings.customEditorTheme.backgroundImageOverlay")}
+                  />
+                </label>
+              </div>
+            ) : null}
+            {imageError ? <p className="rounded-md bg-red-50 px-2.5 py-2 text-[11px] leading-4 text-red-700" role="alert">{imageError}</p> : null}
+            <input
+              ref={imageInputRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handleBackgroundImageFile(event.target.files?.[0])}
+            />
+          </div>
+
           {/* Custom CSS Textarea */}
           <label className="grid gap-1 text-xs font-semibold text-slate-700">
             {t("settings.customEditorTheme.customCss", "Custom CSS (高级自定义样式表)")}
@@ -242,6 +368,13 @@ export const CustomEditorThemeDialog = ({
               style={{
                 color: activeColors.text,
                 padding: "0.75rem",
+                ...(draft.backgroundImage
+                  ? {
+                      backgroundImage: `linear-gradient(color-mix(in srgb, ${activeColors.background} ${draft.backgroundImage.overlay}%, transparent), color-mix(in srgb, ${activeColors.background} ${draft.backgroundImage.overlay}%, transparent)), url("${draft.backgroundImage.dataUrl}")`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : {}),
               }}
             >
               {draft.customCss && (
@@ -324,10 +457,7 @@ export const CustomEditorThemeDialog = ({
               disabled={!valid}
               size="sm"
               className="h-8 text-xs"
-              onClick={() => {
-                onSave({ ...draft, name: draft.name.trim() });
-                onOpenChange(false);
-              }}
+              onClick={handleSave}
             >
               {t("common.save")}
             </Button>

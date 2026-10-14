@@ -12,6 +12,16 @@ const BUILT_IN_EDITOR_THEMES = [
   "outline-emerald",
   "wechat-green",
   "modern-mint",
+  "letter",
+  "guide",
+  "blueprint",
+  "journal",
+  "stance",
+  "stub",
+  "brief",
+  "outline",
+  "zen",
+  "grove",
 ];
 
 const readDarkThemeTokens = (theme) => {

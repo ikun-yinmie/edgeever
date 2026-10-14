@@ -705,7 +705,20 @@ export const ja = {
       importErrors: {
         invalidFile: "インポートできませんでした。有効な EdgeEver エディタテーマファイルではありません。",
         unsupportedVersion: "インポートできませんでした。このエディタテーマファイルのバージョンは未対応です。",
-        fileTooLarge: "インポートできませんでした。エディタテーマファイルが 64 KiB を超えています。",
+        fileTooLarge: "インポートできませんでした。エディタテーマファイルが 512 KiB を超えています。",
+      },
+      backgroundImageTitle: "背景画像",
+      backgroundImageDescription: "本文の背景に画像を設定します。自動で圧縮されるため、デスクトップとウェブの両方で使えます。",
+      backgroundImageUpload: "画像をアップロード",
+      backgroundImageChange: "画像を変更",
+      backgroundImageRemove: "削除",
+      backgroundImageOverlay: "オーバーレイ濃度",
+      backgroundImageErrors: {
+        invalidType: "画像ファイルを選択してください。",
+        fileTooLarge: "画像が 12 MB を超えています。小さい画像を選んでください。",
+        processFailed: "画像を処理できませんでした。別の画像で試してください。",
+        outputTooLarge: "圧縮後も大きすぎます。シンプルな画像で試してください。",
+        quotaExceeded: "テーマが大きすぎてブラウザに保存できません。背景画像を削除するか、カスタム CSS を減らしてください。",
       },
     },
     mermaidThemes: {

@@ -1,0 +1,12 @@
+/* Paper reading themes: loaded after publish-layout.css so their canvas
+   tokens win same-specificity ties while publish ornaments keep working. */
+@import "./letter.css";
+@import "./guide.css";
+@import "./blueprint.css";
+@import "./journal.css";
+@import "./stance.css";
+@import "./stub.css";
+@import "./brief.css";
+@import "./outline.css";
+@import "./zen.css";
+@import "./grove.css";

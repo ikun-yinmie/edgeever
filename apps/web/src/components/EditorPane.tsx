@@ -94,6 +94,7 @@ const MarkdownSourceEditor = lazy(() =>
   })),
 );
 import { sanitizeAndScopeCss } from "@/lib/css-sandbox";
+import { buildBackgroundImageVars } from "@/lib/custom-editor-theme";
 import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { ExternalLinkDialog } from "./dialogs/ExternalLinkDialog";
 import { MathFormulaDialog } from "./dialogs/MathFormulaDialog";
@@ -4296,6 +4297,7 @@ const RichEditorPane = ({
         ref={setEditorScrollContainerRef}
         data-editor-theme={isNamedEditorTheme(editorTheme) ? editorTheme : "custom"}
         data-paper-theme={isPaperEditorTheme(editorTheme) ? "true" : undefined}
+        data-theme-bg-image={!isNamedEditorTheme(editorTheme) && customEditorTheme.backgroundImage ? "true" : undefined}
         data-publish-surface={isMobileViewport ? "phone" : "desktop"}
         style={{
           ...(isPaperEditorTheme(editorTheme)
@@ -4329,6 +4331,9 @@ const RichEditorPane = ({
                 "--editor-theme-dark-code-bg": customEditorTheme.dark.codeBackground,
                 "--editor-theme-dark-border": customEditorTheme.dark.border,
               }
+            : {}),
+          ...(!isNamedEditorTheme(editorTheme) && customEditorTheme.backgroundImage
+            ? buildBackgroundImageVars(customEditorTheme.backgroundImage)
             : {}),
         } as CSSProperties}
         className={cn(

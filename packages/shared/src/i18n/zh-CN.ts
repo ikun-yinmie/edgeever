@@ -705,7 +705,20 @@ export const zhCN = {
       importErrors: {
         invalidFile: "无法导入：文件不是有效的 EdgeEver 编辑器主题。",
         unsupportedVersion: "无法导入：该主题文件版本暂不受支持。",
-        fileTooLarge: "无法导入：主题文件超过 64 KiB。",
+        fileTooLarge: "无法导入：主题文件超过 512 KiB。",
+      },
+      backgroundImageTitle: "背景图片",
+      backgroundImageDescription: "上传一张图片作为正文底图，会自动压缩以便保存；桌面端与网页端通用。",
+      backgroundImageUpload: "上传图片",
+      backgroundImageChange: "更换图片",
+      backgroundImageRemove: "移除",
+      backgroundImageOverlay: "遮罩强度",
+      backgroundImageErrors: {
+        invalidType: "请选择图片文件。",
+        fileTooLarge: "图片超过 12 MB，请换一张小一点的。",
+        processFailed: "图片处理失败，请换一张试试。",
+        outputTooLarge: "压缩后仍然过大，请换一张更简单的图片。",
+        quotaExceeded: "主题过大，浏览器存不下，请移除背景图或删减自定义 CSS。",
       },
     },
     mermaidThemes: {

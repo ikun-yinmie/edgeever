@@ -7,6 +7,16 @@ const PRESET_THEME_FILES = [
   "outline-emerald.css",
   "wechat-green.css",
   "modern-mint.css",
+  "letter.css",
+  "guide.css",
+  "blueprint.css",
+  "journal.css",
+  "stance.css",
+  "stub.css",
+  "brief.css",
+  "outline.css",
+  "zen.css",
+  "grove.css",
 ];
 
 const readStyle = (relativePath) => readFileSync(new URL(relativePath, import.meta.url), "utf8");

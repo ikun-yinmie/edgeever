@@ -1,0 +1,141 @@
+/* journal editor theme (铅字期刊 — lead-type magazine, serif with drop cap) */
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: #fbfaf8;
+  --editor-theme-text: #5c505e;
+  --editor-theme-muted: #5c505e;
+  --editor-theme-heading: #312a32;
+  --editor-theme-accent: #89798b;
+  --editor-theme-soft: #fafafa;
+  --editor-theme-border: #e0dbe1;
+  --editor-theme-code-bg: #f5f4f6;
+  --editor-theme-code-text: #6b5c6d;
+  --editor-theme-font: Georgia, "Times New Roman", "Songti SC", "STSong", SimSun, serif;
+  --editor-theme-radius: 2px;
+}
+
+:root.dark .edgeever-editor[data-editor-theme="journal"]:not([data-editor-theme="default"]) {
+  --editor-theme-bg: var(--workspace-editor);
+  --editor-theme-text: #ded6de;
+  --editor-theme-muted: #9d919d;
+  --editor-theme-heading: #f6f1f6;
+  --editor-theme-accent: #c6a9c6;
+  --editor-theme-soft: #27242c;
+  --editor-theme-border: #403a44;
+  --editor-theme-code-bg: #1d1b21;
+  --editor-theme-code-text: #d2b5d2;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror {
+  font-family: var(--editor-theme-font);
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror p {
+  color: var(--editor-theme-text);
+  text-align: justify;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror > p:first-of-type::first-letter {
+  color: var(--editor-theme-heading);
+  font-size: 3.1em;
+  font-weight: 700;
+  float: left;
+  line-height: 0.86;
+  padding-right: 0.12em;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h1,
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h2,
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h3,
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h4,
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h5,
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h6 {
+  color: var(--editor-theme-heading);
+  font-family: var(--editor-theme-font);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h1 {
+  font-size: 2rem;
+  text-align: center;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--editor-theme-heading);
+  padding-bottom: 0.7rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror h2 {
+  font-size: 1.4rem;
+  text-align: center;
+  letter-spacing: 0.14em;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror a {
+  color: var(--editor-theme-code-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror strong {
+  color: var(--editor-theme-heading);
+  font-weight: 800;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror em {
+  color: var(--editor-theme-muted);
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror blockquote {
+  margin: 1.2rem 2rem;
+  border: 0;
+  border-top: 1px solid var(--editor-theme-border);
+  border-bottom: 1px solid var(--editor-theme-border);
+  background: transparent;
+  color: var(--editor-theme-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 0.9rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror code {
+  border: 1px solid var(--editor-theme-border);
+  border-radius: 2px;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror pre {
+  border: 1px solid var(--editor-theme-border);
+  border-radius: 2px;
+  background: var(--editor-theme-code-bg);
+  color: var(--editor-theme-code-text);
+  padding: 0.75rem 1rem;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror hr:not([data-edgeever-merge-divider]) {
+  height: 1px;
+  border: 0;
+  background: var(--editor-theme-heading);
+  margin: 1.75rem auto;
+  width: 38%;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror li::marker {
+  color: var(--editor-theme-accent);
+  font-weight: 700;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror th {
+  background: var(--editor-theme-soft);
+  color: var(--editor-theme-heading);
+  font-weight: 700;
+}
+
+.edgeever-editor[data-paper-theme][data-editor-theme="journal"]:not([data-editor-theme="default"]) .ProseMirror .edgeever-theme-block {
+  --theme-block-bg: var(--editor-theme-soft);
+  --theme-block-border: var(--editor-theme-border);
+  border-radius: 2px;
+}

@@ -1,6 +1,7 @@
 @import "highlight.js/styles/github.css";
 @import "./editor-themes/index.css";
 @import "./publish-layout.css";
+@import "./editor-themes/paper.css";
 @import "./code-highlight-dark.css";
 
 @tailwind base;
