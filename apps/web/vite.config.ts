@@ -359,6 +359,17 @@ export default defineConfig({
               priority: 32,
             },
             {
+              name: "vendor-yjs-collab",
+              test: /node_modules[\\/](yjs|y-protocols|y-websocket|lib0|@tiptap[\\/]y-tiptap)[\\/]/,
+              priority: 33,
+              // Yjs merges concurrent edits through a cyclic module graph (the
+              // Doc extends lib0's ObservableV2 while y-protocols and
+              // y-websocket import yjs back). Size-based splitting can evaluate
+              // the Doc before its superclass is initialized, throwing "Class
+              // extends value undefined" in the lazy editor. Keep that graph
+              // atomic, like lowlight and X6 above.
+            },
+            {
               name: "vendor-tiptap-extensions",
               test: /node_modules[\\/](?:@tiptap[\\/](?:extension-|extensions)|tiptap-)[\\/]/,
               priority: 30,

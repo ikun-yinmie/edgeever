@@ -54,6 +54,13 @@ assert.ok(
   largeChunks.every(({ name }) => !modulePreloads.includes(name)),
   "Large optional chunks must not be module-preloaded by the app entry",
 );
+const yjsCollabChunks = readdirSync(join(distDirectory, "assets"))
+  .filter((name) => /^vendor-yjs-collab-.*\.js$/.test(name));
+assert.equal(
+  yjsCollabChunks.length,
+  1,
+  `The Yjs collaboration graph (yjs/y-protocols/y-websocket/lib0) must ship as one atomic chunk; splitting it across size-based chunks can evaluate the Doc before its ObservableV2 superclass and crash the lazy editor. Found: ${yjsCollabChunks.join(", ") || "none"}`,
+);
 
 console.log(JSON.stringify({
   ok: true,
