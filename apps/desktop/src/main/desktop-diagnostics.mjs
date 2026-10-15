@@ -1,4 +1,4 @@
-const GITHUB_NEW_ISSUE_URL = "https://github.com/tianma-if/edgeever/issues/new";
+const GITHUB_NEW_ISSUE_URL = "https://github.com/ikun-yinmie/edgeever/issues/new";
 // Keep the prefilled GitHub URL below common browser/server URL limits while
 // retaining the first useful frames from renderer stacks.
 const MAX_DIAGNOSTIC_TEXT_LENGTH = 1_200;

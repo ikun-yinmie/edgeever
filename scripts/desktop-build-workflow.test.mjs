@@ -22,7 +22,7 @@ describe("desktop release workflow", () => {
     expect(desktopBuilderConfig).toContain([
       "publish:",
       "  provider: github",
-      "  owner: tianma-if",
+      "  owner: ikun-yinmie",
       "  repo: edgeever",
       "  releaseType: release",
     ].join("\n"));

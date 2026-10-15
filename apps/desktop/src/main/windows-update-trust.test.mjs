@@ -35,7 +35,7 @@ const updateInfo = {
 
 const signedFixture = () => {
   const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-  const signature = "Itc3UD0G6Hn6BWdk9qlJ4SoqAUDn8efi1VRVUWDtA3Ip5+gwpAj7HxElxM6D/GXcAlHFxnVv19soEWxlfZLCDA==";
+  const signature = "tbufxmcMsCtPmZ8V1/mj3XPKruxRc1i27yVrUEt+LQsEKOIWnqg3hRGMkBX3STmTUfjQ39rmiN3YD3RqhW0tAg==";
   return {
     manifestBytes: bytes,
     signatureBytes: Buffer.from(`${JSON.stringify({ schemaVersion: 1, keyId: WINDOWS_UPDATE_KEY_ID, signature })}\n`),

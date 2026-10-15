@@ -3,12 +3,12 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename } from "node:path";
 
-export const WINDOWS_UPDATE_KEY_ID = "edgeever-windows-update-2026-01";
+export const WINDOWS_UPDATE_KEY_ID = "ikun-edgeever-windows-update-2026-01";
 export const WINDOWS_UPDATE_MANIFEST_NAME = "latest-windows.json";
 export const WINDOWS_UPDATE_SIGNATURE_NAME = `${WINDOWS_UPDATE_MANIFEST_NAME}.sig`;
 
 export const WINDOWS_UPDATE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAOuQwxSey8jGVqrvnkw9LgeBPmeqRieNg/KR0cpUy6RE=
+MCowBQYDK2VwAyEAgM8blWn3OQYt0AuaGIENHL3zjHYzljQHYuQgl4F9Rkk=
 -----END PUBLIC KEY-----`;
 
 const WINDOWS_UPDATE_PUBLIC_KEYS = Object.freeze({
@@ -24,7 +24,7 @@ const releaseAssetUrl = (version, name) => {
   if (!STABLE_VERSION.test(version)) {
     throw new Error(`Windows update version must be stable X.Y.Z: ${version}`);
   }
-  return `https://github.com/tianma-if/edgeever/releases/download/v${version}/${name}`;
+  return `https://github.com/ikun-yinmie/edgeever/releases/download/v${version}/${name}`;
 };
 
 const responseBytes = async (response, label) => {

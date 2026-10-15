@@ -40,7 +40,7 @@ describe("Windows update release metadata", () => {
     try {
       await writeFile(manifestPath, `${JSON.stringify({
         schemaVersion: 1,
-        keyId: "edgeever-windows-update-2026-01",
+        keyId: "ikun-edgeever-windows-update-2026-01",
         version: "1.49.0",
         platform: "win32",
         arch: "x64",
@@ -78,7 +78,7 @@ describe("Windows update release metadata", () => {
     const directory = await mkdtemp(join(tmpdir(), "edgeever-windows-release-audit-"));
     const manifest = {
       schemaVersion: 1,
-      keyId: "edgeever-windows-update-2026-01",
+      keyId: "ikun-edgeever-windows-update-2026-01",
       version: "1.49.0",
       platform: "win32",
       arch: "x64",
@@ -96,7 +96,7 @@ describe("Windows update release metadata", () => {
       await writeFile(join(directory, "latest-windows.json.sig"), `${JSON.stringify({
         schemaVersion: 1,
         keyId: manifest.keyId,
-        signature: "Itc3UD0G6Hn6BWdk9qlJ4SoqAUDn8efi1VRVUWDtA3Ip5+gwpAj7HxElxM6D/GXcAlHFxnVv19soEWxlfZLCDA==",
+        signature: "tbufxmcMsCtPmZ8V1/mj3XPKruxRc1i27yVrUEt+LQsEKOIWnqg3hRGMkBX3STmTUfjQ39rmiN3YD3RqhW0tAg==",
       })}\n`);
       await writeFile(join(directory, "latest.yml"), [
         `version: ${manifest.version}`,
