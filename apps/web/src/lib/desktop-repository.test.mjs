@@ -9,10 +9,16 @@ globalThis.window = {
   dispatchEvent: () => true,
   edgeeverDesktop: {
     isAvailable: true,
+    getSessionToken: () => "",
     listStagedResources: async () => [],
     sidecarRequest: async (method, params) => {
       lastRequest = { method, params };
       if (method === "memo.get") {
+        if (params.memoId === "memo_shared" || params.memoId === "memo_live") {
+          // Group-shared notes live in the author's workspace and are never
+          // mirrored into the local sidecar database.
+          throw new Error("Memo not found");
+        }
         return {
           memo: {
             id: params.memoId,
@@ -25,6 +31,17 @@ globalThis.window = {
             },
             contentMarkdown: "![screenshot.webp](edgeever-staged://stage_dead)\n\n",
           },
+        };
+      }
+      if (method === "shared.snapshot.get") {
+        if (params.memoId !== "memo_shared") throw new Error("No snapshot");
+        return {
+          memo: {
+            id: "memo_shared",
+            contentJson: { type: "doc", content: [{ type: "paragraph" }] },
+            contentMarkdown: "",
+          },
+          groupName: "研发",
         };
       }
       if (method === "resource.list") {
@@ -131,5 +148,31 @@ describe("desktop repository memo reads", () => {
     expect(result.memo.contentMarkdown).toContain("edgeever-resource://resource/res_shot");
     expect(result.memo.contentMarkdown).not.toContain("edgeever-staged://");
     expect(result.memo.contentJson.content[0].attrs.src).toBe("edgeever-resource://resource/res_shot");
+  });
+
+  test("serves a shared snapshot as a marked read-only memo when the mirror misses", async () => {
+    const result = await createDesktopRepository().getMemo("memo_shared");
+    expect(result.memo.id).toBe("memo_shared");
+    expect(result.memo.snapshot).toEqual({ groupName: "研发" });
+    expect(lastRequest.method).toBe("shared.snapshot.get");
+  });
+
+  test("falls back to the live API when neither mirror nor snapshot has the note", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      memo: {
+        id: "memo_live",
+        contentJson: { type: "doc", content: [{ type: "paragraph" }] },
+        contentMarkdown: "live",
+      },
+    }), { headers: { "content-type": "application/json" } });
+    try {
+      const result = await createDesktopRepository().getMemo("memo_live");
+      expect(result.memo.id).toBe("memo_live");
+      expect(result.memo.snapshot ?? null).toBe(null);
+      expect(lastRequest.method).toBe("shared.snapshot.get");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

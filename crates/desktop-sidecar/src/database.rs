@@ -97,7 +97,7 @@ fn apply_migrations(connection: &Connection, migrations: &Path) -> rusqlite::Res
     Ok(())
 }
 
-fn ensure_sidecar_schema(connection: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn ensure_sidecar_schema(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS _edgeever_sidecar_meta (
            key TEXT PRIMARY KEY,
@@ -120,6 +120,33 @@ fn ensure_sidecar_schema(connection: &Connection) -> rusqlite::Result<()> {
            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
          );
          CREATE INDEX IF NOT EXISTS idx_sidecar_outbox_status ON _edgeever_sidecar_outbox(status, id);",
+    )?;
+
+    // Offline snapshots of group-shared notes. These live in other
+    // workspaces and are never part of the local mirror; the table keeps
+    // them strictly separate so no list query can leak them into the
+    // personal workspace. Rows are refreshed while online and pruned the
+    // moment access disappears (see shared.snapshot.prune).
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS shared_memo_snapshots (
+           memo_id TEXT PRIMARY KEY,
+           group_id TEXT,
+           group_name TEXT,
+           notebook_id TEXT,
+           title TEXT,
+           excerpt TEXT NOT NULL DEFAULT '',
+           tags_json TEXT NOT NULL DEFAULT '[]',
+           content_json TEXT NOT NULL,
+           content_markdown TEXT NOT NULL DEFAULT '',
+           content_text TEXT NOT NULL DEFAULT '',
+           content_hash TEXT NOT NULL DEFAULT '',
+           revision INTEGER NOT NULL DEFAULT 0,
+           display_policy_json TEXT,
+           memo_created_at TEXT NOT NULL,
+           memo_updated_at TEXT NOT NULL,
+           snapshot_at TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_shared_snapshots_group ON shared_memo_snapshots(group_id);",
     )?;
 
     let columns = connection

@@ -1916,6 +1916,7 @@ export const enUS = {
     expandOutlineHeading: "Expand {{name}}",
     groupSharedNote: "Shared through the group \"{{group}}\". It joins your own notebooks only after you save a copy.",
     groupSharedNoteNoGroup: "This note is shared through a group. It joins your own notebooks only after you save a copy.",
+    offlineSnapshot: "Offline snapshot ({{group}}). It may be outdated and refreshes when back online.",
     saveSharedCopy: "Save as my note",
     saveSharedCopyDone: "Saved to your notebooks",
     saveSharedCopyFailed: "Save failed, try again",

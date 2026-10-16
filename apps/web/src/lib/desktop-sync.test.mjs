@@ -5,6 +5,7 @@ const {
   createDesktopSyncIssueDetails,
   createDesktopSyncDiagnosticText,
   createDesktopSyncSummary,
+  diffSharedSnapshots,
   isStagedResourceReferenced,
   hasDesktopSyncStateReset,
   mergeMemoIdMappings,
@@ -321,5 +322,40 @@ describe("desktop sync failure handling", () => {
     expect(shouldAttemptDesktopRecoveryPull("pull_remote_changes", { pending: 0, syncing: 0 }, true)).toBe(false);
     expect(shouldAttemptDesktopRecoveryPull("finalize_resource_remap", { pending: 0, syncing: 0 }, true)).toBe(false);
     expect(shouldAttemptDesktopRecoveryPull("sync_staged_resources", { pending: 0, syncing: 0 }, false)).toBe(false);
+  });
+});
+
+describe("shared snapshot sync diff", () => {
+  const shared = [
+    { id: "memo_same", updatedAt: "2026-02-01T00:00:00.000Z", groupId: "grp_1" },
+    { id: "memo_new", updatedAt: "2026-02-01T00:00:00.000Z", groupId: "grp_1" },
+    { id: "memo_changed", updatedAt: "2026-03-01T00:00:00.000Z", groupId: "grp_1" },
+    { id: "memo_strict", updatedAt: "2026-02-01T00:00:00.000Z", groupId: "grp_2" },
+  ];
+  const mirrored = [
+    { memoId: "memo_same", updatedAt: "2026-02-01T00:00:00.000Z" },
+    { memoId: "memo_changed", updatedAt: "2026-02-01T00:00:00.000Z" },
+    { memoId: "memo_strict", updatedAt: "2026-02-01T00:00:00.000Z" },
+    { memoId: "memo_revoked", updatedAt: "2026-02-01T00:00:00.000Z" },
+  ];
+
+  test("refreshes new and changed snapshots and prunes revoked access", () => {
+    expect(diffSharedSnapshots(shared, mirrored, new Set())).toEqual({
+      refreshIds: ["memo_new", "memo_changed"],
+      prune: true,
+    });
+  });
+
+  test("refreshes strict-policy groups even when the memo revision is unchanged", () => {
+    expect(diffSharedSnapshots(shared, mirrored, new Set(["grp_2"])).refreshIds).toContain("memo_strict");
+    expect(diffSharedSnapshots(shared, mirrored, new Set()).refreshIds).not.toContain("memo_strict");
+  });
+
+  test("settles when everything matches and nothing was revoked", () => {
+    expect(diffSharedSnapshots(
+      [{ id: "memo_same", updatedAt: "2026-02-01T00:00:00.000Z", groupId: "grp_1" }],
+      [{ memoId: "memo_same", updatedAt: "2026-02-01T00:00:00.000Z" }],
+      new Set(),
+    )).toEqual({ refreshIds: [], prune: false });
   });
 });

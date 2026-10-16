@@ -41,6 +41,14 @@ export type MemoDetail = MemoSummary & {
   sourceMemoIds: string[];
   mergeSourceCount: number;
   mergedIntoMemoId: string | null;
+  /**
+   * Present only when the detail came from an offline shared-note snapshot
+   * (desktop sidecar) instead of the live API. Readers must treat it as
+   * read-only and possibly stale; it is never written back anywhere.
+   */
+  snapshot?: {
+    groupName: string | null;
+  } | null;
 };
 
 export type MemoTemplate = {

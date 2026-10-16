@@ -16,6 +16,9 @@ use crate::memo::{
     list_memos, memo_value, merge_memos, move_memos, pin_memos, restore_memo,
     restore_memo_revision, update_memo,
 };
+use crate::shared_snapshots::{
+    get_shared_snapshot, list_shared_snapshots, prune_shared_snapshots, save_shared_snapshot,
+};
 use crate::sync::{
     apply_sync_changes, prepare_sync_bootstrap, sync_outbox_ack, sync_outbox_discard,
     sync_outbox_fail, sync_outbox_list, sync_outbox_recover_memo_update, sync_outbox_retry,
@@ -152,6 +155,10 @@ pub(crate) fn handle(
         "memo.revisions" => list_memo_revisions(database, &request.params),
         "memo.restoreRevision" => restore_memo_revision(database, &request.params),
         "memo.revision.cache" => cache_memo_revision(database, &request.params),
+        "shared.snapshot.get" => get_shared_snapshot(database, &request.params),
+        "shared.snapshot.list" => list_shared_snapshots(database),
+        "shared.snapshot.save" => save_shared_snapshot(database, &request.params),
+        "shared.snapshot.prune" => prune_shared_snapshots(database, &request.params),
         "app.shutdown" => Ok(json!({ "ok": true })),
         _ => Err(format!("Unknown sidecar method: {}", request.method)),
     }

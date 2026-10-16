@@ -1914,6 +1914,7 @@ export const zhCN = {
     expandOutlineHeading: "展开 {{name}}",
     groupSharedNote: "来自群组「{{group}}」的共享笔记，仅当保存为自己的笔记后才会进入你的笔记本。",
     groupSharedNoteNoGroup: "这是一篇群组共享笔记，仅当保存为自己的笔记后才会进入你的笔记本。",
+    offlineSnapshot: "离线快照（{{group}}），可能不是最新版本，联网后自动更新。",
     saveSharedCopy: "保存为自己的笔记",
     saveSharedCopyDone: "已保存到你的笔记本",
     saveSharedCopyFailed: "保存失败，请重试",

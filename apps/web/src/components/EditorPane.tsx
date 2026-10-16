@@ -30,6 +30,7 @@ import {
   Lock,
   LockOpen,
   UsersRound,
+  CloudOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
@@ -581,8 +582,11 @@ const RichEditorPane = ({
 
   const effectiveReadOnly = readOnly
     || (isMobileViewport && !mobileEditingActive)
-    || (!isMobileViewport && desktopReadingProtection);
-  const useMobilePlainTextEditor = isMobileViewport && mobileEditingActive && !readOnly;
+    || (!isMobileViewport && desktopReadingProtection)
+    // Offline shared-note snapshots are readable but never writable: the live
+    // note may have moved on, and there is no channel to merge into.
+    || Boolean(memo?.snapshot);
+  const useMobilePlainTextEditor = isMobileViewport && mobileEditingActive && !readOnly && !memo?.snapshot;
 
   const toggleDesktopReadingProtection = useCallback(() => {
     setDesktopReadingProtection((protectedMode) => {
@@ -1401,7 +1405,7 @@ const RichEditorPane = ({
     getMemoId: () => memoRef.current?.id,
     hydratingRef,
   });
-  const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode && !collabRealtimeBound;
+  const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode && !collabRealtimeBound && !memo?.snapshot;
 
   useEffect(() => {
     const syncPreference = (event?: Event) => {
@@ -4159,6 +4163,17 @@ const RichEditorPane = ({
               await forceOverwriteAfterConflict();
             }}
           />
+        ) : null}
+        {memo?.snapshot ? (
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-600"
+            role="status"
+          >
+            <CloudOff className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1">
+              {t("editor.offlineSnapshot", { group: memo.snapshot.groupName ?? t("collab.someone") })}
+            </span>
+          </div>
         ) : null}
         {isGroupSharedNote ? (
           <div

@@ -28,6 +28,7 @@ export type DesktopSyncPhase =
   | "sync_outbox"
   | "read_status"
   | "pull_remote_changes"
+  | "pull_shared_snapshots"
   | "finalize_resource_remap";
 
 export type DesktopGlobalSyncIssue = {
@@ -685,6 +686,102 @@ const pullRemoteChanges = async () => {
   await request("sync.cursor.set", { cursor: response.cursor ?? cursor, syncIdentity: response.syncIdentity ?? status.syncIdentity });
 };
 
+const isDefaultDisplayPolicy = (policy: { html: string; markdown: string } | null | undefined) =>
+  !policy || (policy.html === "rendered" && policy.markdown === "rendered");
+
+export type SharedSnapshotEntry = {
+  id: string;
+  updatedAt: string;
+  groupId: string;
+};
+
+export type MirroredSnapshotEntry = {
+  memoId: string;
+  updatedAt: string;
+};
+
+/**
+ * Pure diff for the shared snapshot sync: which accessible memos need a
+ * (re)fetch, and whether anything lost access and must be pruned.
+ */
+export const diffSharedSnapshots = (
+  shared: SharedSnapshotEntry[],
+  mirrored: MirroredSnapshotEntry[],
+  strictGroupIds: ReadonlySet<string>,
+): { refreshIds: string[]; prune: boolean } => {
+  const mirroredById = new Map(mirrored.map((entry) => [entry.memoId, entry]));
+  const refreshIds = shared
+    .filter((entry) => {
+      const known = mirroredById.get(entry.id);
+      return !known || known.updatedAt !== entry.updatedAt || strictGroupIds.has(entry.groupId);
+    })
+    .map((entry) => entry.id);
+  const accessibleIds = new Set(shared.map((entry) => entry.id));
+  return { refreshIds, prune: mirrored.some((entry) => !accessibleIds.has(entry.memoId)) };
+};
+
+/**
+ * Mirror group-shared notes into the sidecar so they stay readable offline.
+ * The snapshots table is strictly separate from the personal mirror; entries
+ * carry the already-filtered document the API served (never the raw note),
+ * and anything that lost access is pruned on every online sync.
+ */
+const pullSharedSnapshots = async () => {
+  const shared = await api.getSharedWithMe();
+  const memos = shared.memos ?? [];
+  const mirrored = await request("shared.snapshot.list", {});
+
+  // A display-policy change does not bump the memo revision, so compare
+  // policies per group as well: any non-default policy in the group forces a
+  // refresh of its snapshots, keeping filtered views from going stale.
+  const strictGroupIds = new Set<string>();
+  for (const groupId of new Set(memos.map((memo) => memo.groupId))) {
+    try {
+      const { shares } = await api.listGroupShares(groupId);
+      if (shares.some((share) => !isDefaultDisplayPolicy(share.displayPolicy))) {
+        strictGroupIds.add(groupId);
+      }
+    } catch {
+      // Keep the last snapshot when the share list is unreachable.
+    }
+  }
+
+  const { refreshIds, prune } = diffSharedSnapshots(
+    memos.map((memo) => ({ id: memo.id, updatedAt: memo.updatedAt, groupId: memo.groupId })),
+    mirrored.snapshots,
+    strictGroupIds,
+  );
+  const byId = new Map(memos.map((memo) => [memo.id, memo]));
+  await Promise.all(refreshIds.map(async (memoId) => {
+    const entry = byId.get(memoId);
+    if (!entry) return;
+    const remote = await api.getMemo(entry.id);
+    await request("shared.snapshot.save", {
+      memo: {
+        ...remote.memo,
+        groupId: entry.groupId,
+        groupName: entry.groupName,
+        displayPolicy: remote.displayPolicy ?? null,
+      },
+    });
+  }));
+
+  if (prune) {
+    const accessibleIds = new Set(memos.map((memo) => memo.id));
+    await request("shared.snapshot.prune", { memoIds: [...accessibleIds] });
+  }
+};
+
+export const syncSharedSnapshots = async () => {
+  try {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    await pullSharedSnapshots();
+  } catch (error) {
+    // Snapshots are advisory: never break the main sync over them.
+    console.error("[desktop-sync] Shared snapshot pull failed", error);
+  }
+};
+
 export type DesktopSyncResult = {
   attempted: number;
   synced: number;
@@ -756,6 +853,11 @@ export const syncDesktopData = () => {
       if (shouldPullDesktopChanges(remaining, typeof navigator === "undefined" || navigator.onLine)) {
         phase = "pull_remote_changes";
         await pullRemoteChanges();
+        // Shared notes live outside the mirrored workspace, so the cursor
+        // pull above never sees them. Mirror them separately (advisory: a
+        // failed shared pull must never break the main sync).
+        phase = "pull_shared_snapshots";
+        await syncSharedSnapshots();
       }
       // Catch resources staged while the network sync itself was running.
       phase = "finalize_resource_remap";

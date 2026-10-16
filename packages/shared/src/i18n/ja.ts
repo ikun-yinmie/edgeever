@@ -1916,6 +1916,7 @@ export const ja = {
     expandOutlineHeading: "{{name}} を開く",
     groupSharedNote: "グループ「{{group}}」から共有されたノートです。コピーを保存すると自分のノートブックに入ります。",
     groupSharedNoteNoGroup: "グループで共有されたノートです。コピーを保存すると自分のノートブックに入ります。",
+    offlineSnapshot: "オフラインのスナップショット（{{group}}）。最新ではない可能性があり、オンライン復帰時に更新されます。",
     saveSharedCopy: "自分のノートとして保存",
     saveSharedCopyDone: "ノートブックに保存しました",
     saveSharedCopyFailed: "保存に失敗しました。再試行してください",

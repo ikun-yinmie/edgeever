@@ -2,6 +2,7 @@ mod catalog;
 mod database;
 mod memo;
 mod rpc;
+mod shared_snapshots;
 mod sync;
 
 use database::{data_dir, migrations_dir, open_database};

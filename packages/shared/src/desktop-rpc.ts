@@ -55,6 +55,10 @@ export const DESKTOP_RPC_METHODS = [
   "memo.revisions",
   "memo.restoreRevision",
   "memo.revision.cache",
+  "shared.snapshot.get",
+  "shared.snapshot.list",
+  "shared.snapshot.save",
+  "shared.snapshot.prune",
 ] as const;
 
 export type DesktopRpcMethod = (typeof DESKTOP_RPC_METHODS)[number];
@@ -127,6 +131,10 @@ export type DesktopRpcResponses = {
   "memo.revisions": { revisions: import("./types").MemoRevision[] };
   "memo.restoreRevision": { memo: MemoDetail };
   "memo.revision.cache": { ok: true };
+  "shared.snapshot.get": { memo: MemoDetail; groupName: string | null };
+  "shared.snapshot.list": { snapshots: Array<{ memoId: string; updatedAt: string; groupId: string | null }> };
+  "shared.snapshot.save": { memo: MemoDetail };
+  "shared.snapshot.prune": { removed: number };
   "sync.status": { pending: number; syncing: number; conflict: number; error: number; cursor: number; syncIdentity: string | null; lastSyncedAt: string | null };
   "sync.bootstrap.prepare": { clearedSeedData: boolean; rebuiltMirror: boolean };
   "sync.outbox.list": { items: DesktopOutboxItem[] };
@@ -175,6 +183,19 @@ export type DesktopRpcParams = {
   "memo.revisions": { memoId: string; limit?: number };
   "memo.restoreRevision": { memoId: string; revisionId: string };
   "memo.revision.cache": { revision: import("./types").MemoRevision };
+  "shared.snapshot.get": { memoId: string };
+  "shared.snapshot.list": Record<string, never>;
+  "shared.snapshot.save": {
+    memo: MemoDetail & {
+      groupId?: string | null;
+      groupName?: string | null;
+      displayPolicy?: {
+        html: "rendered" | "source" | "hidden";
+        markdown: "rendered" | "source" | "hidden";
+      } | null;
+    };
+  };
+  "shared.snapshot.prune": { memoIds: string[] };
   "sync.status": Record<string, never>;
   "sync.bootstrap.prepare": { reset?: boolean };
   "sync.outbox.list": { limit?: number; includeConflicts?: boolean };

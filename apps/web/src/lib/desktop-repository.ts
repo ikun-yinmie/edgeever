@@ -261,13 +261,27 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     let result: { memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null };
     try {
       result = await request("memo.get", { memoId, includeDeleted });
-    } catch (error) {
+    } catch (localError) {
+      // Notes shared through a group live in their author's workspace and are
+      // never mirrored into the local sidecar database. A synced snapshot
+      // keeps them readable offline (marked read-only); otherwise the live
+      // API is the only remaining source.
+      try {
+        const snapshot = await request("shared.snapshot.get", { memoId });
+        const repaired = await repairDisplayedMemo(snapshot.memo);
+        return {
+          memo: { ...repaired, snapshot: { groupName: snapshot.groupName } },
+          displayPolicy: null,
+        };
+      } catch {
+        // No snapshot: fall through to the live API below.
+      }
       // Notes shared through a group live in their author's workspace and are
       // never mirrored into the local sidecar database. Fetch them from the
       // API so the shared reader can still open them. The group share display
       // policy rides along so realtime collaboration can stay out of filtered
       // views (it would otherwise leak the raw shared document).
-      const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw error; });
+      const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw localError; });
       return { memo: await repairDisplayedMemo(remote.memo), displayPolicy: remote.displayPolicy ?? null };
     }
     return { memo: await repairDisplayedMemo(result.memo), displayPolicy: result.displayPolicy ?? null };
