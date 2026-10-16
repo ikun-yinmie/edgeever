@@ -2304,6 +2304,7 @@ export const ja = {
     nameLabel: "アカウント名",
     displayNameLabel: "表示名（任意）",
     passwordLabel: "パスワード",
+    passwordHint: "8 文字以上。",
     groupsLabel: "グループ",
     empty: "共有アカウントはまだありません。チーム用に 1 つ作成しましょう。",
     groupsNone: "（まだグループに参加していません）",

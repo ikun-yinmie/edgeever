@@ -2302,6 +2302,7 @@ export const zhCN = {
     nameLabel: "账号名",
     displayNameLabel: "显示名（可选）",
     passwordLabel: "登录密码",
+    passwordHint: "登录密码至少 8 位。",
     groupsLabel: "加入群组",
     empty: "还没有公共账号。创建一个给团队共用，多个人可同时登录。",
     groupsNone: "（暂未加入任何群组）",

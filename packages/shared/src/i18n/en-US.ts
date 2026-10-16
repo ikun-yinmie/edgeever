@@ -2304,6 +2304,7 @@ export const enUS = {
     nameLabel: "Account name",
     displayNameLabel: "Display name (optional)",
     passwordLabel: "Password",
+    passwordHint: "At least 8 characters.",
     groupsLabel: "Groups",
     empty: "No shared accounts yet. Create one for the team — several people can use it at once.",
     groupsNone: "(not in any group yet)",

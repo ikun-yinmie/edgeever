@@ -207,10 +207,13 @@ export const GroupAccountsCard = () => {
               <Input
                 autoComplete="new-password"
                 id="group-account-password"
+                minLength={8}
                 onChange={(event) => setPassword(event.target.value)}
+                placeholder={t("groupAccounts.passwordHint")}
                 type="password"
                 value={password}
               />
+              <p className="text-[11px] leading-4 text-slate-500">{t("groupAccounts.passwordHint")}</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-slate-700">{t("groupAccounts.groupsLabel")}</p>
@@ -258,8 +261,9 @@ export const GroupAccountsCard = () => {
           <div className="space-y-3">
             <Input
               autoComplete="new-password"
+              minLength={8}
               onChange={(event) => setResetPassword(event.target.value)}
-              placeholder={t("groupAccounts.passwordLabel")}
+              placeholder={t("groupAccounts.passwordHint")}
               type="password"
               value={resetPassword}
             />
