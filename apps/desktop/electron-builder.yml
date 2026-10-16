@@ -72,8 +72,9 @@ win:
     - nsis
   artifactName: EdgeEver-${version}-windows-${arch}.${ext}
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
+  allowToChangeInstallationDirectory: true
 linux:
   category: Utility
   syncDesktopName: true
