@@ -25,6 +25,18 @@ import {
   mountedInstallerCandidates,
 } from "./installation-location.mjs";
 import { userDataDirectoryFromArguments } from "./user-data-directory.mjs";
+import {
+  hasSidecarData,
+  movePath,
+  moveSidecarData,
+  normalizeStorageDirectory,
+  parseStorageLocationConfig,
+  rollbackSidecarData,
+  serializeStorageLocationConfig,
+  sidecarStorageUsage,
+  storageLocationConfigPath,
+  validateStorageTarget,
+} from "./storage-location.mjs";
 import { isAllowedPrintPreviewUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
@@ -169,10 +181,22 @@ const crashMarkerPath = () => join(app.getPath("userData"), "last-session-active
 const installationMarkerPath = () => join(app.getPath("userData"), "installation-confirmed");
 const logPath = () => join(app.getPath("userData"), "logs", "desktop.log");
 let desktopSessionToken = "";
+let storageDataRoot = "";
+let storageMigrationInProgress = false;
+const storageLocationPath = () => storageLocationConfigPath(app.getPath("userData"));
+const loadStorageLocation = async () => {
+  try {
+    storageDataRoot = parseStorageLocationConfig(await readFile(storageLocationPath(), "utf8"));
+  } catch {
+    storageDataRoot = "";
+  }
+};
+const currentStorageRoot = () => storageDataRoot || app.getPath("userData");
 const sidecarDataDirectory = (accountId = null) => {
+  const root = currentStorageRoot();
   return accountId
-    ? accountDataDirectory(app.getPath("userData"), configuredApiBaseUrl, accountId)
-    : app.getPath("userData");
+    ? accountDataDirectory(root, configuredApiBaseUrl, accountId)
+    : root;
 };
 const legacyDataDirectory = () => app.getPath("userData");
 const stagedResourceDirectory = () => join(sidecarDataDirectory(activeAccountId), "resource-outbox");
@@ -187,7 +211,7 @@ const migrateLegacyAccountData = async (accountId) => {
   await restrictDirectory(destination);
   for (const name of ["edgeever.sqlite", "edgeever.sqlite-wal", "edgeever.sqlite-shm", "backups", "resource-outbox", "resource-cache"]) {
     const sourcePath = join(source, name);
-    if (existsSync(sourcePath)) await rename(sourcePath, join(destination, name));
+    if (existsSync(sourcePath)) await movePath(sourcePath, join(destination, name));
   }
   void writeDiagnostic("sidecar.legacy-data-migrated", { scope: accountScopeKey(configuredApiBaseUrl, accountId) });
 };
@@ -1215,8 +1239,75 @@ const stopSidecar = async () => {
   if (!processToStop) return;
   const exited = new Promise((resolve) => processToStop.once("exit", resolve));
   processToStop.stdin.end();
-  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 1000))]);
-  if (!processToStop.killed) processToStop.kill();
+  const graceful = await Promise.race([
+    exited.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 1000)),
+  ]);
+  if (!graceful && !processToStop.killed) {
+    processToStop.kill();
+    // Moving the data directory needs the file handles released. On Windows the
+    // exit event is the only reliable signal, so wait past the kill.
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))]);
+  }
+};
+
+const changeStorageLocation = async (requestedTarget) => {
+  if (storageMigrationInProgress) return { ok: false, errorCode: "migration-in-progress" };
+  const target = normalizeStorageDirectory(requestedTarget);
+  const currentRoot = currentStorageRoot();
+  const validation = validateStorageTarget({
+    target,
+    currentRoot,
+    protectedRoots: [app.getAppPath(), process.resourcesPath],
+  });
+  if (validation === "unchanged") return { ok: true, rootDirectory: currentRoot };
+  if (validation) return { ok: false, errorCode: validation };
+
+  storageMigrationInProgress = true;
+  let moved = [];
+  try {
+    await mkdir(target, { recursive: true });
+    await restrictDirectory(target);
+    if (hasSidecarData(target)) return { ok: false, errorCode: "target-has-data" };
+    const probePath = join(target, ".edgeever-write-probe");
+    try {
+      await writeFile(probePath, "", { flag: "wx", mode: 0o600 });
+    } catch {
+      return { ok: false, errorCode: "target-not-writable" };
+    }
+    await rm(probePath, { force: true });
+
+    await stopSidecar();
+    moved = await moveSidecarData(currentRoot, target);
+    await writeFile(storageLocationPath(), serializeStorageLocationConfig(target), { mode: 0o600 });
+    await restrictFile(storageLocationPath());
+    storageDataRoot = target;
+    const restarted = await startSidecar(activeAccountId);
+    if (!restarted) throw new Error("EdgeEver sidecar is unavailable");
+    await restarted.waitUntilReady();
+    void writeDiagnostic("storage.location-changed", { scope: sidecarScopeKey });
+    return { ok: true, rootDirectory: target };
+  } catch (error) {
+    await rollbackSidecarData(currentRoot, target, moved);
+    try {
+      await rm(storageLocationPath(), { force: true });
+    } catch {
+      // A missing config file already falls back to the default data root.
+    }
+    storageDataRoot = "";
+    try {
+      const restored = await startSidecar(activeAccountId);
+      await restored?.waitUntilReady();
+    } catch {
+      // The restart watchdog keeps retrying the default data root.
+    }
+    void writeDiagnostic("storage.location-change-failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, errorCode: "migration-failed" };
+  } finally {
+    storageMigrationInProgress = false;
+  }
 };
 
 const scheduleSidecarRestart = () => {
@@ -1429,6 +1520,7 @@ const startApplication = async () => {
   }
   await loadConfiguredApiBaseUrl();
   await loadDesktopSessionToken();
+  await loadStorageLocation();
   app.setAsDefaultProtocolClient("edgeever");
   recoveredAfterAbnormalExit = existsSync(crashMarkerPath());
   void writeDiagnostic(recoveredAfterAbnormalExit ? "session.recovered-after-abnormal-exit" : "session.started");
@@ -1460,7 +1552,47 @@ const startApplication = async () => {
   });
   ipcMain.handle("desktop:sidecar-status", () => ({ available: Boolean(sidecar), path: sidecarPath, scope: sidecarScopeKey }));
   ipcMain.handle("desktop:system-info", () => desktopRuntimeSystemInfo());
+  ipcMain.handle("desktop:storage-location", async () => {
+    const root = currentStorageRoot();
+    const usage = await sidecarStorageUsage(root);
+    return {
+      rootDirectory: root,
+      accountDirectory: sidecarDataDirectory(activeAccountId),
+      defaultRootDirectory: app.getPath("userData"),
+      isCustom: Boolean(storageDataRoot),
+      usageBytes: usage.bytes,
+      usageFiles: usage.files,
+    };
+  });
+  ipcMain.handle("desktop:choose-storage-location", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Storage location selection must come from the main window");
+    const isChinese = app.getLocale().toLowerCase().startsWith("zh");
+    const options = {
+      title: isChinese ? "选择 EdgeEver 本地存储目录" : "Choose the EdgeEver local storage folder",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: currentStorageRoot(),
+    };
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+    return { path: result.canceled ? null : result.filePaths[0] ?? null };
+  });
+  ipcMain.handle("desktop:set-storage-location", async (event, value) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Storage location changes must come from the main window");
+    if (typeof value !== "string" || value.length > 4096) throw new Error("Invalid storage directory");
+    return changeStorageLocation(value);
+  });
+  ipcMain.handle("desktop:reset-storage-location", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Storage location changes must come from the main window");
+    return changeStorageLocation(app.getPath("userData"));
+  });
+  ipcMain.handle("desktop:open-storage-location", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Storage location access must come from the main window");
+    const root = currentStorageRoot();
+    await mkdir(root, { recursive: true });
+    const error = await shell.openPath(root);
+    return { ok: !error };
+  });
   ipcMain.handle("desktop:set-account-scope", async (_event, accountId) => {
+    if (storageMigrationInProgress) throw new Error("EdgeEver is moving local data to another folder");
     const normalizedAccountId = typeof accountId === "string" && accountId.trim() ? accountId.trim() : null;
     const nextScopeKey = accountScopeKey(configuredApiBaseUrl, normalizedAccountId);
     scheduledTaskScheduler.clear();

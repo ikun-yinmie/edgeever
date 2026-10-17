@@ -604,6 +604,7 @@ export const WorkspaceApp = ({
 
   const {
     discardConflictsNow,
+    failedSyncCount,
     isSyncingQueuedChanges,
     runQueuedSync,
     setSyncSummary,
@@ -629,6 +630,10 @@ export const WorkspaceApp = ({
     ]);
   }, [queryClient]);
 
+  // Terminal failures and conflicts no longer block background refreshes:
+  // the local mirror keeps pending local intents out of incoming snapshots.
+  const hasPendingLocalChanges = syncSummary.pending + syncSummary.syncing > 0;
+
   const refreshWorkspaceFromServer = useCallback(async (mode: WorkspaceRefreshMode) => {
     if (isBrowserOffline()) {
       setIsOnline(false);
@@ -639,7 +644,7 @@ export const WorkspaceApp = ({
 
     return refreshWorkspaceData({
       mode,
-      hasPendingLocalChanges: syncSummary.total > 0,
+      hasPendingLocalChanges,
       // Desktop sync already pushes the outbox and pulls remote changes in
       // one operation. The web repository keeps those phases separate.
       pushLocalChanges: isDesktopRuntime ? async () => undefined : runQueuedSync,
@@ -651,7 +656,7 @@ export const WorkspaceApp = ({
         : repository.sync,
       invalidateWorkspaceQueries,
     });
-  }, [invalidateWorkspaceQueries, repository, runQueuedSync, syncSummary.total]);
+  }, [hasPendingLocalChanges, invalidateWorkspaceQueries, repository, runQueuedSync]);
 
   const refreshLatestMemos = useCallback(async () => {
     if (isBrowserOffline()) {
@@ -1071,7 +1076,7 @@ export const WorkspaceApp = ({
   }, [mobilePullToRefreshActive, refreshLatestMemos]);
 
   useWorkspaceSyncLifecycle({
-    failedSyncCount: syncSummary.error,
+    failedSyncCount,
     backgroundRefreshKey: localDataScope,
     refreshWorkspace: refreshWorkspaceFromServer,
     runQueuedSync,

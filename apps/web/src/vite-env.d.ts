@@ -43,6 +43,24 @@ interface EdgeEverDesktopBridge {
     { scheduled: true }
     | { scheduled: false; errorCode: DesktopLocalDataResetErrorCode }
   >;
+  storageLocation(): Promise<{
+    rootDirectory: string;
+    accountDirectory: string;
+    defaultRootDirectory: string;
+    isCustom: boolean;
+    usageBytes: number;
+    usageFiles: number;
+  }>;
+  chooseStorageLocation(): Promise<{ path: string | null }>;
+  setStorageLocation(directory: string): Promise<
+    { ok: true; rootDirectory: string }
+    | { ok: false; errorCode: DesktopStorageLocationErrorCode }
+  >;
+  resetStorageLocation(): Promise<
+    { ok: true; rootDirectory: string }
+    | { ok: false; errorCode: DesktopStorageLocationErrorCode }
+  >;
+  openStorageLocation(): Promise<{ ok: boolean }>;
   recordRendererError(details: DesktopRendererErrorDetails): Promise<{ recorded: true }>;
   openRendererIssue(details: DesktopRendererErrorDetails): Promise<{ opened: true }>;
   rendererBootstrapReady(): void;
@@ -97,6 +115,14 @@ type DesktopLocalDataResetErrorCode =
   | "application-bundle-not-found"
   | "helper-start-failed"
   | "unexpected";
+
+type DesktopStorageLocationErrorCode =
+  | "invalid-directory"
+  | "unsupported-directory"
+  | "target-has-data"
+  | "target-not-writable"
+  | "migration-in-progress"
+  | "migration-failed";
 
 interface DesktopRendererErrorDetails {
   kind: string;

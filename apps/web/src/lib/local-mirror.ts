@@ -85,7 +85,74 @@ const toSummary = (memo: MemoDetail): MemoSummary => ({
   deletedAt: memo.deletedAt,
 });
 
+export type PendingMemoSyncState = {
+  deleteIds: Set<string>;
+  updateIds: Set<string>;
+  restoreIds: Set<string>;
+  emptyTrashIds: Set<string>;
+};
+
+/**
+ * Locally queued memo intents that must not be clobbered by the next server
+ * snapshot: a note deleted offline has to stay deleted until the delete is
+ * pushed, otherwise a stale "alive" upsert resurrects it.
+ */
+export const collectPendingMemoSyncState = async (scope: string): Promise<PendingMemoSyncState> => {
+  const state: PendingMemoSyncState = {
+    deleteIds: new Set(),
+    updateIds: new Set(),
+    restoreIds: new Set(),
+    emptyTrashIds: new Set(),
+  };
+
+  for (const item of await localDb.syncQueue.toArray()) {
+    if (item.scope && item.scope !== scope) continue;
+    const payload = item.payload as Record<string, unknown>;
+    const payloadMemoId = typeof payload.memoId === "string" ? payload.memoId : item.memoId;
+
+    if (item.kind === "memo.delete") {
+      state.deleteIds.add(payloadMemoId);
+    } else if (item.kind === "memo.update") {
+      // Legacy unscoped items only count when this account owns the memo.
+      if (!item.scope && !(await localDb.memos.get([scope, item.memoId]))) continue;
+      state.updateIds.add(item.memoId);
+    } else if (item.kind === "memo.restore") {
+      state.restoreIds.add(payloadMemoId);
+    } else if (item.kind === "memo.deleteBatch") {
+      for (const memoId of Array.isArray(payload.memoIds) ? payload.memoIds : []) {
+        if (typeof memoId === "string") state.deleteIds.add(memoId);
+      }
+    } else if (item.kind === "memo.emptyTrash") {
+      for (const memoId of Array.isArray(payload.memoIds) ? payload.memoIds : []) {
+        if (typeof memoId === "string") state.emptyTrashIds.add(memoId);
+      }
+    }
+  }
+
+  return state;
+};
+
+export const shouldApplyRemoteMemoChange = (memo: MemoDetail, pending: PendingMemoSyncState) => {
+  if (pending.emptyTrashIds.has(memo.id)) return false;
+  if (pending.deleteIds.has(memo.id) && !memo.isDeleted) return false;
+  if (pending.updateIds.has(memo.id) && !memo.isDeleted) return false;
+  if (pending.restoreIds.has(memo.id)) return false;
+  return true;
+};
+
 const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDetail[]) => {
+  const pending = await collectPendingMemoSyncState(scope);
+  const now = new Date().toISOString();
+  const projectedMemos = memos.map((memo) => {
+    if ((pending.deleteIds.has(memo.id) || pending.emptyTrashIds.has(memo.id)) && !memo.isDeleted) {
+      return { ...memo, isDeleted: true, deletedAt: memo.deletedAt ?? now };
+    }
+    if (pending.restoreIds.has(memo.id) && memo.isDeleted) {
+      return { ...memo, isDeleted: false, deletedAt: null };
+    }
+    return memo;
+  });
+
   await localDb.transaction("rw", [localDb.notebooks, localDb.memos, localDb.revisions, localDb.resources], async () => {
     const pendingLocalResources = (await localDb.resources.where("scope").equals(scope).toArray())
       .filter((resource) => resource.id.startsWith("local_resource_"));
@@ -94,18 +161,19 @@ const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDet
     await localDb.revisions.where("scope").equals(scope).delete();
     await localDb.resources.where("scope").equals(scope).delete();
     await localDb.notebooks.bulkPut(notebooks.map((notebook) => ({ ...notebook, scope })));
-    await localDb.memos.bulkPut(memos.map((memo) => ({ ...memo, scope })));
+    await localDb.memos.bulkPut(projectedMemos.map((memo) => ({ ...memo, scope })));
     await localDb.resources.bulkPut(pendingLocalResources);
   });
 };
 
 const applyChanges = async (scope: string, changes: SyncChangesResponse["changes"]) => {
+  const pending = await collectPendingMemoSyncState(scope);
   await localDb.transaction("rw", [localDb.notebooks, localDb.memos], async () => {
     for (const change of changes) {
       if (change.entityType === "memo") {
         if (change.operation === "delete" || !change.memo) {
           await localDb.memos.delete([scope, change.entityId]);
-        } else {
+        } else if (shouldApplyRemoteMemoChange(change.memo, pending)) {
           await localDb.memos.put({ ...change.memo, scope });
         }
         continue;
@@ -726,6 +794,11 @@ export const applyLocalMemoDeleteBatch = async (scope: string, memoIds: string[]
   if (permanent) return updateLocalMemos(scope, memoIds, () => null);
   return updateLocalMemos(scope, memoIds, (memo) => ({ ...memo, isDeleted: true, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
 };
+
+export const listLocalTrashedMemoIds = async (scope: string) =>
+  (await localDb.memos.where("scope").equals(scope).toArray())
+    .filter((memo) => memo.isDeleted)
+    .map((memo) => memo.id);
 
 export const applyLocalEmptyTrash = async (scope: string) => {
   const deletedIds = (await localDb.memos.where("scope").equals(scope).toArray()).filter((memo) => memo.isDeleted).map((memo) => memo.id);

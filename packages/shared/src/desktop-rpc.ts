@@ -1,7 +1,7 @@
 import type { MemoDetail, MemoSummary, MemoTemplate, Notebook, ResourceListItem, ResourceStorageSummary } from "./types";
 import type { TiptapDoc } from "./content";
 
-export const DESKTOP_SIDECAR_PROTOCOL_VERSION = 2;
+export const DESKTOP_SIDECAR_PROTOCOL_VERSION = 3;
 
 /** Sidecar-authored memo revision ids. Remote cached revisions use server ids. */
 export const DESKTOP_LOCAL_REVISION_ID_PREFIX = "revision_local_";
@@ -18,6 +18,7 @@ export const DESKTOP_RPC_METHODS = [
   "sync.status",
   "sync.bootstrap.prepare",
   "sync.outbox.list",
+  "sync.outbox.claim",
   "sync.outbox.ack",
   "sync.outbox.fail",
   "sync.outbox.retry",
@@ -138,6 +139,7 @@ export type DesktopRpcResponses = {
   "sync.status": { pending: number; syncing: number; conflict: number; error: number; cursor: number; syncIdentity: string | null; lastSyncedAt: string | null };
   "sync.bootstrap.prepare": { clearedSeedData: boolean; rebuiltMirror: boolean };
   "sync.outbox.list": { items: DesktopOutboxItem[] };
+  "sync.outbox.claim": { ok: true; claimed: boolean };
   "sync.outbox.ack": { ok: true; memo: MemoDetail | null; notebook: Notebook | null; template: MemoTemplate | null };
   "sync.outbox.fail": { ok: true };
   "sync.outbox.retry": { ok: true };
@@ -199,6 +201,7 @@ export type DesktopRpcParams = {
   "sync.status": Record<string, never>;
   "sync.bootstrap.prepare": { reset?: boolean };
   "sync.outbox.list": { limit?: number; includeConflicts?: boolean };
+  "sync.outbox.claim": { id: number; version?: number };
   "sync.outbox.ack": { id: number; version?: number; remoteMemo?: MemoDetail; remoteNotebook?: Notebook; remoteTemplate?: MemoTemplate };
   "sync.outbox.fail": { id: number; version?: number; error: string; errorCode?: string | null; conflict?: boolean; retryable?: boolean; nextAttemptAt?: string | null };
   "sync.outbox.retry": { id: number; version?: number };

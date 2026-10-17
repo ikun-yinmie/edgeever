@@ -48,6 +48,11 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
     return () => ipcRenderer.removeListener("desktop:ai-direct-chunk", listener);
   },
   clearLocalData: () => ipcRenderer.invoke("desktop:clear-local-data"),
+  storageLocation: () => ipcRenderer.invoke("desktop:storage-location"),
+  chooseStorageLocation: () => ipcRenderer.invoke("desktop:choose-storage-location"),
+  setStorageLocation: (value) => ipcRenderer.invoke("desktop:set-storage-location", value),
+  resetStorageLocation: () => ipcRenderer.invoke("desktop:reset-storage-location"),
+  openStorageLocation: () => ipcRenderer.invoke("desktop:open-storage-location"),
   recordRendererError: (details) => ipcRenderer.invoke("desktop:record-renderer-error", details),
   openRendererIssue: (details) => ipcRenderer.invoke("desktop:open-renderer-issue", details),
   rendererBootstrapReady: () => ipcRenderer.send("desktop:renderer-bootstrap-ready"),

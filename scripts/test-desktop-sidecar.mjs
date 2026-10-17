@@ -465,6 +465,85 @@ assert.ok((await request("sync.outbox.list", { limit: 200, includeConflicts: tru
 await request("sync.outbox.discard", { id: conflictCandidate.id });
 assert.equal((await request("sync.status")).conflict, 0);
 
+// Deleting a note whose create never reached the network must cancel the
+// create (and its queued edits) instead of queueing a remote delete that the
+// later create retry would resurrect.
+const unsyncedNote = await request("memo.create", { notebookId: inbox.id, title: "Unsynced delete", contentMarkdown: "never pushed", tags: [] });
+await request("memo.update", {
+  memoId: unsyncedNote.memo.id,
+  title: "Unsynced delete",
+  contentJson: { type: "doc", content: [] },
+  contentMarkdown: "never pushed edit",
+  contentText: "never pushed edit",
+  tags: [],
+});
+await request("memo.delete", { memoId: unsyncedNote.memo.id });
+assert.deepEqual(
+  (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === unsyncedNote.memo.id),
+  [],
+  "canceling an unsynced create should drop its create, edits, and delete",
+);
+assert.equal((await request("memo.get", { memoId: unsyncedNote.memo.id, includeDeleted: true })).memo.isDeleted, true);
+const unsyncedCreate = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.find((item) => item.kind === "memo.create" && item.entityId === unsyncedNote.memo.id);
+assert.ok(!unsyncedCreate, "the canceled create must not come back after a later read");
+await request("memo.restore", { memoId: unsyncedNote.memo.id });
+const restoredCreate = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.find((item) => item.kind === "memo.create" && item.entityId === unsyncedNote.memo.id);
+assert.ok(restoredCreate, "restoring a canceled unsynced note should upload it again as a create");
+assert.equal(restoredCreate.payload.contentMarkdown, "never pushed edit", "the recreated upload should carry the latest local body");
+await request("memo.delete", { memoId: unsyncedNote.memo.id, permanent: true });
+const unsyncedCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === unsyncedNote.memo.id);
+for (const item of unsyncedCleanup) await request("sync.outbox.discard", { id: item.id });
+
+// A delete queued while the create is in flight must wait for the create
+// acknowledgement, then run against the durable id without resurrecting the
+// locally deleted note.
+const inFlightNote = await request("memo.create", { notebookId: inbox.id, title: "In-flight delete", contentMarkdown: "create raced a delete", tags: [] });
+const inFlightCreate = (await request("sync.outbox.list", { limit: 200 })).items.find((item) => item.kind === "memo.create" && item.entityId === inFlightNote.memo.id);
+assert.ok(inFlightCreate, "race fixture should queue a create");
+await request("sync.outbox.claim", { id: inFlightCreate.id, version: inFlightCreate.version }).then((claim) => {
+  assert.equal(claim.claimed, true, "claiming a pending create should succeed");
+});
+assert.ok(!(await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.some((item) => item.id === inFlightCreate.id), "a claimed create should leave the flush list while it is in flight");
+await request("memo.delete", { memoId: inFlightNote.memo.id });
+assert.ok(!(await request("sync.outbox.list", { limit: 200 })).items.some((item) => item.kind === "memo.delete"), "the delete must wait until the in-flight create is acknowledged");
+const deferredDelete = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.find((item) => item.kind === "memo.delete" && item.entityId === inFlightNote.memo.id);
+assert.equal(deferredDelete?.status, "pending", "the dependent delete should stay queued for the ack");
+const remoteInFlight = { ...inFlightNote.memo, id: "memo_remote_in_flight", revision: 1, updatedAt: "2026-09-06T01:00:00.000Z" };
+await request("sync.outbox.ack", { id: inFlightCreate.id, version: inFlightCreate.version, remoteMemo: remoteInFlight });
+assert.equal(
+  (await request("memo.get", { memoId: "memo_remote_in_flight", includeDeleted: true })).memo.isDeleted,
+  true,
+  "acknowledging the create must not resurrect the locally deleted note",
+);
+const releasedDelete = (await request("sync.outbox.list", { limit: 200 })).items.find((item) => item.kind === "memo.delete");
+assert.ok(releasedDelete, "acknowledging the create should release the dependent delete");
+assert.equal(releasedDelete.entityId, "memo_remote_in_flight");
+assert.equal(releasedDelete.payload.memoId, "memo_remote_in_flight");
+await request("sync.outbox.discard", { id: releasedDelete.id });
+await request("memo.delete", { memoId: "memo_remote_in_flight", permanent: true });
+const remoteCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === "memo_remote_in_flight");
+for (const item of remoteCleanup) await request("sync.outbox.discard", { id: item.id });
+
+// Remote snapshots must not overwrite a pending local delete; server-side
+// deletions still apply.
+await applyRemoteMemo(remoteMemo("memo_e2e_pull_guard"));
+await request("memo.delete", { memoId: "memo_e2e_pull_guard" });
+await applyRemoteMemo({ ...remoteMemo("memo_e2e_pull_guard"), title: "server rewrite" });
+const guardedPull = (await request("memo.get", { memoId: "memo_e2e_pull_guard", includeDeleted: true })).memo;
+assert.equal(guardedPull.isDeleted, true, "an alive remote snapshot must not undo a pending local delete");
+assert.equal(guardedPull.title, "memo_e2e_pull_guard", "the pending delete should keep the local snapshot intact");
+await applyRemoteMemo({ ...remoteMemo("memo_e2e_pull_guard"), title: "server delete", isDeleted: true });
+const appliedRemoteDelete = (await request("memo.get", { memoId: "memo_e2e_pull_guard", includeDeleted: true })).memo;
+assert.equal(appliedRemoteDelete.title, "server delete", "a remote deletion must still apply");
+const guardedDelete = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.find((item) => item.kind === "memo.delete" && item.entityId === "memo_e2e_pull_guard");
+if (guardedDelete) await request("sync.outbox.discard", { id: guardedDelete.id });
+await request("memo.emptyTrash");
+assert.equal(
+  (await request("memo.list", { trash: true, limit: 200 })).totalCount,
+  0,
+  "pull-guard fixtures should not leak into later scenarios",
+);
+
 child.stdin.end();
 await new Promise((resolve) => child.once("close", resolve));
-console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.outbox", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard"] }));
+console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.apply.pending-delete-guard", "sync.outbox", "sync.outbox.claim", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard", "sync.outbox.cancel-unsynced-create", "sync.outbox.deferred-delete-remap"] }));

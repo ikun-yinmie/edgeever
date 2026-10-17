@@ -380,16 +380,40 @@ const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedRes
   }
 
   if (item.kind === "memo.delete") {
-    await api.deleteMemo(String(payload.memoId ?? item.entityId), { permanent: Boolean(payload.permanent) });
+    try {
+      await api.deleteMemo(String(payload.memoId ?? item.entityId), { permanent: Boolean(payload.permanent) });
+    } catch (error) {
+      // The note is already gone (removed on another device, or its create
+      // never reached the server). Permanent delete is idempotent here.
+      if (!(Boolean(payload.permanent) && error instanceof ApiRequestError && error.status === 404)) {
+        throw error;
+      }
+    }
     await acknowledge(item);
     return null;
   }
 
   if (item.kind === "memo.deleteBatch") {
-    await api.deleteMemos({
-      memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [],
-      permanent: Boolean(payload.permanent),
-    });
+    const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [];
+    const permanent = Boolean(payload.permanent);
+    try {
+      await api.deleteMemos({ memoIds, permanent });
+    } catch (error) {
+      // The server rejects a permanent batch when some ids are already gone;
+      // fall back to per-id deletes so the rest of the batch still empties.
+      if (!permanent || !(error instanceof ApiRequestError) || error.status !== 400 || error.code !== "missing_memos") {
+        throw error;
+      }
+      for (const memoId of memoIds) {
+        try {
+          await api.deleteMemo(memoId, { permanent: true });
+        } catch (nested) {
+          if (!(nested instanceof ApiRequestError) || nested.status !== 404) {
+            throw nested;
+          }
+        }
+      }
+    }
     await acknowledge(item);
     return null;
   }
@@ -515,6 +539,8 @@ const syncOutbox = async (stagedRewrites: StagedResourceRewrite[], onlyKinds?: S
   for (const item of response.items) {
     if (onlyKinds && !onlyKinds.has(item.kind)) continue;
     try {
+      const claim = await request("sync.outbox.claim", { id: item.id, version: item.version });
+      if (!claim.claimed) continue;
       const result = await syncOutboxItem(item, stagedRewrites);
       if (item.kind === "memo.create" && result && typeof result === "object" && "id" in result && typeof result.id === "string") {
         memoIdMappings.set(item.entityId, result.id);

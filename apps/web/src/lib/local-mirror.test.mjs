@@ -63,6 +63,22 @@ afterEach(async () => {
   );
 });
 
+// listLocalMemos only returns notes whose notebook exists in the mirror, so a
+// listed note needs its notebook row first — exactly like a real workspace.
+const seedNotebook = (scope, id) => putLocalNotebook(scope, {
+  id,
+  parentId: null,
+  name: id,
+  slug: null,
+  icon: null,
+  color: null,
+  sortOrder: 0,
+  memoCount: 0,
+  lastMemoUpdatedAt: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
 describe("local mirror", () => {
   test("records a durable mapping when a new memo receives its remote id", async () => {
     const scope = createLocalDataScope("https://notes.example.org", "user-1");
@@ -193,6 +209,110 @@ describe("local mirror", () => {
     }
   });
 
+  test("keeps a locally deleted memo deleted while its delete is queued", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await seedNotebook(scope, "nb-inbox");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Deleted offline" });
+    await putLocalMemo(scope, { ...memo, isDeleted: true, deletedAt: "2026-01-02T00:00:00.000Z" });
+    await localDb.syncQueue.put({
+      id: `memo.delete:${memo.id}`,
+      kind: "memo.delete",
+      scope,
+      memoId: memo.id,
+      status: "pending",
+      payload: { memoId: memo.id, permanent: false },
+      attemptCount: 0,
+      lastError: null,
+      nextAttemptAt: null,
+      claimId: null,
+      createdAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+    await localDb.syncMeta.bulkPut([
+      { scope, key: "cursor", value: "1", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { scope, key: "identity", value: "same-workspace", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    const originalSyncChanges = api.syncChanges;
+    api.syncChanges = async () => ({
+      changes: [{
+        entityType: "memo",
+        operation: "upsert",
+        entityId: memo.id,
+        memo: { ...memo, isDeleted: false, revision: 9, title: "Resurrected?" },
+        notebook: null,
+      }],
+      cursor: 2,
+      hasMore: false,
+      serverCursor: 2,
+      syncIdentity: "same-workspace",
+    });
+
+    try {
+      expect(await syncLocalMirror(scope)).toEqual({ bootstrapped: false, changed: 1 });
+      const stored = await getLocalMemo(scope, memo.id);
+      // A stale alive snapshot must not undo the queued delete.
+      expect(stored?.isDeleted).toBe(true);
+      expect(stored?.title).toBe("Deleted offline");
+      expect(stored?.revision).not.toBe(9);
+    } finally {
+      api.syncChanges = originalSyncChanges;
+    }
+  });
+
+  test("keeps a queued delete across a bootstrap rebuild", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await seedNotebook(scope, "nb-inbox");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Deleted offline" });
+    await putLocalMemo(scope, { ...memo, isDeleted: true, deletedAt: "2026-01-02T00:00:00.000Z" });
+    await localDb.syncQueue.put({
+      id: `memo.delete:${memo.id}`,
+      kind: "memo.delete",
+      scope,
+      memoId: memo.id,
+      status: "pending",
+      payload: { memoId: memo.id, permanent: false },
+      attemptCount: 0,
+      lastError: null,
+      nextAttemptAt: null,
+      claimId: null,
+      createdAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+    await localDb.syncMeta.bulkPut([
+      { scope, key: "cursor", value: "1", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { scope, key: "identity", value: "old-workspace", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    const originalSyncChanges = api.syncChanges;
+    const originalSyncBootstrap = api.syncBootstrap;
+    api.syncChanges = async () => ({
+      changes: [],
+      cursor: 1,
+      hasMore: false,
+      serverCursor: 1,
+      syncIdentity: "rebuilt-workspace",
+    });
+    api.syncBootstrap = async () => ({
+      notebooks: [],
+      memos: [{ ...memo, isDeleted: false, revision: 7, title: "Resurrected?" }],
+      snapshotCursor: 3,
+      syncIdentity: "rebuilt-workspace",
+      totalCount: 1,
+      nextAfterId: null,
+    });
+
+    try {
+      expect(await syncLocalMirror(scope)).toEqual({ bootstrapped: true, changed: 1 });
+      const stored = await getLocalMemo(scope, memo.id);
+      // The rebuild may refresh content, but the memo must stay in the trash
+      // until the queued delete reaches the server.
+      expect(stored?.isDeleted).toBe(true);
+      expect(stored?.deletedAt).toBeTruthy();
+    } finally {
+      api.syncChanges = originalSyncChanges;
+      api.syncBootstrap = originalSyncBootstrap;
+    }
+  });
+
   test("keeps the newest draft when memo ids are remapped more than once", async () => {
     await localDb.drafts.put({
       memoId: "local-memo",
@@ -217,6 +337,7 @@ describe("local mirror", () => {
 
   test("creates and lists a memo without a network request", async () => {
     const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await seedNotebook(scope, "nb-inbox");
     const memo = await createLocalMemo(scope, {
       notebookId: "nb-inbox",
       title: "Local note",
@@ -232,6 +353,7 @@ describe("local mirror", () => {
 
   test("filters local memos by an exact tag across notebooks", async () => {
     const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await Promise.all([seedNotebook(scope, "nb-a"), seedNotebook(scope, "nb-b")]);
     const expected = await createLocalMemo(scope, { notebookId: "nb-a", tags: ["Demo"] });
     await createLocalMemo(scope, { notebookId: "nb-b", tags: ["demo-extra"] });
     await createLocalMemo(scope, { notebookId: "nb-b", title: "Demo without tag" });

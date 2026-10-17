@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject,
 import type { QueryClient } from "@tanstack/react-query";
 import type { MemoDetail, MemoTemplate, Notebook, Resource } from "@edgeever/shared";
 import { isBrowserOffline } from "@/lib/network-status";
-import { emptySyncQueueSummary, type SyncQueueSummary } from "@/lib/sync-queue";
+import { emptySyncQueueSummary, observeRetryableSyncErrors, type SyncQueueSummary } from "@/lib/sync-queue";
 import { MEMO_ID_REMAPPED_EVENT, notifyMemoIdRemapped, notifyMemoSyncAcknowledged } from "@/lib/sync-events";
 import { observeLocalMemoIdMappings, putLocalMemo, replaceLocalMemoId } from "@/lib/local-mirror";
 import { remapMemoIdsInLists } from "@/lib/memo-list-cache";
@@ -30,7 +30,10 @@ export const useWorkspaceQueuedSync = ({
   setSelectedMemoId,
 }: UseWorkspaceQueuedSyncOptions) => {
   const [syncSummary, setSyncSummary] = useState<SyncQueueSummary>(emptySyncQueueSummary);
+  const [retryableErrorCount, setRetryableErrorCount] = useState(0);
   const [isSyncingQueuedChanges, setIsSyncingQueuedChanges] = useState(false);
+
+  useEffect(() => observeRetryableSyncErrors(localDataScope, setRetryableErrorCount), [localDataScope]);
 
   const applyMemoIdMappings = useCallback((memoIdMappings: ReadonlyMap<string, string>) => {
     if (memoIdMappings.size === 0) return;
@@ -189,6 +192,9 @@ export const useWorkspaceQueuedSync = ({
 
   return {
     discardConflictsNow,
+    // The desktop sidecar reports only aggregate counts; the web queue knows
+    // which failures are still scheduled and should drive the retry loop.
+    failedSyncCount: window.edgeeverDesktop?.isAvailable ? syncSummary.error : retryableErrorCount,
     isSyncingQueuedChanges,
     runQueuedSync,
     setSyncSummary,

@@ -144,7 +144,21 @@ pub(crate) fn sync_outbox_list(database: &Connection, params: &Value) -> Result<
     let sql = if include_conflicts {
         "SELECT id, kind, entity_id, payload_json, attempt_count, status, last_error, version, last_error_code, retryable, next_attempt_at, created_at, updated_at FROM _edgeever_sidecar_outbox WHERE status IN ('pending', 'error', 'conflict') ORDER BY id LIMIT ?1"
     } else {
-        "SELECT id, kind, entity_id, payload_json, attempt_count, status, last_error, version, last_error_code, retryable, next_attempt_at, created_at, updated_at FROM _edgeever_sidecar_outbox WHERE status = 'pending' OR (status = 'error' AND retryable = 1 AND (next_attempt_at IS NULL OR next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))) ORDER BY id LIMIT ?1"
+        // A delete/restore must wait for the note's own create to reach the
+        // server: the server would ack the delete for an id it never saw, and
+        // the later create retry would resurrect the note.
+        "SELECT o.id, o.kind, o.entity_id, o.payload_json, o.attempt_count, o.status, o.last_error, o.version, o.last_error_code, o.retryable, o.next_attempt_at, o.created_at, o.updated_at
+         FROM _edgeever_sidecar_outbox o
+         WHERE (o.status = 'pending' OR (o.status = 'error' AND o.retryable = 1 AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))
+           AND NOT (
+             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash')
+             AND EXISTS (
+               SELECT 1 FROM _edgeever_sidecar_outbox c
+               WHERE c.kind = 'memo.create'
+                 AND (c.entity_id = o.entity_id OR instr(o.payload_json, c.entity_id) > 0)
+             )
+           )
+         ORDER BY o.id LIMIT ?1"
     };
     let mut statement = database.prepare(sql).map_err(|e| e.to_string())?;
     let rows = statement.query_map([limit], |row| {
@@ -153,6 +167,29 @@ pub(crate) fn sync_outbox_list(database: &Connection, params: &Value) -> Result<
     }).map_err(|e| e.to_string())?;
     let items: Result<Vec<_>, _> = rows.collect();
     Ok(json!({ "items": items.map_err(|e| e.to_string())? }))
+}
+
+pub(crate) fn sync_outbox_claim(database: &Connection, params: &Value) -> Result<Value, String> {
+    let id = params
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "Missing outbox id".to_owned())?;
+    // Claiming marks the item as in flight so a concurrent local delete keeps
+    // the note's create untouched until its acknowledgement remaps the delete.
+    let eligible = "(status = 'pending' OR (status = 'error' AND retryable = 1 AND (next_attempt_at IS NULL OR next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))";
+    let updated = if let Some(version) = params.get("version").and_then(Value::as_i64) {
+        database.execute(
+            &format!("UPDATE _edgeever_sidecar_outbox SET status = 'syncing', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1 AND version = ?2 AND {eligible}"),
+            rusqlite::params![id, version],
+        )
+    } else {
+        database.execute(
+            &format!("UPDATE _edgeever_sidecar_outbox SET status = 'syncing', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1 AND {eligible}"),
+            [id],
+        )
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(json!({ "ok": true, "claimed": updated == 1 }))
 }
 
 pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<Value, String> {
@@ -236,18 +273,22 @@ pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<V
 
     if let Some(remote) = remote_memo.as_ref() {
         let remote_id = string_param(remote, "id")?;
-        apply_sync_changes(
-            database,
-            &json!({
-                "changes": [{
-                    "entityType": "memo",
-                    "operation": "upsert",
-                    "entityId": remote_id,
-                    "memo": remote,
-                    "notebook": null
-                }]
-            }),
-        )?;
+        let mut apply_params = json!({
+            "changes": [{
+                "entityType": "memo",
+                "operation": "upsert",
+                "entityId": remote_id,
+                "memo": remote,
+                "notebook": null
+            }],
+            "ignoreOutboxId": id
+        });
+        if kind == "memo.create" || kind == "memo.merge" {
+            if let Some(object) = apply_params.as_object_mut() {
+                object.insert("placeholderEntityId".to_owned(), json!(entity_id));
+            }
+        }
+        apply_sync_changes(database, &apply_params)?;
     }
     if kind == "memo.create" || kind == "memo.merge" {
         if let Some(remote) = remote_memo.as_ref() {
@@ -768,6 +809,8 @@ fn apply_one_sync_change(
     tx: &Transaction<'_>,
     change: &Value,
     rebuilding: bool,
+    ignore_outbox_id: Option<i64>,
+    placeholder_entity_id: Option<&str>,
 ) -> Result<(), String> {
     let entity_type = string_param(change, "entityType")?;
     let operation = string_param(change, "operation")?;
@@ -841,6 +884,67 @@ fn apply_one_sync_change(
     let memo = change
         .get("memo")
         .ok_or_else(|| "Missing memo change payload".to_owned())?;
+    if !rebuilding {
+        // A queued local intent must win over a stale server snapshot: a
+        // pending delete/update keeps the local row (and its unsynced edit),
+        // and a pending restore keeps it alive. Server-side deletions still
+        // apply so a remote delete is never masked.
+        let pending_kinds: Vec<String> = {
+            let mut kinds = Vec::new();
+            let mut statement = tx
+                .prepare(
+                    "SELECT kind FROM _edgeever_sidecar_outbox
+                     WHERE kind IN ('memo.delete', 'memo.update', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash')
+                       AND (?1 IS NULL OR id <> ?1)
+                       AND (entity_id = ?2 OR instr(payload_json, ?2) > 0)",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = statement
+                .query_map(rusqlite::params![ignore_outbox_id, entity_id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map_err(|e| e.to_string())?;
+            kinds.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?,
+            );
+            if let Some(placeholder_id) = placeholder_entity_id {
+                // A create acknowledgement renames the local placeholder; a
+                // pending delete for that placeholder must keep the note
+                // deleted instead of letting the synchronous remote snapshot
+                // resurrect it before the delete reaches the server.
+                let mut placeholder_statement = tx
+                    .prepare(
+                        "SELECT kind FROM _edgeever_sidecar_outbox
+                         WHERE kind IN ('memo.delete', 'memo.deleteBatch', 'memo.emptyTrash')
+                           AND (?1 IS NULL OR id <> ?1)
+                           AND (entity_id = ?2 OR instr(payload_json, ?2) > 0)",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let placeholder_rows = placeholder_statement
+                    .query_map(rusqlite::params![ignore_outbox_id, placeholder_id], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .map_err(|e| e.to_string())?;
+                kinds.extend(
+                    placeholder_rows
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+            kinds
+        };
+        if !pending_kinds.is_empty() {
+            let restores_local = pending_kinds.iter().any(|kind| kind == "memo.restore");
+            let incoming_deleted = memo
+                .get("isDeleted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if restores_local || !incoming_deleted {
+                return Ok(());
+            }
+        }
+    }
     let tags = memo
         .get("tags")
         .cloned()
@@ -893,12 +997,20 @@ pub(crate) fn apply_sync_changes(database: &Connection, params: &Value) -> Resul
         .and_then(Value::as_array)
         .ok_or_else(|| "Missing changes array".to_owned())?;
     let rebuilding = meta_value(database, SYNC_BOOTSTRAP_RESET_KEY).as_deref() == Some("1");
+    let ignore_outbox_id = params.get("ignoreOutboxId").and_then(Value::as_i64);
+    let placeholder_entity_id = params.get("placeholderEntityId").and_then(Value::as_str);
     let ordered = order_sync_change_indices(changes);
     let tx = database
         .unchecked_transaction()
         .map_err(|e| e.to_string())?;
     for index in ordered {
-        apply_one_sync_change(&tx, &changes[index], rebuilding)?;
+        apply_one_sync_change(
+            &tx,
+            &changes[index],
+            rebuilding,
+            ignore_outbox_id,
+            placeholder_entity_id,
+        )?;
     }
     tx.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "applied": changes.len() }))

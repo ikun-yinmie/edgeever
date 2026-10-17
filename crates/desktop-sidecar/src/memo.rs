@@ -1,10 +1,53 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::{json, Value};
 
 use crate::{
     bool_param, content_hash, enqueue_change, markdown_doc, memo_remap_base_key, now_id,
     resolve_remapped_memo_base, string_param, tags_from_json,
 };
+
+enum PendingMemoCreate {
+    // No unsynced create; the server may know the note and needs the delete.
+    None,
+    // The create never reached the network and its row is gone; no remote delete.
+    Canceled,
+    // The create may have reached the server; its dependent delete must wait for
+    // the acknowledgement that remaps the entity id.
+    InFlight,
+}
+
+fn settle_pending_memo_create(
+    tx: &rusqlite::Transaction<'_>,
+    memo_id: &str,
+) -> Result<PendingMemoCreate, String> {
+    let create: Option<(i64, i64, String)> = tx
+        .query_row(
+            "SELECT id, attempt_count, status FROM _edgeever_sidecar_outbox WHERE kind = 'memo.create' AND entity_id = ?1 ORDER BY id LIMIT 1",
+            [memo_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((outbox_id, attempt_count, status)) = create else {
+        return Ok(PendingMemoCreate::None);
+    };
+    if status == "pending" && attempt_count == 0 {
+        tx.execute(
+            "DELETE FROM _edgeever_sidecar_outbox WHERE id = ?1",
+            [outbox_id],
+        )
+        .map_err(|e| e.to_string())?;
+        // The note never reached the server, so its queued edits are moot and
+        // would otherwise surface as unresolvable missing-memo sync issues.
+        tx.execute(
+            "DELETE FROM _edgeever_sidecar_outbox WHERE entity_id = ?1 AND kind IN ('memo.update', 'memo.restore') AND status <> 'syncing'",
+            [memo_id],
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(PendingMemoCreate::Canceled);
+    }
+    Ok(PendingMemoCreate::InFlight)
+}
 
 fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     let tags: String = row.get("tags_json")?;
@@ -196,6 +239,8 @@ pub(crate) fn delete_memos(database: &Connection, params: &Value) -> Result<Valu
         .unchecked_transaction()
         .map_err(|e| e.to_string())?;
     let mut deleted = 0;
+    let mut remote_ids: Vec<Value> = Vec::new();
+    let mut deferred_ids: Vec<String> = Vec::new();
     for memo_id in memo_ids {
         let Some(id) = memo_id.as_str() else { continue };
         if permanent {
@@ -207,9 +252,29 @@ pub(crate) fn delete_memos(database: &Connection, params: &Value) -> Result<Valu
         } else {
             deleted += tx.execute("UPDATE memos SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1 AND is_deleted = 0", [id]).map_err(|e| e.to_string())?;
         }
+        match settle_pending_memo_create(&tx, id)? {
+            PendingMemoCreate::Canceled => {}
+            PendingMemoCreate::None => remote_ids.push(json!(id)),
+            PendingMemoCreate::InFlight => deferred_ids.push(id.to_owned()),
+        }
     }
     tx.commit().map_err(|e| e.to_string())?;
-    enqueue_change(database, "memo.deleteBatch", "batch", params)?;
+    for id in &deferred_ids {
+        enqueue_change(
+            database,
+            "memo.delete",
+            id,
+            &json!({ "memoId": id, "permanent": permanent }),
+        )?;
+    }
+    if !remote_ids.is_empty() {
+        enqueue_change(
+            database,
+            "memo.deleteBatch",
+            "batch",
+            &json!({ "memoIds": remote_ids, "permanent": permanent }),
+        )?;
+    }
     Ok(json!({ "ok": true, "deleted": deleted }))
 }
 
@@ -217,6 +282,16 @@ pub(crate) fn empty_trash(database: &Connection) -> Result<Value, String> {
     let tx = database
         .unchecked_transaction()
         .map_err(|e| e.to_string())?;
+    let trashed_ids: Vec<String> = {
+        let mut statement = tx
+            .prepare("SELECT id FROM memos WHERE is_deleted = 1")
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
     tx.execute(
         "DELETE FROM resources WHERE memo_id IN (SELECT id FROM memos WHERE is_deleted = 1)",
         [],
@@ -225,8 +300,30 @@ pub(crate) fn empty_trash(database: &Connection) -> Result<Value, String> {
     let deleted = tx
         .execute("DELETE FROM memos WHERE is_deleted = 1", [])
         .map_err(|e| e.to_string())?;
+    let mut remote_ids: Vec<String> = Vec::new();
+    let mut deferred_ids: Vec<String> = Vec::new();
+    for id in &trashed_ids {
+        match settle_pending_memo_create(&tx, id)? {
+            PendingMemoCreate::Canceled => {}
+            PendingMemoCreate::None => remote_ids.push(id.to_owned()),
+            PendingMemoCreate::InFlight => deferred_ids.push(id.to_owned()),
+        }
+    }
     tx.commit().map_err(|e| e.to_string())?;
-    enqueue_change(database, "memo.emptyTrash", "trash", &json!({}))?;
+    for id in &deferred_ids {
+        enqueue_change(
+            database,
+            "memo.delete",
+            id,
+            &json!({ "memoId": id, "permanent": true }),
+        )?;
+    }
+    enqueue_change(
+        database,
+        "memo.emptyTrash",
+        "trash",
+        &json!({ "memoIds": remote_ids }),
+    )?;
     Ok(json!({ "ok": true, "deleted": deleted }))
 }
 
@@ -616,18 +713,28 @@ pub(crate) fn update_memo(database: &Connection, params: &Value) -> Result<Value
 
 pub(crate) fn delete_memo(database: &Connection, params: &Value) -> Result<Value, String> {
     let memo_id = string_param(params, "memoId")?;
-    if bool_param(params, "permanent", false) {
-        database
-            .execute("DELETE FROM memos WHERE id = ?1", [&memo_id])
+    let permanent = bool_param(params, "permanent", false);
+    let tx = database
+        .unchecked_transaction()
+        .map_err(|e| e.to_string())?;
+    if permanent {
+        tx.execute("DELETE FROM resources WHERE memo_id = ?1", [&memo_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM memos WHERE id = ?1", [&memo_id])
             .map_err(|e| e.to_string())?;
     } else {
-        database.execute("UPDATE memos SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [&memo_id]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE memos SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [&memo_id]).map_err(|e| e.to_string())?;
+    }
+    let create = settle_pending_memo_create(&tx, &memo_id)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    if let PendingMemoCreate::Canceled = create {
+        return Ok(json!({ "ok": true }));
     }
     enqueue_change(
         database,
         "memo.delete",
         &memo_id,
-        &json!({ "memoId": memo_id, "permanent": bool_param(params, "permanent", false) }),
+        &json!({ "memoId": memo_id, "permanent": permanent }),
     )?;
     Ok(json!({ "ok": true }))
 }
@@ -638,12 +745,50 @@ pub(crate) fn restore_memo(database: &Connection, params: &Value) -> Result<Valu
     if changed == 0 {
         return Err(format!("Memo not found: {memo_id}"));
     }
-    enqueue_change(
-        database,
-        "memo.restore",
-        &memo_id,
-        &json!({ "memoId": memo_id }),
-    )?;
+    let has_create: bool = database
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM _edgeever_sidecar_outbox WHERE kind = 'memo.create' AND entity_id = ?1)",
+            [&memo_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if memo_id.starts_with("memo_local_") && !has_create {
+        // Its create was canceled together with an earlier delete, so the
+        // server never saw the note; restoring must upload the snapshot again
+        // instead of sending a restore for an unknown id.
+        let memo = memo_value(database, &memo_id, true)?;
+        let (content_json_text, markdown, _text): (String, String, String) = database
+            .query_row(
+                "SELECT content_json, content_markdown, content_text FROM memo_contents WHERE memo_id = ?1",
+                [&memo_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        let content_json = serde_json::from_str(&content_json_text)
+            .unwrap_or_else(|_| json!({ "type": "doc", "content": [] }));
+        enqueue_change(
+            database,
+            "memo.create",
+            &memo_id,
+            &json!({
+                "temporaryId": memo_id,
+                "notebookId": memo.get("notebookId").and_then(Value::as_str).unwrap_or(""),
+                "title": memo.get("title").and_then(Value::as_str).unwrap_or(""),
+                "contentJson": content_json,
+                "contentMarkdown": markdown,
+                "tags": memo.get("tags").cloned().unwrap_or_else(|| json!([])),
+                "createdAt": memo.get("createdAt").and_then(Value::as_str).unwrap_or(""),
+                "updatedAt": memo.get("updatedAt").and_then(Value::as_str).unwrap_or("")
+            }),
+        )?;
+    } else {
+        enqueue_change(
+            database,
+            "memo.restore",
+            &memo_id,
+            &json!({ "memoId": memo_id }),
+        )?;
+    }
     memo_value(database, &memo_id, true)
 }
 

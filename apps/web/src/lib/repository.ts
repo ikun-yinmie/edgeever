@@ -16,6 +16,7 @@ import {
   applyLocalMemoMove,
   applyLocalMemoDeleteBatch,
   applyLocalEmptyTrash,
+  listLocalTrashedMemoIds,
   applyLocalMemoPin,
   updateLocalNotebook,
   deleteLocalNotebook,
@@ -37,11 +38,12 @@ import {
   putLocalNotebook,
   putLocalMemoUpdate,
   restoreLocalMemo,
+  isLocalMemoId,
   syncLocalMirror,
   type LocalMemoListParams,
   type LocalMemoListResponse,
 } from "@/lib/local-mirror";
-import { discardWebMemoConflict, getMemoUpdateQueueId, putMemoUpdateQueueItem, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoRestore, queueMemoUpdate } from "@/lib/sync-queue";
+import { cancelUnsyncedMemoCreates, discardWebMemoConflict, getMemoUpdateQueueId, hasQueuedMemoCreate, putMemoUpdateQueueItem, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoRestore, queueMemoUpdate } from "@/lib/sync-queue";
 import { localDb, type MemoUpdateSyncPayload } from "@/lib/local-db";
 import { runLocalDatabaseOperationWithRecovery } from "@/lib/local-database-recovery";
 import { createDesktopRepository } from "@/lib/desktop-repository";
@@ -399,14 +401,39 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return { ok: true as const, moved };
   },
   deleteMemos: async (input) => {
+    const canceledCreateIds = await cancelUnsyncedMemoCreates(scope, input.memoIds);
+    const remoteMemoIds = input.memoIds.filter((memoId) => !canceledCreateIds.has(memoId));
     const deleted = await applyLocalMemoDeleteBatch(scope, input.memoIds, input.permanent);
-    await queueLocalAction(scope, "memo.deleteBatch", input.memoIds.join(","), input);
+    const batchMemoIds: string[] = [];
+    for (const memoId of remoteMemoIds) {
+      if (await hasQueuedMemoCreate(scope, memoId)) {
+        // The note's create is already in flight; a single delete lets its
+        // acknowledgement remap this row to the durable id before sending.
+        await queueMemoDelete(scope, { memoId, permanent: input.permanent ?? false });
+      } else {
+        batchMemoIds.push(memoId);
+      }
+    }
+    if (batchMemoIds.length > 0) {
+      await queueLocalAction(scope, "memo.deleteBatch", batchMemoIds.join(","), { ...input, memoIds: batchMemoIds });
+    }
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
     return { ok: true as const, deleted };
   },
   emptyTrash: async () => {
+    const trashedMemoIds = await listLocalTrashedMemoIds(scope);
+    const canceledCreateIds = await cancelUnsyncedMemoCreates(scope, trashedMemoIds);
+    const remoteMemoIds = trashedMemoIds.filter((memoId) => !canceledCreateIds.has(memoId));
     const deleted = await applyLocalEmptyTrash(scope);
-    await queueLocalAction(scope, "memo.emptyTrash", "trash", {});
+    const batchMemoIds: string[] = [];
+    for (const memoId of remoteMemoIds) {
+      if (await hasQueuedMemoCreate(scope, memoId)) {
+        await queueMemoDelete(scope, { memoId, permanent: true });
+      } else {
+        batchMemoIds.push(memoId);
+      }
+    }
+    await queueLocalAction(scope, "memo.emptyTrash", "trash", { memoIds: batchMemoIds });
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
     return { ok: true as const, deleted };
   },
@@ -565,9 +592,25 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
 
   async restoreMemo(memoId) {
     await restoreLocalMemo(scope, memoId);
-    await queueMemoRestore(scope, { memoId });
     const memo = await getLocalMemo(scope, memoId);
     if (!memo) throw new Error("Memo is not available in the local mirror");
+    if (isLocalMemoId(memoId) && !(await hasQueuedMemoCreate(scope, memoId))) {
+      // The note's create was canceled together with an earlier delete, so the
+      // server never saw it; restoring must upload the snapshot again instead
+      // of sending a restore for an unknown id.
+      await queueMemoCreate(scope, {
+        temporaryId: memoId,
+        notebookId: memo.notebookId,
+        title: memo.title ?? "",
+        contentJson: memo.contentJson,
+        contentMarkdown: memo.contentMarkdown,
+        tags: memo.tags,
+        createdAt: memo.createdAt,
+        updatedAt: memo.updatedAt,
+      });
+    } else {
+      await queueMemoRestore(scope, { memoId });
+    }
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
     return { memo, queued: true };
   },

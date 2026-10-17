@@ -125,7 +125,61 @@ export const queueMemoCreate = async (scope: string, payload: MemoCreateSyncPayl
   });
 };
 
+/**
+ * A note whose create request is still queued (and never handed to the network)
+ * does not exist on the server, so it can be canceled locally: otherwise the
+ * create retry could resurrect a note the user already deleted. Returns true
+ * when a queued create was canceled, meaning no server delete is needed.
+ */
+const cancelUnsyncedMemoCreate = async (scope: string, memoId: string) => {
+  const createId = getMemoCreateQueueId(memoId);
+  return localDb.transaction("rw", [localDb.syncQueue, localDb.drafts], async () => {
+    const create = await localDb.syncQueue.get(createId);
+    if (
+      !create ||
+      create.kind !== "memo.create" ||
+      create.scope !== scope ||
+      create.status !== "pending" ||
+      create.attemptCount > 0
+    ) {
+      return false;
+    }
+    await localDb.syncQueue.delete(createId);
+    await localDb.drafts.delete(memoId);
+    // Queued edits and restores reference an id the server never saw; drop
+    // them so they cannot surface as unresolvable missing-memo conflicts.
+    const dependents = (await localDb.syncQueue.toArray()).filter(
+      (item) => item.memoId === memoId
+        && (item.scope === scope || !item.scope)
+        && (item.kind === "memo.update" || item.kind === "memo.restore")
+        && item.status !== "syncing",
+    );
+    for (const item of dependents) {
+      await localDb.syncQueue.delete(item.id);
+    }
+    return true;
+  });
+};
+
+export const cancelUnsyncedMemoCreates = async (scope: string, memoIds: string[]) => {
+  const canceled = new Set<string>();
+  for (const memoId of memoIds) {
+    if (await cancelUnsyncedMemoCreate(scope, memoId)) {
+      canceled.add(memoId);
+    }
+  }
+  return canceled;
+};
+
+export const hasQueuedMemoCreate = async (scope: string, memoId: string) => {
+  const create = await localDb.syncQueue.get(getMemoCreateQueueId(memoId));
+  return Boolean(create && create.kind === "memo.create" && (create.scope === scope || !create.scope));
+};
+
 export const queueMemoDelete = async (scope: string, payload: MemoDeleteSyncPayload) => {
+  if (await cancelUnsyncedMemoCreate(scope, payload.memoId)) {
+    return;
+  }
   const id = getMemoDeleteQueueId(payload.memoId);
   const now = new Date().toISOString();
   await localDb.syncQueue.put({
@@ -165,6 +219,7 @@ export const queueMemoRestore = async (scope: string, payload: MemoRestoreSyncPa
 
 const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo: MemoDetail) => {
   const remoteId = remoteMemo.id;
+  const remappedIds: string[] = [];
   const items = (await localDb.syncQueue.toArray()).filter(
     (item) => item.scope === scope && item.memoId === temporaryId && item.kind !== "memo.create"
   );
@@ -190,6 +245,7 @@ const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo:
         memoId: remoteId,
         payload: payload as SyncQueueItem["payload"],
       });
+      remappedIds.push(nextId);
     }
 
     const temporaryDraft = await localDb.drafts.get(temporaryId);
@@ -243,12 +299,40 @@ const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo:
       await localDb.drafts.delete(temporaryId);
     }
   });
+  return remappedIds;
 };
 
 export const observeSyncQueue = (onChange: (summary: SyncQueueSummary) => void) => {
   const subscription = liveQuery(async () => summarizeSyncQueue(await localDb.syncQueue.toArray())).subscribe({
     next: onChange,
     error: () => onChange(emptySyncQueueSummary()),
+  });
+
+  return () => subscription.unsubscribe();
+};
+
+/**
+ * Only scheduled retries should keep the background sync loop awake. Terminal
+ * failures (permanent 4xx) and conflicts stay visible in the queue summary but
+ * must not spin the 15s retry cycle forever.
+ */
+export const isRetryableSyncQueueError = (error: unknown) => {
+  if (error instanceof ApiRequestError) {
+    return error.status === 408 || error.status === 429 || error.status >= 500;
+  }
+  return true;
+};
+
+export const observeRetryableSyncErrors = (scope: string, onChange: (count: number) => void) => {
+  const subscription = liveQuery(async () => {
+    const items = await localDb.syncQueue.where("status").equals("error").toArray();
+    return items.filter((item) =>
+      (item.scope === scope || (!item.scope && item.kind === "memo.update" && Boolean(item.lastError)))
+      && item.nextAttemptAt !== null
+    ).length;
+  }).subscribe({
+    next: onChange,
+    error: () => onChange(0),
   });
 
   return () => subscription.unsubscribe();
@@ -371,29 +455,51 @@ const runQueuedChanges = async (options: {
   }
 
   const now = new Date();
-  const candidates = (await localDb.syncQueue.where("status").anyOf("pending", "error").toArray())
-    .filter((item) => !item.nextAttemptAt || new Date(item.nextAttemptAt) <= now)
+  const allQueued = await localDb.syncQueue.toArray();
+  const queued = allQueued.filter((item) => item.status === "pending" || item.status === "error");
+  // Terminal failures leave `nextAttemptAt` empty so they stop retrying in the
+  // background; only fresh items and scheduled retries run here.
+  const candidates = queued
+    .filter((item) => item.status === "pending" || (item.nextAttemptAt !== null && new Date(item.nextAttemptAt) <= now))
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  // Includes in-flight creates: their dependent deletes must wait for the
+  // acknowledgement that remaps the temporary id, never race ahead of it.
+  const openCreateIds = new Set(
+    allQueued.filter((item) => item.kind === "memo.create").map((item) => item.memoId)
+  );
   const items: SyncQueueItem[] = [];
   for (const candidate of candidates) {
+    let ready: SyncQueueItem;
     if (!options.scope || candidate.scope === options.scope) {
-      items.push(candidate);
+      ready = candidate;
+    } else if (!candidate.scope && candidate.kind === "memo.update") {
+      // Older releases did not persist a scope for editor retry items. Adopt one
+      // only when the current account already owns the memo in its local mirror;
+      // otherwise leave the item untouched instead of risking cross-account sync.
+      const localMemo = await localDb.memos.get([options.scope, candidate.memoId]);
+      if (!localMemo) continue;
+      await localDb.syncQueue.update(candidate.id, { scope: options.scope, updatedAt: new Date().toISOString() });
+      ready = { ...candidate, scope: options.scope };
+    } else {
       continue;
     }
-    if (candidate.scope || candidate.kind !== "memo.update") {
+
+    // A delete/update/restore must wait for the note's own create to reach the
+    // server. Otherwise the server acks the delete for an unknown temporary id
+    // and the later create retry resurrects the note.
+    if (
+      ready.kind !== "memo.create" &&
+      openCreateIds.has(ready.memoId) &&
+      (ready.kind === "memo.delete" || ready.kind === "memo.update" || ready.kind === "memo.restore")
+    ) {
       continue;
     }
-    // Older releases did not persist a scope for editor retry items. Adopt one
-    // only when the current account already owns the memo in its local mirror;
-    // otherwise leave the item untouched instead of risking cross-account sync.
-    const localMemo = await localDb.memos.get([options.scope, candidate.memoId]);
-    if (!localMemo) continue;
-    const scopedCandidate = { ...candidate, scope: options.scope };
-    await localDb.syncQueue.update(candidate.id, { scope: options.scope, updatedAt: new Date().toISOString() });
-    items.push(scopedCandidate);
+
+    items.push(ready);
   }
 
-  for (const candidate of items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const candidate = items[index];
     const item = await claimQueueItem(candidate.id);
     if (!item) {
       continue;
@@ -404,7 +510,18 @@ const runQueuedChanges = async (options: {
     try {
       const memo = await syncQueueItem(item);
       if (item.kind === "memo.create" && memo && item.scope) {
-        await remapQueuedMemoId(item.scope, item.memoId, memo as MemoDetail);
+        const remappedIds = await remapQueuedMemoId(item.scope, item.memoId, memo as MemoDetail);
+        // Dependent delete/update/restore items were renamed to the durable id;
+        // run them in this pass instead of waiting for the next queue tick.
+        if (remappedIds.length > 0) {
+          const remappedItems = await localDb.syncQueue.bulkGet(remappedIds);
+          for (const remapped of remappedItems) {
+            if (!remapped || items.some((queuedItem) => queuedItem.id === remapped.id)) continue;
+            if (remapped.status === "pending" || remapped.status === "error") {
+              items.push(remapped);
+            }
+          }
+        }
       }
       const acknowledgement = await acknowledgeClaimedQueueItem(item, memo);
       if (memo && item.kind === "memo.update" && acknowledgement !== "stale") {
@@ -423,19 +540,30 @@ const runQueuedChanges = async (options: {
       }
     } catch (error) {
       const conflictInfo = getMemoSaveConflictInfo(error);
-      const status = conflictInfo ? "conflict" : "error";
+      // The memo was deleted (or permanently removed) elsewhere; saving it can
+      // never succeed, so surface a resolvable conflict instead of retrying.
+      const missingRemoteMemo = item.kind === "memo.update"
+        && error instanceof ApiRequestError
+        && error.status === 404;
+      const status = conflictInfo || missingRemoteMemo ? "conflict" : "error";
       const attemptCount = item.attemptCount + 1;
       const errorDetails = parseMemoSaveConflictDetails(
         error instanceof ApiRequestError ? error.details : null,
       );
+      const retryable = status === "error" && isRetryableSyncQueueError(error);
 
       const updated = await updateClaimedQueueItem(item, {
         status,
         attemptCount,
         lastError: getErrorMessage(error),
-        lastErrorCode: error instanceof ApiRequestError ? error.code ?? null : null,
+        lastErrorCode: conflictInfo?.code
+          ?? (missingRemoteMemo
+            ? "memo_not_found"
+            : error instanceof ApiRequestError
+              ? error.code ?? null
+              : null),
         lastErrorDetails: errorDetails ? { ...errorDetails } : null,
-        nextAttemptAt: status === "error" ? getSyncRetryAt(attemptCount) : null,
+        nextAttemptAt: retryable ? getSyncRetryAt(attemptCount) : null,
         claimId: null,
         updatedAt: new Date().toISOString(),
       });
@@ -656,7 +784,16 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
 
   if (item.kind === "memo.delete") {
     const payload = item.payload as MemoDeleteSyncPayload;
-    await api.deleteMemo(payload.memoId, { permanent: payload.permanent });
+    try {
+      await api.deleteMemo(payload.memoId, { permanent: payload.permanent });
+    } catch (error) {
+      // The note is already gone (deleted on another device, or its create
+      // never reached the server). Permanent delete is idempotent here.
+      if (payload.permanent && error instanceof ApiRequestError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
     return null;
   }
 
@@ -683,7 +820,27 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
   }
   if (item.kind === "memo.deleteBatch") {
     const payload = item.payload as LocalActionPayload;
-    await api.deleteMemos({ memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((value): value is string => typeof value === "string") : [], permanent: Boolean(payload.permanent) });
+    const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((value): value is string => typeof value === "string") : [];
+    const permanent = Boolean(payload.permanent);
+    try {
+      await api.deleteMemos({ memoIds, permanent });
+    } catch (error) {
+      // The server rejects a permanent batch when some ids are already gone
+      // (e.g. a note created and deleted before its create was acknowledged).
+      // Fall back to per-id deletes so the rest of the batch still empties.
+      if (!permanent || !(error instanceof ApiRequestError) || error.status !== 400 || error.code !== "missing_memos") {
+        throw error;
+      }
+      for (const memoId of memoIds) {
+        try {
+          await api.deleteMemo(memoId, { permanent: true });
+        } catch (nested) {
+          if (!(nested instanceof ApiRequestError) || nested.status !== 404) {
+            throw nested;
+          }
+        }
+      }
+    }
     return null;
   }
   if (item.kind === "memo.emptyTrash") {

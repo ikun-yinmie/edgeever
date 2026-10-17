@@ -166,6 +166,12 @@ fn tags_from_json(value: &str) -> Vec<String> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = data_dir();
     let mut database = open_database(&root, &migrations_dir())?;
+    // A previous run may have crashed while an outbox item was claimed for
+    // push; make it eligible again so it can never be stranded as syncing.
+    database.execute(
+        "UPDATE _edgeever_sidecar_outbox SET status = 'pending' WHERE status = 'syncing'",
+        [],
+    )?;
     println!(
         "{}",
         json!({ "event": "ready", "protocolVersion": PROTOCOL_VERSION })

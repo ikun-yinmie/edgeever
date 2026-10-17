@@ -5,9 +5,9 @@ globalThis.indexedDB = indexedDB;
 globalThis.IDBKeyRange = IDBKeyRange;
 
 const { localDb } = await import("./local-db.ts");
-const { api } = await import("./api.ts");
+const { ApiRequestError, api } = await import("./api.ts");
 const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources } = await import("./local-mirror.ts");
-const { discardWebConflicts, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoUpdate, syncQueuedChanges } = await import("./sync-queue.ts");
+const { discardWebConflicts, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, syncQueuedChanges } = await import("./sync-queue.ts");
 
 afterEach(async () => {
   await localDb.transaction(
@@ -207,20 +207,11 @@ describe("web sync conflict recovery", () => {
     };
 
     try {
-      await syncQueuedChanges({ scope });
-      const update = await localDb.syncQueue.get(getMemoUpdateQueueId(remoteMemo.id));
-      expect(update).toMatchObject({
-        memoId: remoteMemo.id,
-        payload: {
-          memoId: remoteMemo.id,
-          expectedRevision: remoteMemo.revision,
-          expectedContentHash: remoteMemo.contentHash,
-          title: "Queued edit",
-        },
-      });
-      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(localMemo.id))).toBeUndefined();
-
-      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, conflicted: 0 });
+      const firstRun = await syncQueuedChanges({ scope });
+      // The edit queued against the temporary id is rebased onto the fresh
+      // server base and pushed in the same pass instead of waiting for the
+      // next queue tick.
+      expect(firstRun).toMatchObject({ synced: 2, conflicted: 0, failed: 0 });
       expect(receivedUpdate).toMatchObject({
         expectedRevision: remoteMemo.revision,
         expectedContentHash: remoteMemo.contentHash,
@@ -228,11 +219,185 @@ describe("web sync conflict recovery", () => {
         title: "Queued edit",
       });
       expect(await localDb.syncQueue.get(getMemoUpdateQueueId(remoteMemo.id))).toBeUndefined();
+      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(localMemo.id))).toBeUndefined();
     } finally {
       api.createMemo = original.createMemo;
       api.createMemoEditSession = original.createMemoEditSession;
       api.updateMemo = original.updateMemo;
       if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("cancels a queued create when the note is deleted before its create syncs", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const localMemo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: localMemo.id,
+      notebookId: localMemo.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+      createdAt: localMemo.createdAt,
+      updatedAt: localMemo.updatedAt,
+    });
+    await localDb.drafts.put({
+      memoId: localMemo.id,
+      title: "Draft of a canceled create",
+      tagsText: "",
+      contentJson: { type: "doc", content: [] },
+      updatedAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    const original = { createMemo: api.createMemo, deleteMemo: api.deleteMemo };
+    let createCalls = 0;
+    let deleteCalls = 0;
+    api.createMemo = async () => {
+      createCalls += 1;
+      return { memo: { ...localMemo, id: "memo-should-not-exist", revision: 1 } };
+    };
+    api.deleteMemo = async () => {
+      deleteCalls += 1;
+    };
+
+    try {
+      await queueMemoDelete(scope, { memoId: localMemo.id, permanent: false });
+      // Never created on the server, so there is nothing to delete remotely.
+      expect(await localDb.syncQueue.get(getMemoCreateQueueId(localMemo.id))).toBeUndefined();
+      expect(await localDb.syncQueue.get(getMemoDeleteQueueId(localMemo.id))).toBeUndefined();
+      expect(await localDb.drafts.get(localMemo.id)).toBeUndefined();
+
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ attempted: 0, synced: 0 });
+      expect(createCalls).toBe(0);
+      expect(deleteCalls).toBe(0);
+    } finally {
+      api.createMemo = original.createMemo;
+      api.deleteMemo = original.deleteMemo;
+    }
+  });
+
+  test("deletes the durable memo when a delete is queued while its create is in flight", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const localMemo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: localMemo.id,
+      notebookId: localMemo.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+      createdAt: localMemo.createdAt,
+      updatedAt: localMemo.updatedAt,
+    });
+
+    let createStarted;
+    let releaseCreate;
+    const createStartedPromise = new Promise((resolve) => { createStarted = resolve; });
+    const releaseCreatePromise = new Promise((resolve) => { releaseCreate = resolve; });
+    const remoteMemo = { ...localMemo, id: "memo-remote-deleted", revision: 1, contentHash: "created-hash" };
+    const original = { createMemo: api.createMemo, deleteMemo: api.deleteMemo };
+    const deletedIds = [];
+    api.createMemo = async () => {
+      createStarted();
+      await releaseCreatePromise;
+      return { memo: remoteMemo };
+    };
+    api.deleteMemo = async (memoId) => {
+      deletedIds.push(memoId);
+    };
+
+    try {
+      const syncing = syncQueuedChanges({ scope });
+      await createStartedPromise;
+      // The create is already in flight, so the delete cannot cancel it; it
+      // must be remapped to the durable id and run in the same pass.
+      await queueMemoDelete(scope, { memoId: localMemo.id, permanent: false });
+      releaseCreate();
+
+      expect(await syncing).toMatchObject({ synced: 2, failed: 0 });
+      expect(deletedIds).toEqual([remoteMemo.id]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.createMemo = original.createMemo;
+      api.deleteMemo = original.deleteMemo;
+    }
+  });
+
+  test("treats an already removed memo as deleted when the permanent delete syncs", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await queueMemoDelete(scope, { memoId: "memo-already-gone", permanent: true });
+
+    const originalDeleteMemo = api.deleteMemo;
+    api.deleteMemo = async () => {
+      throw new ApiRequestError("Memo not found in trash", 404, "not_found");
+    };
+
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.deleteMemo = originalDeleteMemo;
+    }
+  });
+
+  test("turns a save for a deleted memo into a resolvable conflict", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox", title: "Edited elsewhere" });
+    await queueMemoUpdate({
+      memoId: memo.id,
+      expectedRevision: 0,
+      expectedContentHash: memo.contentHash,
+      editSessionId: `local-edit:${memo.id}`,
+      title: "Edited elsewhere",
+      contentJson: { type: "doc", content: [] },
+      tags: [],
+    }, scope);
+
+    const originalCreateEditSession = api.createMemoEditSession;
+    api.createMemoEditSession = async () => {
+      throw new ApiRequestError("Memo not found", 404, "not_found");
+    };
+
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ conflicted: 1, failed: 0 });
+      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(memo.id))).toMatchObject({
+        status: "conflict",
+        lastErrorCode: "memo_not_found",
+        nextAttemptAt: null,
+      });
+      // Conflicts wait for the user; the sync loop must not keep retrying.
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ attempted: 0 });
+    } finally {
+      api.createMemoEditSession = originalCreateEditSession;
+    }
+  });
+
+  test("does not auto-retry a permanent sync failure", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox", title: "Rejected payload" });
+    await queueMemoUpdate({
+      memoId: memo.id,
+      expectedRevision: 0,
+      expectedContentHash: memo.contentHash,
+      editSessionId: `local-edit:${memo.id}`,
+      title: "Rejected payload",
+      contentJson: { type: "doc", content: [] },
+      tags: [],
+    }, scope);
+
+    const originalCreateEditSession = api.createMemoEditSession;
+    api.createMemoEditSession = async () => {
+      throw new ApiRequestError("Invalid payload", 400, "invalid_payload");
+    };
+
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ failed: 1, conflicted: 0 });
+      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(memo.id))).toMatchObject({
+        status: "error",
+        nextAttemptAt: null,
+      });
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ attempted: 0 });
+    } finally {
+      api.createMemoEditSession = originalCreateEditSession;
     }
   });
 

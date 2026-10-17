@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 
-export const SIDECAR_PROTOCOL_VERSION = 2;
+export const SIDECAR_PROTOCOL_VERSION = 3;
 
 export class SidecarRpcClient {
   #child;

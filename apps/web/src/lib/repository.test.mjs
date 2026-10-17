@@ -8,6 +8,13 @@ const { localDb } = await import("./local-db.ts");
 const { api } = await import("./api.ts");
 const { createWebRepository } = await import("./repository.ts");
 const { createLocalMemo } = await import("./local-mirror.ts");
+const {
+  getMemoCreateQueueId,
+  getMemoDeleteQueueId,
+  getMemoRestoreQueueId,
+  queueMemoCreate,
+  syncQueuedChanges,
+} = await import("./sync-queue.ts");
 
 const installTestWindow = ({ hostname = "localhost" } = {}) => {
   const previousWindow = globalThis.window;
@@ -381,6 +388,127 @@ describe("web repository offline boundaries", () => {
       localDb.memos.get = originalLocalGet;
       restoreWindow();
       if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("recreates an unsynced note when it is restored after its canceled delete", async () => {
+    const restoreWindow = installTestWindow();
+    const scope = "https://demo.edgeever.org|user-1";
+
+    try {
+      const memo = await createLocalMemo(scope, { notebookId: "nb-1", title: "Offline note" });
+      await queueMemoCreate(scope, {
+        temporaryId: memo.id,
+        notebookId: memo.notebookId,
+        title: memo.title ?? "",
+        contentMarkdown: memo.contentMarkdown,
+        tags: memo.tags,
+        createdAt: memo.createdAt,
+        updatedAt: memo.updatedAt,
+      });
+      const repository = createWebRepository(scope);
+
+      await repository.deleteMemo(memo.id, false);
+      expect(await localDb.syncQueue.get(getMemoCreateQueueId(memo.id))).toBeUndefined();
+
+      const restored = await repository.restoreMemo(memo.id);
+      expect(restored.memo.isDeleted).toBe(false);
+      expect(await localDb.syncQueue.get(getMemoCreateQueueId(memo.id))).toMatchObject({
+        kind: "memo.create",
+        memoId: memo.id,
+      });
+      expect(await localDb.syncQueue.get(getMemoRestoreQueueId(memo.id))).toBeUndefined();
+    } finally {
+      restoreWindow();
+    }
+  });
+
+  test("defers a single delete for a note whose create was already attempted", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const restoreWindow = installTestWindow();
+    const scope = "https://demo.edgeever.org|user-1";
+
+    try {
+      const memo = await createLocalMemo(scope, { notebookId: "nb-1", title: "Attempted" });
+      await localDb.syncQueue.put({
+        id: getMemoCreateQueueId(memo.id),
+        kind: "memo.create",
+        scope,
+        memoId: memo.id,
+        status: "error",
+        payload: {
+          temporaryId: memo.id,
+          notebookId: memo.notebookId,
+          title: memo.title ?? "",
+          tags: [],
+          createdAt: memo.createdAt,
+          updatedAt: memo.updatedAt,
+        },
+        attemptCount: 1,
+        lastError: "temporary outage",
+        nextAttemptAt: "2099-01-01T00:00:00.000Z",
+        claimId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const repository = createWebRepository(scope);
+
+      await repository.deleteMemos({ memoIds: [memo.id] });
+      expect(await localDb.syncQueue.get(getMemoCreateQueueId(memo.id))).toBeDefined();
+      expect(await localDb.syncQueue.get(getMemoDeleteQueueId(memo.id))).toMatchObject({
+        kind: "memo.delete",
+        payload: { memoId: memo.id, permanent: false },
+      });
+      expect((await localDb.syncQueue.toArray()).some((item) => item.kind === "memo.deleteBatch")).toBe(false);
+      // The delete must wait for the create acknowledgement instead of racing it.
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ attempted: 0 });
+    } finally {
+      restoreWindow();
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("emptying the trash keeps attempted creates as deferred permanent deletes", async () => {
+    const restoreWindow = installTestWindow();
+    const scope = "https://demo.edgeever.org|user-1";
+
+    try {
+      const memo = await createLocalMemo(scope, { notebookId: "nb-1", title: "Trashed" });
+      await localDb.syncQueue.put({
+        id: getMemoCreateQueueId(memo.id),
+        kind: "memo.create",
+        scope,
+        memoId: memo.id,
+        status: "error",
+        payload: {
+          temporaryId: memo.id,
+          notebookId: memo.notebookId,
+          title: memo.title ?? "",
+          tags: [],
+          createdAt: memo.createdAt,
+          updatedAt: memo.updatedAt,
+        },
+        attemptCount: 2,
+        lastError: "temporary outage",
+        nextAttemptAt: "2099-01-01T00:00:00.000Z",
+        claimId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const repository = createWebRepository(scope);
+      await repository.deleteMemo(memo.id, false);
+
+      await repository.emptyTrash();
+      expect(await localDb.syncQueue.get(getMemoDeleteQueueId(memo.id))).toMatchObject({
+        kind: "memo.delete",
+        payload: { memoId: memo.id, permanent: true },
+      });
+      const emptyTrash = (await localDb.syncQueue.toArray()).find((item) => item.kind === "memo.emptyTrash");
+      expect(emptyTrash?.payload.memoIds).toEqual([]);
+      expect(await localDb.memos.get([scope, memo.id])).toBeUndefined();
+    } finally {
+      restoreWindow();
     }
   });
 

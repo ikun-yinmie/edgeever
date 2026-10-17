@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
 import { MyInviteCard } from "./settings/MyInviteCard";
 import { DataExportCard } from "./settings/DataExportCard";
+import { DesktopStorageCard } from "./settings/DesktopStorageCard";
 import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
 import { EvernoteImportGuideCard } from "./settings/EvernoteImportGuideCard";
@@ -224,6 +225,7 @@ export const SettingsPane = ({
       case "data":
         return (
           <SettingsGroup>
+            <DesktopStorageCard />
             <DataExportCard refreshWorkspaceAfterImport={refreshWorkspaceAfterImport} />
             <EvernoteImportGuideCard />
           </SettingsGroup>

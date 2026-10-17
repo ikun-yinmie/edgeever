@@ -4,7 +4,8 @@ import type { SyncQueueItem } from "@/lib/local-db";
 export type MemoSaveConflictCode =
   | "revision_conflict"
   | "content_conflict"
-  | "edit_session_conflict";
+  | "edit_session_conflict"
+  | "memo_not_found";
 
 export type MemoSaveConflictDetails = {
   expectedRevision?: number;
@@ -55,7 +56,7 @@ export const parseMemoSaveConflictDetails = (value: unknown): MemoSaveConflictDe
 };
 
 export const isMemoSaveConflictCode = (code: string | null | undefined): code is MemoSaveConflictCode =>
-  code === "revision_conflict" || code === "content_conflict" || code === "edit_session_conflict";
+  code === "revision_conflict" || code === "content_conflict" || code === "edit_session_conflict" || code === "memo_not_found";
 
 export const isMemoSaveConflictError = (error: unknown): error is ApiRequestError =>
   error instanceof ApiRequestError && isMemoSaveConflictCode(error.code);
@@ -99,6 +100,10 @@ export const formatMemoSaveConflictReason = (t: Translate, info: MemoSaveConflic
 
   if (info.code === "edit_session_conflict") {
     return t("editor.saveState.conflictReason.editSession");
+  }
+
+  if (info.code === "memo_not_found") {
+    return t("editor.saveState.conflictReason.memoMissing");
   }
 
   const expected = info.details?.expectedRevision;
