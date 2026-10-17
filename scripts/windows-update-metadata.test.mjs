@@ -96,7 +96,7 @@ describe("Windows update release metadata", () => {
       await writeFile(join(directory, "latest-windows.json.sig"), `${JSON.stringify({
         schemaVersion: 1,
         keyId: manifest.keyId,
-        signature: "tbufxmcMsCtPmZ8V1/mj3XPKruxRc1i27yVrUEt+LQsEKOIWnqg3hRGMkBX3STmTUfjQ39rmiN3YD3RqhW0tAg==",
+        signature: "iqV+uzoO4WbA8Y/xX5YfvpjxSZIsNa4Q3QXEE5qdE+BHjSM2SO/uPnB0kHchMl3QHpmfs6rKDSh4zM1YYrqsCA==",
       })}\n`);
       await writeFile(join(directory, "latest.yml"), [
         `version: ${manifest.version}`,
