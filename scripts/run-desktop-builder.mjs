@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { copyFileSync } from "node:fs";
+import { join } from "node:path";
 
 const publishIndex = process.argv.indexOf("--publish");
 const publishMode = publishIndex >= 0 ? process.argv[publishIndex + 1] ?? "never" : "never";
@@ -30,6 +32,26 @@ for (const key of [
   if (!environment[key]) delete environment[key];
 }
 environment.CSC_IDENTITY_AUTO_DISCOVERY ||= "false";
+
+// Packaging the Windows client on macOS/Linux needs a Windows sidecar binary,
+// but `cargo build --release` only builds the host target. Cross-build and
+// stage the gnu target so the installer never bundles a stale sidecar.
+if (requestedTarget === "win" && process.platform !== "win32") {
+  const sidecarRoot = "crates/desktop-sidecar";
+  const crossTarget = "x86_64-pc-windows-gnu";
+  const sidecar = spawnSync("cargo", ["build", "--release", "--target", crossTarget], {
+    cwd: sidecarRoot,
+    stdio: "inherit",
+  });
+  if (sidecar.error) throw sidecar.error;
+  if (sidecar.status !== 0) {
+    throw new Error(`Windows sidecar cross-build failed with exit code ${sidecar.status}`);
+  }
+  copyFileSync(
+    join(sidecarRoot, "target", crossTarget, "release", "edgeever-sidecar.exe"),
+    join(sidecarRoot, "target", "release", "edgeever-sidecar.exe"),
+  );
+}
 
 const builderArgs = [
   "run",
