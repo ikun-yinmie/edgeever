@@ -28,6 +28,7 @@ import { PluginPanelDialog } from "./plugins/PluginPanelDialog";
 import { shouldDiscardPluginNoteSearchRequest } from "./editor/note-search";
 import { api, getConfiguredDesktopApiBaseUrl, getOrCreateClientDeviceId } from "@/lib/api";
 import { lazyWithChunkRetry } from "@/lib/lazy-retry";
+import type { SharedPaneScope } from "@/lib/shared-with-me";
 import { MarkdownExportMemoryLimitError, type MarkdownExportProgress } from "@/lib/markdown-export";
 import { exportSelectedMemosAsMarkdownZip } from "@/lib/selected-markdown-export";
 import { createPluginScheduleAdapter } from "@/lib/plugins/plugin-schedule-adapter";
@@ -561,6 +562,7 @@ export const WorkspaceApp = ({
             ? "execution-center"
           : "editor"
   );
+  const [sharedScope, setSharedScope] = useState<SharedPaneScope>("all");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [mobileNotebookPickerOpen, setMobileNotebookPickerOpen] = useState(false);
   const [mobileBottomNavActive, setMobileBottomNavActive] = useState<MobileBottomNavItem>(() =>
@@ -2444,7 +2446,7 @@ export const WorkspaceApp = ({
   // same editor plumbing as one of your own notes. Below the desktop breakpoint
   // the right pane only exists next to the editor, so opening it has to promote
   // that pane the same way the assets and tags views do.
-  const handleOpenShared = () => {
+  const handleOpenShared = (scope?: SharedPaneScope) => {
     if (!isDesktopViewport()) {
       clearHiddenMobileSearch();
       skipNextHomeRouteSyncRef.current = route.pathname !== "/";
@@ -2452,6 +2454,7 @@ export const WorkspaceApp = ({
       setActivePane("editor");
     }
     clearMemoSelection?.();
+    setSharedScope(scope === "group" || scope === "link" ? scope : "all");
     setRightView("shared");
   };
 
@@ -3317,6 +3320,7 @@ export const WorkspaceApp = ({
                   ) : rightView === "shared" ? (
                     <SharedWithMePane
                       onClose={handleCloseShared}
+                      scope={sharedScope}
                       onOpenMemo={(memoId) => {
                         externalSelectionRef.current = memoId;
                         setSelectedMemoId(memoId);

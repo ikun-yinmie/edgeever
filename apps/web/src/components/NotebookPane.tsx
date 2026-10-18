@@ -68,6 +68,7 @@ import {
 } from "@/lib/app-helpers";
 import type { EdgeEverRepository } from "@/lib/repository";
 import type { EdgeEverPluginHost } from "@/lib/plugins/plugin-host";
+import type { SharedPaneScope } from "@/lib/shared-with-me";
 import { statusSettleMotion } from "@/lib/motion";
 import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import { PluginToolbarMenu } from "./plugins/PluginToolbarMenu";
@@ -516,7 +517,7 @@ export const NotebookPane = ({
   onEmptyTrash: () => void;
   onOpenSettings: () => void;
   onOpenAdmin?: () => void;
-  onOpenShared?: () => void;
+  onOpenShared?: (scope?: SharedPaneScope) => void;
   isOwner?: boolean;
   onCreateMemo: (kind?: DiagramKind) => void;
   onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;
@@ -889,7 +890,7 @@ export const NotebookPane = ({
                                           <button
                         className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
-                        onClick={onOpenShared}
+                        onClick={() => onOpenShared?.()}
                       >
                         <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
                         <Users className="h-4 w-4 shrink-0 text-slate-500" />
@@ -926,7 +927,7 @@ export const NotebookPane = ({
                                           <button
                         className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
-                        onClick={onOpenShared}
+                        onClick={() => onOpenShared?.("link")}
                       >
                         <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
                         <Link2 className="h-4 w-4 shrink-0 text-slate-500" />
@@ -940,7 +941,7 @@ export const NotebookPane = ({
                                           <button
                         className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
-                        onClick={onOpenShared}
+                        onClick={() => onOpenShared?.("group")}
                       >
                         <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
                         <Users className="h-4 w-4 shrink-0 text-slate-500" />
@@ -1040,7 +1041,7 @@ export const NotebookPane = ({
                   <SidebarRailButton
                     icon={<Users className="h-4 w-4" />}
                     label={t("sharedPane.title")}
-                    onClick={onOpenShared}
+                    onClick={() => onOpenShared?.()}
                   />
                 ) : null}
                 {isOwner && onOpenAdmin ? (
@@ -1287,7 +1288,7 @@ export const NotebookPane = ({
             </button>
             {onOpenShared ? (
               <button
-                onClick={onOpenShared}
+                onClick={() => onOpenShared()}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
                 type="button"
                 aria-label={t("sharedPane.title")}

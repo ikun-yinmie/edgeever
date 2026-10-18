@@ -7,6 +7,9 @@ import type {
 
 export type SharedEditPolicy = "author" | "group" | "selected";
 
+/** Which slice of the shared pane to show: everything, group shares or link shares. */
+export type SharedPaneScope = "all" | "group" | "link";
+
 export type SharedGroupSection = {
   group: SharedWithMeGroup;
   notebooks: SharedWithMeNotebook[];

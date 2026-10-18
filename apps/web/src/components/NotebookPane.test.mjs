@@ -155,7 +155,9 @@ describe("NotebookPane shared sections", () => {
     expect(source).toContain("onClick={() => setMySharesSectionOpen((open) => !open)}");
 
     const sharedSections = source.split("data-group-section")[1]?.split("{collapsed && onToggleCollapsed")[0] ?? "";
-    expect(sharedSections.match(/onClick=\{onOpenShared\}/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(sharedSections).toContain('onClick={() => onOpenShared?.("link")}');
+    expect(sharedSections).toContain('onClick={() => onOpenShared?.("group")}');
+    expect(sharedSections.match(/onClick=\{\(\) => onOpenShared\?\.\(\)\}/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
   });
 
   test("forwards notebook-scoped create-note requests to the tree", () => {
