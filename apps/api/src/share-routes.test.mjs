@@ -104,6 +104,30 @@ describe("public memo shares", () => {
     sqlite.close();
   });
 
+  test("names the sharer and falls back to the workspace owner", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = new Hono();
+    registerPublicShareRoutes(app);
+
+    sqlite.query(
+      "INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)",
+    ).run("user_owner", "owner", "hash", null);
+    sqlite.query(
+      "INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)",
+    ).run("user_sharer", "sharer", "hash", "Sharer Name");
+    sqlite.query(
+      "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, 'owner')",
+    ).run("ws_member", "user_owner");
+
+    const ownerNamed = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect((await ownerNamed.json()).share.sharedByName).toBe("owner");
+
+    sqlite.query("UPDATE memo_shares SET created_by = ? WHERE token = ?").run("user_sharer", sourceToken);
+    const sharerNamed = await app.request(`/api/public/shares/${sourceToken}`, {}, environment);
+    expect((await sharerNamed.json()).share.sharedByName).toBe("Sharer Name");
+    sqlite.close();
+  });
+
   test("serves shared PDF byte ranges with public-share cache controls", async () => {
     const { sqlite, environment } = createDatabaseEnvironment();
     sqlite.query(

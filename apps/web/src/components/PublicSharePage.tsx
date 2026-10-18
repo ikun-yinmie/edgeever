@@ -3,7 +3,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Clock3, FileText, LoaderCircle, LockKeyhole, ShieldCheck } from "lucide-react";
+import { Clock3, FileText, LoaderCircle, LockKeyhole, UserRound } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
@@ -251,7 +251,8 @@ export const PublicSharePage = () => {
         <header className="border-b border-slate-200 px-5 py-6 sm:px-10 sm:py-8">
           <div className="mb-5 flex items-center justify-between gap-4 text-xs text-slate-500">
             <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
-              <ShieldCheck className="h-4 w-4" /> EdgeEver · {t("sharing.readOnly")}
+              <UserRound className="h-4 w-4" />
+              {share.sharedByName ? `${share.sharedByName} · ${t("sharing.readOnly")}` : t("sharing.readOnly")}
             </span>
             <span className="flex items-center gap-1.5">
               <Clock3 className="h-4 w-4" />

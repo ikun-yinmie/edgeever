@@ -112,9 +112,16 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
     [lineCount],
   );
   const canEdit = editor.isEditable;
-  // In read mode the collapse toggle uses view-local state and never edits the document.
-  const [viewCollapsed, setViewCollapsed] = useState(false);
+  // Read mode keeps the header view-only: collapse, width, line numbers and
+  // wrapping toggle per viewer without ever editing the document.
+  const [viewCollapsed, setViewCollapsed] = useState(isCollapsed);
+  const [viewWide, setViewWide] = useState(isWide);
+  const [viewLineNumbers, setViewLineNumbers] = useState(showLineNumbers);
+  const [viewWrap, setViewWrap] = useState(wrapLines);
   const collapsed = canEdit ? isCollapsed : viewCollapsed;
+  const wide = canEdit ? isWide : viewWide;
+  const lineNumbersVisible = canEdit ? showLineNumbers : viewLineNumbers;
+  const wrapLinesVisible = canEdit ? wrapLines : viewWrap;
   const [svg, setSvg] = useState("");
   const [sourceVisible, setSourceVisible] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -210,10 +217,10 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           ? `edgeever-mermaid-code-block${sourceVisible ? " is-source-visible" : ""}`
           : "edgeever-code-block",
         showHeader ? "edgeever-code-block-has-header" : "",
-        isWide ? "edgeever-code-block-wide" : "",
+        wide ? "edgeever-code-block-wide" : "",
         collapsed ? "edgeever-code-block-collapsed" : "",
-        !isMermaid && showLineNumbers && !collapsed ? "edgeever-code-block-numbered" : "",
-        !isMermaid && wrapLines && !collapsed ? "edgeever-code-block-wrap" : "",
+        !isMermaid && lineNumbersVisible && !collapsed ? "edgeever-code-block-numbered" : "",
+        !isMermaid && wrapLinesVisible && !collapsed ? "edgeever-code-block-wrap" : "",
       ].filter(Boolean).join(" ")}
       data-language={language}
     >
@@ -249,56 +256,56 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
             blockTitle && <span className="edgeever-code-title-label">{blockTitle}</span>
           )}
           <div className="edgeever-code-header-actions">
-            {canEdit && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="edgeever-code-tool-button"
-                      aria-label={t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
-                      aria-pressed={collapsed}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (canEdit) {
-                          updateAttributes({ meta: { ...meta, collapsed: !collapsed } });
-                        } else {
-                          setViewCollapsed((value) => !value);
-                        }
-                      }}
-                      onMouseDown={(event) => event.preventDefault()}
-                    >
-                      {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="edgeever-code-tool-button"
-                      aria-label={t("editorToolbar.codeToggleWidth")}
-                      aria-pressed={isWide}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        updateAttributes({ meta: { ...meta, width: isWide ? "normal" : "wide" } });
-                      }}
-                      onMouseDown={(event) => event.preventDefault()}
-                    >
-                      {isWide ? <ChevronsLeft aria-hidden="true" /> : <ChevronsRight aria-hidden="true" />}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {t("editorToolbar.codeToggleWidth")}
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="edgeever-code-tool-button"
+                  aria-label={t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
+                  aria-pressed={collapsed}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (canEdit) {
+                      updateAttributes({ meta: { ...meta, collapsed: !collapsed } });
+                    } else {
+                      setViewCollapsed((value) => !value);
+                    }
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="edgeever-code-tool-button"
+                  aria-label={t("editorToolbar.codeToggleWidth")}
+                  aria-pressed={wide}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (canEdit) {
+                      updateAttributes({ meta: { ...meta, width: wide ? "normal" : "wide" } });
+                    } else {
+                      setViewWide((value) => !value);
+                    }
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  {wide ? <ChevronsLeft aria-hidden="true" /> : <ChevronsRight aria-hidden="true" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t("editorToolbar.codeToggleWidth")}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -324,106 +331,114 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
                 {t(copyState === "copied" ? "editorToolbar.codeCopied" : copyState === "error" ? "editorToolbar.codeCopyFailed" : "editorToolbar.copyCode")}
               </TooltipContent>
             </Tooltip>
-            {canEdit && (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="edgeever-code-tool-button"
-                        aria-label={t("editorToolbar.codeMoreActions")}
-                        onMouseDown={(event) => event.preventDefault()}
-                      >
-                        <Ellipsis aria-hidden="true" />
-                      </button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{t("editorToolbar.codeMoreActions")}</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="end" className="min-w-56">
-                  <DropdownMenuCheckboxItem
-                    checked={showLineNumbers}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      updateAttributes({ meta: { ...meta, lineNumbers: !showLineNumbers } });
-                    }}
-                  >
-                    <ListOrdered className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t("editorToolbar.codeLineNumbers")}
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={wrapLines}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      updateAttributes({ meta: { ...meta, wrap: !wrapLines } });
-                    }}
-                  >
-                    <WrapText className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t("editorToolbar.codeWrapLines")}
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      updateAttributes({ meta: { lineNumbers: showLineNumbers, wrap: wrapLines } });
-                      setSyncToast(t("editorToolbar.codeSyncDone"));
-                    }}
-                  >
-                    {t("editorToolbar.codeSyncStyleAll")}
-                    <span className="ml-auto text-xs text-slate-400">⌘⇧S</span>
-                    <span className="sr-only">meta only</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      const target = { ...meta };
-                      const languageValue = typeof node.attrs.language === "string" ? node.attrs.language : "plaintext";
-                      const chain = editor.chain().focus();
-                      editor.state.doc.descendants((descNode, pos) => {
-                        if (descNode.type.name !== "codeBlock") return true;
-                        chain.setNodeSelection(pos).updateAttributes("codeBlock", {
-                          language: languageValue,
-                          meta: { ...target, collapsed: false },
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="edgeever-code-tool-button"
+                      aria-label={t("editorToolbar.codeMoreActions")}
+                      onMouseDown={(event) => event.preventDefault()}
+                    >
+                      <Ellipsis aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("editorToolbar.codeMoreActions")}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuCheckboxItem
+                  checked={lineNumbersVisible}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    if (canEdit) {
+                      updateAttributes({ meta: { ...meta, lineNumbers: !lineNumbersVisible } });
+                    } else {
+                      setViewLineNumbers((value) => !value);
+                    }
+                  }}
+                >
+                  <ListOrdered className="mr-2 h-4 w-4" aria-hidden="true" />
+                  {t("editorToolbar.codeLineNumbers")}
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={wrapLinesVisible}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    if (canEdit) {
+                      updateAttributes({ meta: { ...meta, wrap: !wrapLinesVisible } });
+                    } else {
+                      setViewWrap((value) => !value);
+                    }
+                  }}
+                >
+                  <WrapText className="mr-2 h-4 w-4" aria-hidden="true" />
+                  {t("editorToolbar.codeWrapLines")}
+                </DropdownMenuCheckboxItem>
+                {canEdit && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        updateAttributes({ meta: { lineNumbers: lineNumbersVisible, wrap: wrapLinesVisible } });
+                        setSyncToast(t("editorToolbar.codeSyncDone"));
+                      }}
+                    >
+                      {t("editorToolbar.codeSyncStyleAll")}
+                      <span className="ml-auto text-xs text-slate-400">⌘⇧S</span>
+                      <span className="sr-only">meta only</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        const target = { ...meta };
+                        const languageValue = typeof node.attrs.language === "string" ? node.attrs.language : "plaintext";
+                        const chain = editor.chain().focus();
+                        editor.state.doc.descendants((descNode, pos) => {
+                          if (descNode.type.name !== "codeBlock") return true;
+                          chain.setNodeSelection(pos).updateAttributes("codeBlock", {
+                            language: languageValue,
+                            meta: { ...target, collapsed: false },
+                          });
+                          return false;
                         });
-                        return false;
-                      });
-                      chain.run();
-                      setSyncToast(t("editorToolbar.codeSyncDone"));
-                    }}
-                  >
-                    {t("editorToolbar.codeSyncStyleAndLanguageAll")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                        chain.run();
+                        setSyncToast(t("editorToolbar.codeSyncDone"));
+                      }}
+                    >
+                      {t("editorToolbar.codeSyncStyleAndLanguageAll")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}
       {isMermaid ? (
         <TooltipProvider delayDuration={0} skipDelayDuration={0}>
           <div className="edgeever-mermaid-toolbar" contentEditable={false}>
-            {canEdit && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="edgeever-mermaid-tool-button"
-                    aria-label={t(sourceVisible ? "editorToolbar.mermaidHideSource" : "editorToolbar.mermaidShowSource")}
-                    aria-pressed={sourceVisible}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setSourceVisible((visible) => !visible);
-                    }}
-                    onMouseDown={(event) => event.preventDefault()}
-                  >
-                    <Code2 aria-hidden="true" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {t(sourceVisible ? "editorToolbar.mermaidHideSource" : "editorToolbar.mermaidShowSource")}
-                </TooltipContent>
-              </Tooltip>
-            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="edgeever-mermaid-tool-button"
+                  aria-label={t(sourceVisible ? "editorToolbar.mermaidHideSource" : "editorToolbar.mermaidShowSource")}
+                  aria-pressed={sourceVisible}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setSourceVisible((visible) => !visible);
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  <Code2 aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t(sourceVisible ? "editorToolbar.mermaidHideSource" : "editorToolbar.mermaidShowSource")}
+              </TooltipContent>
+            </Tooltip>
             {svg && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -473,7 +488,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           )}
         </div>
       )}
-      {!collapsed && !isMermaid && showLineNumbers && (
+      {!collapsed && !isMermaid && lineNumbersVisible && (
         <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
           {lineNumbers.map((value) => (
             <span key={value}>{value}</span>

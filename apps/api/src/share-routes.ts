@@ -49,6 +49,7 @@ type PublicMemoShareRow = {
   updated_at: string;
   password_hash: string | null;
   display_policy_json: string | null;
+  shared_by_name: string | null;
 };
 type ShareGateRow = {
   workspace_id: string;
@@ -150,10 +151,17 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
 
     const row = await c.env.storage.db.prepare(
       `SELECT ms.workspace_id, m.title, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
-              ms.display_policy_json
+              ms.display_policy_json,
+              COALESCE(
+                NULLIF(TRIM(sharer.display_name), ''), NULLIF(TRIM(sharer.username), ''),
+                NULLIF(TRIM(owner.display_name), ''), NULLIF(TRIM(owner.username), '')
+              ) AS shared_by_name
        FROM memo_shares ms
        INNER JOIN memos m ON m.id = ms.memo_id AND m.workspace_id = ms.workspace_id
        INNER JOIN memo_contents mc ON mc.memo_id = m.id
+       LEFT JOIN users sharer ON sharer.id = ms.created_by
+       LEFT JOIN workspace_members wm ON wm.workspace_id = ms.workspace_id AND wm.role = 'owner'
+       LEFT JOIN users owner ON owner.id = wm.user_id
        WHERE ms.token = ? AND m.is_deleted = 0
        LIMIT 1`
     ).bind(token).first<PublicMemoShareRow>();
@@ -191,6 +199,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
       contentMarkdown: row.content_markdown,
       tags: parseJsonArray(row.tags_json),
       updatedAt: row.updated_at,
+      sharedByName: row.shared_by_name,
       memoShareTokens,
     };
     c.header("Cache-Control", "private, no-store");

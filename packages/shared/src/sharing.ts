@@ -17,6 +17,7 @@ export type PublicMemoShare = {
   contentMarkdown: string;
   tags: string[];
   updatedAt: string;
+  sharedByName?: string | null;
   memoShareTokens: Record<string, string>;
 };
 
