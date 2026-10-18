@@ -10,6 +10,9 @@ export type SharedEditPolicy = "author" | "group" | "selected";
 /** Which slice of the shared pane to show: everything, group shares or link shares. */
 export type SharedPaneScope = "all" | "group" | "link";
 
+/** Where the shared pane should land: a scope, or a specific group's page. */
+export type SharedPaneTarget = SharedPaneScope | { groupId: string };
+
 export type SharedGroupSection = {
   group: SharedWithMeGroup;
   notebooks: SharedWithMeNotebook[];

@@ -2305,6 +2305,8 @@ export const ja = {
     mySharesGroupSubtitle: "グループに共有したノートブックとノート",
     mySharesLinkLabel: "リンクで共有",
     mySharesLinkSubtitle: "リンクで共有したノート",
+    groupArticlesSection: "記事",
+    groupMembersSection: "メンバー",
     mySharesLinkCopied: "リンクをコピーしました",
     mySharesEmpty: "まだ共有はありません。",
     emptyMyLinkShares: "リンクで共有したノートはまだありません。",

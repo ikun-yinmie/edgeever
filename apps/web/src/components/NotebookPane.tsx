@@ -68,7 +68,7 @@ import {
 } from "@/lib/app-helpers";
 import type { EdgeEverRepository } from "@/lib/repository";
 import type { EdgeEverPluginHost } from "@/lib/plugins/plugin-host";
-import type { SharedPaneScope } from "@/lib/shared-with-me";
+import type { SharedPaneTarget } from "@/lib/shared-with-me";
 import { statusSettleMotion } from "@/lib/motion";
 import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
 import { PluginToolbarMenu } from "./plugins/PluginToolbarMenu";
@@ -517,7 +517,7 @@ export const NotebookPane = ({
   onEmptyTrash: () => void;
   onOpenSettings: () => void;
   onOpenAdmin?: () => void;
-  onOpenShared?: (scope?: SharedPaneScope) => void;
+  onOpenShared?: (target?: SharedPaneTarget) => void;
   isOwner?: boolean;
   onCreateMemo: (kind?: DiagramKind) => void;
   onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;
@@ -890,7 +890,7 @@ export const NotebookPane = ({
                                           <button
                         className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
-                        onClick={() => onOpenShared?.()}
+                        onClick={() => onOpenShared?.({ groupId: group.id })}
                       >
                         <span className="flex h-6 w-5 shrink-0 items-center justify-center" aria-hidden="true" />
                         <Users className="h-4 w-4 shrink-0 text-slate-500" />

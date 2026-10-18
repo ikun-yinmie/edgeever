@@ -14,7 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { GroupShareSummary } from "@/lib/api";
+import type { GroupShareSummary, SharedNotebookMemo } from "@/lib/api";
 import { ApiRequestError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { GroupSharePolicyDialog } from "@/components/settings/GroupSharePolicyDialog";
@@ -32,9 +32,47 @@ interface SharedWithMePaneProps {
   onClose: () => void;
   onOpenMemo: (memoId: string) => void;
   scope?: SharedPaneScope;
+  groupId?: string | null;
 }
 
-export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedWithMePaneProps) => {
+const SharedNotebookMemoList = ({
+  isLoading,
+  memos,
+  onOpenMemo,
+}: {
+  isLoading: boolean;
+  memos: SharedNotebookMemo[];
+  onOpenMemo: (memoId: string) => void;
+}) => {
+  const { t } = useTranslation();
+  if (isLoading) {
+    return <p className="py-2 text-xs text-slate-500">{t("common.loading")}</p>;
+  }
+  if (memos.length === 0) {
+    return <p className="py-2 text-xs text-slate-500">{t("sharedPane.notebookEmpty")}</p>;
+  }
+  return (
+    <ul className="space-y-1">
+      {memos.map((memo) => (
+        <li key={memo.id}>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-card"
+            onClick={() => onOpenMemo(memo.id)}
+            type="button"
+          >
+            <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
+              {memo.title || t("common.untitledMemo")}
+            </span>
+            {memo.canEdit ? <PenLine className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : null}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId = null }: SharedWithMePaneProps) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const sharedQuery = useQuery({ queryKey: SHARED_WITH_ME_QUERY_KEY, queryFn: api.getSharedWithMe });
@@ -58,6 +96,18 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedW
     queryKey: ["group-members", membersGroupId],
     queryFn: () => api.listGroupMembers(membersGroupId as string),
     enabled: Boolean(membersGroupId),
+  });
+
+  const groupSharesQuery = useQuery({
+    queryKey: ["group-detail-shares", groupId],
+    queryFn: () => api.listGroupShares(groupId as string),
+    enabled: Boolean(groupId),
+  });
+
+  const groupDetailMembersQuery = useQuery({
+    queryKey: ["group-detail-members", groupId],
+    queryFn: () => api.listGroupMembers(groupId as string),
+    enabled: Boolean(groupId),
   });
 
   const revokeMutation = useMutation({
@@ -109,14 +159,23 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedW
     (linkShare) => !linkShare.memoDeleted && scope !== "group",
   );
   const hasVisibleMyShares = visibleGroupShares.length > 0 || visibleLinkShares.length > 0;
-  const scopeTitle =
-    scope === "link"
+  const detailGroup = groupId
+    ? (sharedQuery.data?.groups.find((entry) => entry.id === groupId) ?? null)
+    : null;
+  const detailShares = groupSharesQuery.data?.shares ?? [];
+  const detailMembers = groupDetailMembersQuery.data?.members ?? [];
+  const detailMemberCount = groupDetailMembersQuery.data ? detailMembers.length : (detailGroup?.memberCount ?? 0);
+  const detailShareCount = groupSharesQuery.data ? detailShares.length : (detailGroup?.shareCount ?? 0);
+  const scopeTitle = groupId
+    ? detailGroup?.name || t("sharedPane.title")
+    : scope === "link"
       ? t("sharedPane.mySharesLinkLabel")
       : scope === "group"
         ? t("sharedPane.mySharesGroupLabel")
         : t("sharedPane.title");
-  const scopeSubtitle =
-    scope === "link"
+  const scopeSubtitle = groupId
+    ? t("sharedPane.groupMeta", { members: detailMemberCount, shares: detailShareCount })
+    : scope === "link"
       ? t("sharedPane.mySharesLinkSubtitle")
       : scope === "group"
         ? t("sharedPane.mySharesGroupSubtitle")
@@ -158,7 +217,117 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedW
         <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
           {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
 
-          {scope !== "all" ? null : (
+          {groupId ? (
+            <>
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupArticlesSection")}</h2>
+                {groupSharesQuery.isLoading ? (
+                  <p className="text-sm text-slate-500">{t("common.loading")}</p>
+                ) : detailShares.length === 0 ? (
+                  <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
+                    {t("sharedPane.emptyGroup")}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
+                    {detailShares.map((share) => {
+                      const author = share.authorDisplayName || share.authorUsername;
+                      if (share.targetType === "notebook") {
+                        const expanded = expandedNotebookId === share.targetId;
+                        return (
+                          <li key={`detail-nb-${share.id}`}>
+                            <button
+                              className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-slate-50"
+                              onClick={() => setExpandedNotebookId(expanded ? null : share.targetId)}
+                              type="button"
+                            >
+                              <BookOpen className="h-4 w-4 shrink-0 text-emerald-600" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-slate-900">
+                                  {share.title || t("common.untitledMemo")}
+                                </span>
+                                {author ? (
+                                  <span className="block truncate text-xs text-slate-500">
+                                    {t("sharedPane.fromAuthor", { name: author })}
+                                  </span>
+                                ) : null}
+                              </span>
+                              {expanded ? (
+                                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                              )}
+                            </button>
+                            {expanded ? (
+                              <div className="bg-slate-50/70 px-3.5 pb-3">
+                                <SharedNotebookMemoList
+                                  isLoading={notebookMemosQuery.isLoading}
+                                  memos={notebookMemosQuery.data?.memos ?? []}
+                                  onOpenMemo={onOpenMemo}
+                                />
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={`detail-memo-${share.id}`}>
+                          <button
+                            className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-slate-50"
+                            onClick={() => onOpenMemo(share.targetId)}
+                            type="button"
+                          >
+                            <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-slate-900">
+                                {share.title || t("common.untitledMemo")}
+                              </span>
+                              {author ? (
+                                <span className="block truncate text-xs text-slate-500">
+                                  {t("sharedPane.fromAuthor", { name: author })}
+                                </span>
+                              ) : null}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupMembersSection")}</h2>
+                {groupDetailMembersQuery.isLoading ? (
+                  <p className="text-sm text-slate-500">{t("common.loading")}</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
+                    {detailMembers.map((member) => (
+                      <li className="flex items-center gap-3 px-3.5 py-3" key={member.userId}>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                          {(member.displayName || member.username || "?").slice(0, 1).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-slate-900">
+                            {member.displayName || member.username || member.userId}
+                          </p>
+                          {member.displayName && member.username ? (
+                            <p className="truncate text-xs text-slate-500">@{member.username}</p>
+                          ) : null}
+                        </div>
+                        {member.role === "manager" ? (
+                          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                            {t("groups.manager")}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          ) : null}
+
+          {groupId || scope !== "all" ? null : (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionSharedWithMe")}</h2>
               {sharedQuery.isLoading ? (
@@ -219,29 +388,11 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedW
                             </button>
                             {expanded ? (
                               <div className="bg-slate-50/70 px-3.5 pb-3">
-                                {notebookMemosQuery.isLoading ? (
-                                  <p className="py-2 text-xs text-slate-500">{t("common.loading")}</p>
-                                ) : (notebookMemosQuery.data?.memos ?? []).length === 0 ? (
-                                  <p className="py-2 text-xs text-slate-500">{t("sharedPane.notebookEmpty")}</p>
-                                ) : (
-                                  <ul className="space-y-1">
-                                    {(notebookMemosQuery.data?.memos ?? []).map((memo) => (
-                                      <li key={memo.id}>
-                                        <button
-                                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-card"
-                                          onClick={() => onOpenMemo(memo.id)}
-                                          type="button"
-                                        >
-                                          <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                                          <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
-                                            {memo.title || t("common.untitledMemo")}
-                                          </span>
-                                          {memo.canEdit ? <PenLine className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : null}
-                                        </button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
+                                <SharedNotebookMemoList
+                                  isLoading={notebookMemosQuery.isLoading}
+                                  memos={notebookMemosQuery.data?.memos ?? []}
+                                  onOpenMemo={onOpenMemo}
+                                />
                               </div>
                             ) : null}
                           </li>
@@ -279,109 +430,111 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all" }: SharedW
             </section>
           )}
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionMyShares")}</h2>
-            {!hasVisibleMyShares ? (
-              <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
-                {scope === "link" ? t("sharedPane.emptyMyLinkShares") : t("sharedPane.emptyMyShares")}
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
-                {visibleGroupShares.map((share) => (
-                  <li className="flex flex-wrap items-center gap-3 px-3.5 py-3" key={share.id}>
-                    {share.targetType === "notebook" ? (
-                      <BookOpen className="h-4 w-4 shrink-0 text-emerald-600" />
-                    ) : (
-                      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{share.title || t("common.untitledMemo")}</p>
-                      <p className="truncate text-xs text-slate-500">
-                        {t("sharedPane.mySharesGroupLabel")} · {share.groupName} · {policyLabel(share)}
-                      </p>
-                    </div>
-                    <Button
-                      className="h-8"
-                      onClick={() => setPolicyTarget({ share, groupId: share.groupId })}
-                      size="sm"
-                      variant="outline"
-                    >
-                      {t("sharedPane.editPolicy")}
-                    </Button>
-                    <Button
-                      className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                      disabled={revokeMutation.isPending}
-                      onClick={() => revokeMutation.mutate({ groupId: share.groupId, shareId: share.id })}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      {t("sharedPane.revoke")}
-                    </Button>
-                  </li>
-                ))}
-                {visibleLinkShares.map((linkShare) => (
-                  <li className="flex flex-wrap items-center gap-3 px-3.5 py-3" key={`link-${linkShare.memoId}`}>
-                    <ExternalLink className="h-4 w-4 shrink-0 text-sky-600" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">
-                        {linkShare.memoTitle || t("common.untitledMemo")}
-                      </p>
-                      <p className="truncate text-xs text-slate-500">
-                        {t("sharedPane.mySharesLinkLabel")}
-                        {linkShare.passwordProtected ? " · 🔒" : ""}
-                      </p>
-                    </div>
-                    {confirmRevokeToken === linkShare.token ? (
-                      <>
-                        <span className="text-xs text-slate-500">{t("sharedPane.revokeLinkShareConfirm")}</span>
-                        <Button
-                          className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                          disabled={revokeLinkShareMutation.isPending}
-                          onClick={() => revokeLinkShareMutation.mutate(linkShare.memoId)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          {t("sharedPane.revokeLinkShare")}
-                        </Button>
-                        <Button className="h-8" onClick={() => setConfirmRevokeToken(null)} size="sm" variant="outline">
-                          {t("common.cancel")}
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          className="h-8"
-                          onClick={() => void copyShareLink(linkShare.token)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          {copiedToken === linkShare.token ? (
-                            <>
-                              <Check className="h-4 w-4" />
-                              {t("sharedPane.mySharesLinkCopied")}
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-4 w-4" />
-                              {t("sharedPane.copyLink")}
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                          onClick={() => setConfirmRevokeToken(linkShare.token)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          {t("sharedPane.revokeLinkShare")}
-                        </Button>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {groupId ? null : (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionMyShares")}</h2>
+              {!hasVisibleMyShares ? (
+                <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
+                  {scope === "link" ? t("sharedPane.emptyMyLinkShares") : t("sharedPane.emptyMyShares")}
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
+                  {visibleGroupShares.map((share) => (
+                    <li className="flex flex-wrap items-center gap-3 px-3.5 py-3" key={share.id}>
+                      {share.targetType === "notebook" ? (
+                        <BookOpen className="h-4 w-4 shrink-0 text-emerald-600" />
+                      ) : (
+                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">{share.title || t("common.untitledMemo")}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {t("sharedPane.mySharesGroupLabel")} · {share.groupName} · {policyLabel(share)}
+                        </p>
+                      </div>
+                      <Button
+                        className="h-8"
+                        onClick={() => setPolicyTarget({ share, groupId: share.groupId })}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {t("sharedPane.editPolicy")}
+                      </Button>
+                      <Button
+                        className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        disabled={revokeMutation.isPending}
+                        onClick={() => revokeMutation.mutate({ groupId: share.groupId, shareId: share.id })}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {t("sharedPane.revoke")}
+                      </Button>
+                    </li>
+                  ))}
+                  {visibleLinkShares.map((linkShare) => (
+                    <li className="flex flex-wrap items-center gap-3 px-3.5 py-3" key={`link-${linkShare.memoId}`}>
+                      <ExternalLink className="h-4 w-4 shrink-0 text-sky-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {linkShare.memoTitle || t("common.untitledMemo")}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {t("sharedPane.mySharesLinkLabel")}
+                          {linkShare.passwordProtected ? " · 🔒" : ""}
+                        </p>
+                      </div>
+                      {confirmRevokeToken === linkShare.token ? (
+                        <>
+                          <span className="text-xs text-slate-500">{t("sharedPane.revokeLinkShareConfirm")}</span>
+                          <Button
+                            className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            disabled={revokeLinkShareMutation.isPending}
+                            onClick={() => revokeLinkShareMutation.mutate(linkShare.memoId)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {t("sharedPane.revokeLinkShare")}
+                          </Button>
+                          <Button className="h-8" onClick={() => setConfirmRevokeToken(null)} size="sm" variant="outline">
+                            {t("common.cancel")}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            className="h-8"
+                            onClick={() => void copyShareLink(linkShare.token)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            {copiedToken === linkShare.token ? (
+                              <>
+                                <Check className="h-4 w-4" />
+                                {t("sharedPane.mySharesLinkCopied")}
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4" />
+                                {t("sharedPane.copyLink")}
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            className="h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                            onClick={() => setConfirmRevokeToken(linkShare.token)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {t("sharedPane.revokeLinkShare")}
+                          </Button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </div>
       </div>
 

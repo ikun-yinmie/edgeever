@@ -2305,6 +2305,8 @@ export const enUS = {
     mySharesGroupSubtitle: "Notebooks and notes you shared to groups",
     mySharesLinkLabel: "Shared by link",
     mySharesLinkSubtitle: "Notes you shared by public link",
+    groupArticlesSection: "Articles",
+    groupMembersSection: "Members",
     mySharesLinkCopied: "Link copied",
     mySharesEmpty: "Nothing shared yet.",
     emptyMyLinkShares: "You have not shared any note by link yet.",

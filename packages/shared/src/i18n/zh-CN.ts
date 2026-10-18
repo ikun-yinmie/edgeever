@@ -2303,6 +2303,8 @@ export const zhCN = {
     mySharesGroupSubtitle: "共享给群组的笔记本与笔记",
     mySharesLinkLabel: "分享到外链",
     mySharesLinkSubtitle: "通过外链分享出去的笔记",
+    groupArticlesSection: "文章",
+    groupMembersSection: "成员",
     mySharesLinkCopied: "链接已复制",
     mySharesEmpty: "还没有分享出去的内容。",
     emptyMyLinkShares: "你还没有分享到外链的笔记。",
