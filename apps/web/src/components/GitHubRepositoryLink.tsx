@@ -1,9 +1,16 @@
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const GITHUB_REPOSITORY_URL = "https://github.com/tianma-if/edgeever";
+const GITHUB_FORK_REPOSITORY_URL = "https://github.com/ikun-yinmie/edgeever";
 
 export const GitHubMark = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -54,5 +61,64 @@ export const GitHubRepositoryLink = ({
         <TooltipContent side="bottom">{resolvedTitle}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+};
+
+export const GitHubRepositoryMenu = ({
+  className,
+  iconClassName,
+}: {
+  className?: string;
+  iconClassName?: string;
+}) => {
+  const { t } = useTranslation();
+  const items = [
+    {
+      href: GITHUB_REPOSITORY_URL,
+      label: t("common.githubRepositoryOpenSource"),
+      repository: "tianma-if/edgeever",
+    },
+    {
+      href: GITHUB_FORK_REPOSITORY_URL,
+      label: t("common.githubRepositoryFork"),
+      repository: "ikun-yinmie/edgeever",
+    },
+  ];
+
+  return (
+    <DropdownMenu>
+      <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label={t("common.githubRepository")}
+                className={cn("inline-flex items-center justify-center", className)}
+                type="button"
+              >
+                <GitHubMark className={cn("h-4 w-4 shrink-0", iconClassName)} />
+              </button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("common.githubRepository")}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <DropdownMenuContent align="end" className="min-w-[15rem]">
+        {items.map((item) => (
+          <DropdownMenuItem asChild key={item.href}>
+            <a
+              className="group flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-slate-700 outline-none transition-colors hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900"
+              href={item.href}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <GitHubMark className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="flex-1">{item.label}</span>
+              <span className="text-xs text-slate-400">{item.repository}</span>
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };

@@ -205,6 +205,8 @@ export const ja = {
     copied: "コピーしました",
     refresh: "更新",
     githubRepository: "オープンソース",
+    githubRepositoryOpenSource: "オープンソースリポジトリ",
+    githubRepositoryFork: "カスタムフォーク",
   },
   dialogs: {
     memoDelete: {

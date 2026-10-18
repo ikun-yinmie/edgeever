@@ -205,6 +205,8 @@ export const zhCN = {
     copied: "已复制",
     refresh: "刷新",
     githubRepository: "开源",
+    githubRepositoryOpenSource: "开源仓库",
+    githubRepositoryFork: "二开仓库",
   },
   dialogs: {
     memoDelete: {

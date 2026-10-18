@@ -14,7 +14,7 @@ const topRowLeadingSource = readFileSync(new URL("./MemoEditorTopRowLeading.tsx"
 describe("shared memo editor header actions", () => {
   test("owns every action shared by text and diagram notes", () => {
     expect(actionsSource).toContain("<Search");
-    expect(actionsSource).toContain("<GitHubRepositoryLink");
+    expect(actionsSource).toContain("<GitHubRepositoryMenu");
     expect(actionsSource).toContain("<SystemInfoDialog");
     expect(actionsSource).toContain("<ExecutionCenterButton");
     expect(actionsSource).toContain("<ThemeToggle />");

@@ -205,6 +205,8 @@ export const enUS = {
     copied: "Copied",
     refresh: "Refresh",
     githubRepository: "Open source",
+    githubRepositoryOpenSource: "Open-source repo",
+    githubRepositoryFork: "Customized fork",
   },
   dialogs: {
     memoDelete: {

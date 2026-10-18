@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Info, MoreHorizontal, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ExecutionCenterButton } from "@/components/execution/ExecutionCenterButton";
-import { GitHubRepositoryLink } from "@/components/GitHubRepositoryLink";
+import { GitHubRepositoryMenu } from "@/components/GitHubRepositoryLink";
 import { SystemInfoDialog } from "@/components/SystemInfoDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,7 @@ export const MemoEditorHeaderActions = ({
         </Button>
       </IconTooltip>
       {textNoteActions}
-      <GitHubRepositoryLink className="hidden h-8 w-8 justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 min-[1600px]:inline-flex" iconClassName="h-5 w-5" />
+      <GitHubRepositoryMenu className="hidden h-8 w-8 rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 min-[1600px]:inline-flex" iconClassName="h-5 w-5" />
       <IconTooltip label={t("systemInfo.title")}>
         <Button
           className="relative hidden h-8 w-8 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-emerald-500/70 min-[1600px]:inline-flex"
