@@ -22,6 +22,7 @@ import {
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
+import { ImageViewer, type ImageViewerSlide } from "@/components/ImageViewer";
 
 const ReadOnlyX6Diagram = lazy(() => import("@/components/ReadOnlyX6Diagram"));
 
@@ -76,6 +77,8 @@ const SharedThemeBlock = Node.create({
 });
 
 const SharedRichText = ({ content }: { content: PublicMemoShare["contentJson"] }) => {
+  const { t } = useTranslation();
+  const [viewerImage, setViewerImage] = useState<ImageViewerSlide | null>(null);
   const editor = useEditor({
     extensions: [
       ...createEdgeEverDocumentExtensions({
@@ -96,10 +99,36 @@ const SharedRichText = ({ content }: { content: PublicMemoShare["contentJson"] }
         class: "prose prose-slate max-w-none focus:outline-none",
         "aria-label": "Shared note content",
       },
+      handleDoubleClick: (_view, _pos, event) => {
+        const target = event.target;
+        if (target instanceof HTMLImageElement && target.src) {
+          setViewerImage({
+            src: target.currentSrc || target.src,
+            alt: target.alt || undefined,
+            width: target.naturalWidth || undefined,
+            height: target.naturalHeight || undefined,
+          });
+          return true;
+        }
+        return false;
+      },
     },
   }, [content]);
 
-  return <EditorContent editor={editor} />;
+  return (
+    <>
+      <EditorContent editor={editor} />
+      <ImageViewer
+        open={viewerImage}
+        closeLabel={t("common.close")}
+        resetZoomLabel={t("sharing.imageResetZoom")}
+        viewerLabel={t("sharing.imageViewer")}
+        zoomInLabel={t("sharing.imageZoomIn")}
+        zoomOutLabel={t("sharing.imageZoomOut")}
+        onClose={() => setViewerImage(null)}
+      />
+    </>
+  );
 };
 
 const SharedDocument = ({

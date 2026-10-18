@@ -912,6 +912,10 @@ textarea {
   color: #0f172a;
 }
 
+.edgeever-public-share .ProseMirror img {
+  cursor: zoom-in;
+}
+
 .edgeever-phone-stage {
   width: 380px;
   min-height: 740px;
@@ -2940,7 +2944,8 @@ textarea {
   color: hsl(var(--foreground));
 }
 
-.edgeever-mermaid-viewer .yarl__toolbar {
+.edgeever-mermaid-viewer .yarl__toolbar,
+.edgeever-image-viewer .yarl__toolbar {
   top: max(0.5rem, env(safe-area-inset-top));
   right: max(0.5rem, env(safe-area-inset-right));
   gap: 0.25rem;
@@ -2953,7 +2958,9 @@ textarea {
 }
 
 .edgeever-mermaid-viewer .yarl__button,
-.edgeever-mermaid-viewer-reset {
+.edgeever-mermaid-viewer-reset,
+.edgeever-image-viewer .yarl__button,
+.edgeever-image-viewer-reset {
   display: inline-flex;
   width: 2.75rem;
   height: 2.75rem;
@@ -2971,35 +2978,46 @@ textarea {
 .edgeever-mermaid-viewer .yarl__button:hover,
 .edgeever-mermaid-viewer .yarl__button:focus-visible,
 .edgeever-mermaid-viewer-reset:hover,
-.edgeever-mermaid-viewer-reset:focus-visible {
+.edgeever-mermaid-viewer-reset:focus-visible,
+.edgeever-image-viewer .yarl__button:hover,
+.edgeever-image-viewer .yarl__button:focus-visible,
+.edgeever-image-viewer-reset:hover,
+.edgeever-image-viewer-reset:focus-visible {
   background: rgb(255 255 255 / 0.14);
   outline: none;
 }
 
 .edgeever-mermaid-viewer .yarl__button:focus-visible,
-.edgeever-mermaid-viewer-reset:focus-visible {
+.edgeever-mermaid-viewer-reset:focus-visible,
+.edgeever-image-viewer .yarl__button:focus-visible,
+.edgeever-image-viewer-reset:focus-visible {
   box-shadow: inset 0 0 0 2px #5eead4;
 }
 
-.edgeever-mermaid-viewer-reset:disabled {
+.edgeever-mermaid-viewer-reset:disabled,
+.edgeever-image-viewer-reset:disabled {
   opacity: 0.38;
   cursor: default;
 }
 
-.edgeever-mermaid-viewer-reset svg {
+.edgeever-mermaid-viewer-reset svg,
+.edgeever-image-viewer-reset svg {
   width: 1.5rem;
   height: 1.5rem;
 }
 
-.edgeever-mermaid-viewer .yarl__slide_image {
+.edgeever-mermaid-viewer .yarl__slide_image,
+.edgeever-image-viewer .yarl__slide_image {
   user-select: none;
 }
 
-.edgeever-mermaid-viewer .yarl__slide_wrapper_interactive {
+.edgeever-mermaid-viewer .yarl__slide_wrapper_interactive,
+.edgeever-image-viewer .yarl__slide_wrapper_interactive {
   cursor: grab;
 }
 
-.edgeever-mermaid-viewer .yarl__slide_wrapper_interactive:active {
+.edgeever-mermaid-viewer .yarl__slide_wrapper_interactive:active,
+.edgeever-image-viewer .yarl__slide_wrapper_interactive:active {
   cursor: grabbing;
 }
 

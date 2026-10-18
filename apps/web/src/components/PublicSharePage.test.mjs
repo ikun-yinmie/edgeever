@@ -12,3 +12,16 @@ describe("PublicSharePage header", () => {
     expect(source).not.toContain("EdgeEver ·");
   });
 });
+
+describe("PublicSharePage image preview", () => {
+  test("opens the zoomable lightbox when a reader double clicks an image", () => {
+    expect(source).toContain("handleDoubleClick");
+    expect(source).toContain("target instanceof HTMLImageElement");
+    expect(source).toContain("setViewerImage");
+    expect(source).toContain("<ImageViewer");
+    expect(source).toContain("sharing.imageViewer");
+    expect(source).toContain("sharing.imageZoomIn");
+    expect(source).toContain("sharing.imageZoomOut");
+    expect(source).toContain("sharing.imageResetZoom");
+  });
+});
