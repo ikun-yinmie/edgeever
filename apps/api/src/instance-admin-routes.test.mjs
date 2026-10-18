@@ -598,6 +598,107 @@ describe("registration email policy", () => {
   });
 });
 
+describe("site branding", () => {
+  const ICON_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
+
+  test("stores the browser name, description and icon and exposes them publicly", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const patchResponse = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          siteName: " 我的笔记 ",
+          siteDescription: "团队知识库",
+          siteIcon: ICON_DATA_URL,
+        }),
+      },
+      environment,
+    );
+
+    expect(patchResponse.status).toBe(200);
+    const patched = await patchResponse.json();
+    expect(patched.settings.siteName).toBe("我的笔记");
+    expect(patched.settings.siteDescription).toBe("团队知识库");
+    expect(patched.settings.siteIcon).toBe(ICON_DATA_URL);
+    expect(typeof patched.settings.siteIconUpdatedAt).toBe("string");
+
+    const publicResponse = await app.request("/api/v1/public/site", undefined, environment);
+    expect(publicResponse.status).toBe(200);
+    const publicBody = await publicResponse.json();
+    expect(publicBody.site.name).toBe("我的笔记");
+    expect(publicBody.site.description).toBe("团队知识库");
+    expect(publicBody.site.iconUpdatedAt).toBe(patched.settings.siteIconUpdatedAt);
+
+    const iconResponse = await app.request("/api/v1/public/site/icon", undefined, environment);
+    expect(iconResponse.status).toBe(200);
+    expect(iconResponse.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await iconResponse.arrayBuffer())).toEqual(
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    sqlite.close();
+  });
+
+  test("clearing the icon removes it from the public endpoints", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+    updateSettings(sqlite, { site_icon: ICON_DATA_URL, site_icon_updated_at: new Date().toISOString() });
+
+    const patchResponse = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ siteIcon: null }),
+      },
+      environment,
+    );
+
+    expect(patchResponse.status).toBe(200);
+    const patched = await patchResponse.json();
+    expect(patched.settings.siteIcon).toBeNull();
+    expect(patched.settings.siteIconUpdatedAt).toBeNull();
+
+    const publicResponse = await app.request("/api/v1/public/site", undefined, environment);
+    expect((await publicResponse.json()).site.iconUpdatedAt).toBeNull();
+
+    const iconResponse = await app.request("/api/v1/public/site/icon", undefined, environment);
+    expect(iconResponse.status).toBe(404);
+    sqlite.close();
+  });
+
+  test("rejects an icon that is not a supported image data URL", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ siteIcon: "data:text/html;base64,PHNjcmlwdD4=" }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(400);
+    sqlite.close();
+  });
+
+  test("reports the built-in branding when nothing is configured", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await app.request("/api/v1/public/site", undefined, environment);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ site: { name: null, description: null, iconUpdatedAt: null } });
+    sqlite.close();
+  });
+});
+
 describe("email verification code policy", () => {
   test("stores the configured lifetime and reports the resend cooldown", async () => {
     const { sqlite, environment } = createEnvironment();

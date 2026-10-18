@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Database, Keyboard, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
@@ -11,11 +11,21 @@ import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
 import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
 import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
 import { RegistrationSettingsCard } from "@/components/settings/RegistrationSettingsCard";
+import { SiteSettingsCard } from "@/components/settings/SiteSettingsCard";
 import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
 import type { AuthUser } from "@edgeever/shared";
 
-type AdminTabKey = "members" | "groups" | "invites" | "registration" | "email" | "messages" | "storage" | "shortcuts";
+type AdminTabKey =
+  | "members"
+  | "site"
+  | "groups"
+  | "invites"
+  | "registration"
+  | "email"
+  | "messages"
+  | "storage"
+  | "shortcuts";
 
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
@@ -28,6 +38,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
   const tabs: { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+    { key: "site", label: t("adminConsole.navSite"), icon: Globe },
     { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
     { key: "registration", label: t("adminConsole.navRegistration"), icon: UserPlus },
@@ -39,6 +50,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
 
   const renderTab = () => {
     switch (activeTab) {
+      case "site":
+        return <SiteSettingsCard />;
       case "groups":
         return (
           <>

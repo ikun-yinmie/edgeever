@@ -20,6 +20,8 @@ import {
   getEditorShortcutsDefault,
   getAppShortcutsDefault,
   getInstanceSettingsRow,
+  getPublicSiteBranding,
+  getSiteIconDataUrl,
   getSmtpPassword,
   isRegistrationCodeRequired,
   isRegistrationEnabled,
@@ -45,6 +47,20 @@ const ABUSE_FAILURE_HOURLY_LIMIT = 20;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const generateVerificationCode = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0");
+
+// The public icon endpoint serves whatever image data URL the owner saved;
+// atob + Uint8Array keeps this runtime-agnostic (Workers and Bun share it).
+const parseImageDataUrl = (dataUrl: string): { mime: string; body: ArrayBuffer } | null => {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(dataUrl);
+  if (!match) return null;
+  try {
+    const binary = atob(match[2]);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return { mime: match[1].toLowerCase(), body: bytes.buffer as ArrayBuffer };
+  } catch {
+    return null;
+  }
+};
 
 // Human-friendly invite code: EE-XXXX-XXXX-XXXX-XXXX (base32-ish alphabet
 // without easily confused characters).
@@ -227,6 +243,29 @@ export const registerInstanceAdminRoutes = (
         enabled,
         codeRequired,
         inviteRequired,
+      },
+    });
+  });
+
+  // --- Public endpoints (no auth): site branding for the browser shell ---
+
+  app.get("/api/v1/public/site", async (context) => {
+    const site = await getPublicSiteBranding(context.env.storage.db);
+    return context.json({ site });
+  });
+
+  app.get("/api/v1/public/site/icon", async (context) => {
+    const dataUrl = await getSiteIconDataUrl(context.env.storage.db);
+    const parsed = dataUrl ? parseImageDataUrl(dataUrl) : null;
+    if (!parsed) {
+      return apiError(context, "site_icon_missing", "No site icon is configured.", 404);
+    }
+    return new Response(parsed.body, {
+      status: 200,
+      headers: {
+        "cache-control": "public, max-age=3600",
+        "content-type": parsed.mime,
+        "x-content-type-options": "nosniff",
       },
     });
   });
@@ -566,6 +605,16 @@ export const registerInstanceAdminRoutes = (
       if (input.smtpFromAddress !== undefined) setColumn("smtp_from_address", input.smtpFromAddress, "smtpFromAddress");
       if (input.smtpFromName !== undefined) setColumn("smtp_from_name", input.smtpFromName, "smtpFromName");
       if (input.shareMissingMessage !== undefined) setColumn("share_missing_message", input.shareMissingMessage, "shareMissingMessage");
+      if (input.siteName !== undefined) setColumn("site_name", input.siteName, "siteName");
+      if (input.siteDescription !== undefined) setColumn("site_description", input.siteDescription, "siteDescription");
+      if (input.siteIcon !== undefined) {
+        updates.push("site_icon = ?");
+        binds.push(input.siteIcon);
+        updates.push("site_icon_updated_at = ?");
+        binds.push(input.siteIcon === null ? null : isoNow());
+        // Keep the audit trail compact: never store the icon payload itself.
+        auditPayload.siteIcon = input.siteIcon === null ? null : "updated";
+      }
       if (input.editorShortcuts !== undefined) {
         setColumn(
           "editor_shortcuts",

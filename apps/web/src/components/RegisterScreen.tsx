@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiRequestError, api, getOrCreateClientDeviceId } from "@/lib/api";
+import { getSiteDisplayName, useSiteBranding } from "@/lib/site-branding";
 
 interface RegisterScreenProps {
   codeRequired: boolean;
@@ -16,6 +17,7 @@ const DEFAULT_RESEND_COOLDOWN_SECONDS = 60;
 
 export const RegisterScreen = ({ codeRequired, inviteRequired, onSuccess, onBackToLogin }: RegisterScreenProps) => {
   const { t } = useTranslation();
+  const siteName = getSiteDisplayName(useSiteBranding());
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -99,7 +101,7 @@ export const RegisterScreen = ({ codeRequired, inviteRequired, onSuccess, onBack
             <UserPlus className="h-5.5 w-5.5" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900">{t("register.title")}</h1>
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900">{t("register.title", { site: siteName })}</h1>
             <p className="mt-1 text-xs font-medium tracking-wide text-slate-500">{t("register.subtitle")}</p>
           </div>
         </div>

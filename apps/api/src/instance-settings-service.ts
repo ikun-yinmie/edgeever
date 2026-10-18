@@ -29,6 +29,10 @@ export type InstanceSettingsRow = {
   share_missing_message: string | null;
   editor_shortcuts: string | null;
   app_shortcuts: string | null;
+  site_name: string | null;
+  site_description: string | null;
+  site_icon: string | null;
+  site_icon_updated_at: string | null;
   updated_at: string;
 };
 
@@ -70,6 +74,10 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   shareMissingMessage: row.share_missing_message,
   editorShortcuts: row.editor_shortcuts,
   appShortcuts: row.app_shortcuts,
+  siteName: row.site_name,
+  siteDescription: row.site_description,
+  siteIcon: row.site_icon,
+  siteIconUpdatedAt: row.site_icon_updated_at,
 });
 
 const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_required,
@@ -77,7 +85,8 @@ const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_requ
   code_bind_ip, code_bind_device, abuse_guard_enabled, code_ip_hourly_limit,
   code_ip_daily_limit, email_allowlist_enabled, email_allowlist, email_blocklist,
   smtp_host, smtp_port, smtp_secure, smtp_username,
-  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, editor_shortcuts, app_shortcuts, updated_at
+  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, editor_shortcuts, app_shortcuts,
+  site_name, site_description, site_icon, site_icon_updated_at, updated_at
   FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`;
 
 export const getInstanceSettingsRow = async (
@@ -110,6 +119,10 @@ export const getInstanceSettingsRow = async (
     share_missing_message: null,
     editor_shortcuts: null,
     app_shortcuts: null,
+    site_name: null,
+    site_description: null,
+    site_icon: null,
+    site_icon_updated_at: null,
     updated_at: "",
   };
 };
@@ -147,6 +160,30 @@ export const getShareMissingMessage = async (database: DatabaseAdapter) => {
     .prepare(`SELECT share_missing_message FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
     .first<{ share_missing_message: string | null }>();
   return row?.share_missing_message?.trim() || null;
+};
+
+export type PublicSiteBranding = {
+  name: string | null;
+  description: string | null;
+  iconUpdatedAt: string | null;
+};
+
+export const getPublicSiteBranding = async (database: DatabaseAdapter): Promise<PublicSiteBranding> => {
+  const row = await database
+    .prepare(`SELECT site_name, site_description, site_icon_updated_at FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
+    .first<{ site_name: string | null; site_description: string | null; site_icon_updated_at: string | null }>();
+  return {
+    name: row?.site_name?.trim() || null,
+    description: row?.site_description?.trim() || null,
+    iconUpdatedAt: row?.site_icon_updated_at ?? null,
+  };
+};
+
+export const getSiteIconDataUrl = async (database: DatabaseAdapter) => {
+  const row = await database
+    .prepare(`SELECT site_icon FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
+    .first<{ site_icon: string | null }>();
+  return row?.site_icon ?? null;
 };
 
 // The SMTP password uses the same derived credentials key as object storage

@@ -267,10 +267,21 @@ export const RegistrationInviteDeleteSchema = z.object({
   ids: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
 });
 
+export const SITE_ICON_DATA_URL_PATTERN =
+  /^data:image\/(?:png|jpeg|webp|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
+
 export const InstanceAdminSettingsUpdateSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
     registrationCodeRequired: z.boolean().optional(),
+    siteName: z.string().trim().max(60).nullable().optional(),
+    siteDescription: z.string().trim().max(300).nullable().optional(),
+    siteIcon: z
+      .string()
+      .max(400_000)
+      .refine((value) => SITE_ICON_DATA_URL_PATTERN.test(value), "Site icon must be an image data URL.")
+      .nullable()
+      .optional(),
     smtpHost: z.string().trim().max(253).nullable().optional(),
     smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
     smtpSecure: z.boolean().optional(),

@@ -24,6 +24,8 @@ export type {
   SharedWithMeMemo,
   SharedWithMeNotebook,
   SharedWithMeResponse,
+  SiteBranding,
+  SiteBrandingResponse,
   JsonBackupPage,
   MarkdownExportPage,
   MemoShareResponse,
@@ -123,6 +125,9 @@ export const getConfiguredDesktopApiBaseUrl = () => {
   const bridgeUrl = (window.edgeeverDesktop.apiBaseUrl ?? "").trim();
   return bridgeUrl.replace(/\/$/, "");
 };
+
+export const getSiteIconUrl = (version: string) =>
+  `${getConfiguredDesktopApiBaseUrl()}/api/v1/public/site/icon?v=${encodeURIComponent(version)}`;
 
 export class DesktopInstanceUrlError extends Error {
   constructor() {

@@ -375,6 +375,20 @@ export type InstanceAdminSettings = {
   shareMissingMessage: string | null;
   editorShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   appShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
+  siteName: string | null;
+  siteDescription: string | null;
+  siteIcon: string | null;
+  siteIconUpdatedAt: string | null;
+};
+
+export type SiteBranding = {
+  name: string | null;
+  description: string | null;
+  iconUpdatedAt: string | null;
+};
+
+export type SiteBrandingResponse = {
+  site: SiteBranding;
 };
 
 export type InstanceAdminSettingsResponse = {
@@ -403,6 +417,9 @@ export type InstanceAdminSettingsUpdatePayload = {
   smtpFromAddress?: string | null;
   smtpFromName?: string | null;
   shareMissingMessage?: string | null;
+  siteName?: string | null;
+  siteDescription?: string | null;
+  siteIcon?: string | null;
   editorShortcuts?: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   appShortcuts?: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
 };
@@ -1449,6 +1466,8 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
 
     getRegistrationConfig: () =>
       request<RegistrationConfigResponse>("/api/v1/public/registration"),
+
+    getSiteBranding: () => request<SiteBrandingResponse>("/api/v1/public/site"),
 
     requestRegistrationCode: (payload: { email: string; deviceId?: string }) =>
       request<RegistrationCodeResponse>("/api/v1/public/registration/code", {

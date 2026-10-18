@@ -19,6 +19,7 @@ import { lazyWithChunkRetry } from "@/lib/lazy-retry";
 import { classifyLoginError, getLoginProblemMessageKey } from "@/lib/login-error";
 import { ADMIN_CONSOLE_PATH, EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
 import { isBrowserOffline } from "@/lib/network-status";
+import { getSiteDisplayName, refreshSiteBranding, useSiteBranding } from "@/lib/site-branding";
 import type { AuthSession } from "@edgeever/shared";
 
 const EvernoteImportGuidePane = lazy(() =>
@@ -32,14 +33,18 @@ const PublicSharePage = lazyWithChunkRetry("PublicSharePage", () =>
 );
 const AdminConsolePane = lazy(() => import("@/components/AdminConsolePane").then((module) => ({ default: module.AdminConsolePane })));
 
-const AuthLoadingScreen = ({ title = "EdgeEver", detail }: { title?: string; detail?: string }) => (
-  <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
-    <div role="status" aria-live="polite">
-      <div className="text-sm font-semibold">{title}</div>
-      {detail && <div className="mt-2 text-xs text-slate-500">{detail}</div>}
+const AuthLoadingScreen = ({ title, detail }: { title?: string; detail?: string }) => {
+  const branding = useSiteBranding();
+
+  return (
+    <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
+      <div role="status" aria-live="polite">
+        <div className="text-sm font-semibold">{title ?? getSiteDisplayName(branding)}</div>
+        {detail && <div className="mt-2 text-xs text-slate-500">{detail}</div>}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const EvernoteMigrationRoute = () => {
   const navigate = useNavigate();
@@ -297,6 +302,10 @@ export const App = () => {
     const bridge = window.edgeeverDesktop;
     const baseUrl = getConfiguredDesktopApiBaseUrl();
     if (bridge?.isAvailable && baseUrl) void bridge.setApiBaseUrl(baseUrl);
+  }, []);
+
+  useEffect(() => {
+    void refreshSiteBranding();
   }, []);
 
   return (

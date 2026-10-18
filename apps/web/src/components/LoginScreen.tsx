@@ -5,6 +5,7 @@ import { normalizeInstanceUrl } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
 import { GitHubRepositoryLink } from "@/components/GitHubRepositoryLink";
 import { Input } from "@/components/ui/input";
+import { getSiteDisplayName, useSiteBranding } from "@/lib/site-branding";
 
 interface LoginScreenProps {
   error: { message: string; diagnosticCode: string; rayId?: string } | null;
@@ -28,6 +29,7 @@ const getDefaultLoginCredentials = () => {
 
 export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitting, onRegister, onSubmit }: LoginScreenProps) => {
   const { t } = useTranslation();
+  const siteName = getSiteDisplayName(useSiteBranding());
   const [instanceUrl, setInstanceUrl] = useState(initialInstanceUrl ?? "");
   const [username, setUsername] = useState(() => getDefaultLoginCredentials().username);
   const [password, setPassword] = useState(() => getDefaultLoginCredentials().password);
@@ -57,7 +59,7 @@ export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitti
             <LockKeyhole className="h-5.5 w-5.5" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900">{t("login.title")}</h1>
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-slate-900">{t("login.title", { site: siteName })}</h1>
             <p className="mt-1 text-xs font-medium tracking-wide text-slate-500">{t("login.subtitle")}</p>
           </div>
         </div>
