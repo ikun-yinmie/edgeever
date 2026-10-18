@@ -143,3 +143,23 @@ describe("NotebookPane client downloads", () => {
     expect(source).not.toContain('src="/icons/platforms/');
   });
 });
+
+describe("NotebookPane shared sections", () => {
+  test("defaults the group and my-shares sections to collapsed", () => {
+    expect(source).toContain("const [groupSectionOpen, setGroupSectionOpen] = useState(false);");
+    expect(source).toContain("const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);");
+  });
+
+  test("keeps the section headers toggling and their rows clickable", () => {
+    expect(source).toContain("onClick={() => setGroupSectionOpen((open) => !open)}");
+    expect(source).toContain("onClick={() => setMySharesSectionOpen((open) => !open)}");
+
+    const sharedSections = source.split("data-group-section")[1]?.split("{collapsed && onToggleCollapsed")[0] ?? "";
+    expect(sharedSections.match(/onClick=\{onOpenShared\}/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  test("forwards notebook-scoped create-note requests to the tree", () => {
+    expect(source).toContain("onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;");
+    expect(source).toContain("onCreateMemo={onCreateMemoInNotebook}");
+  });
+});

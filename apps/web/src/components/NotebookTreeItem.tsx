@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
-import { ChevronDown, MoreHorizontal, Notebook as NotebookIcon, Plus, Pencil, Trash2 } from "lucide-react";
+import { Boxes, ChevronDown, FileText, MoreHorizontal, Network, Notebook as NotebookIcon, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import type { NotebookNode, NotebookDropPosition } from "@/lib/app-helpers";
 import {
   hasMemoDragData,
@@ -14,12 +14,15 @@ import {
   setMemoDragPreview,
 } from "@/lib/app-helpers";
 import { cn } from "@/lib/utils";
-import type { Notebook } from "@edgeever/shared";
+import type { DiagramKind, Notebook } from "@edgeever/shared";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { contentEnterMotion, treeEnterMotion } from "@/lib/motion";
@@ -32,6 +35,7 @@ export const NotebookTreeItem = ({
   selectedNotebookId,
   onSelect,
   onCreateNotebook,
+  onCreateMemo,
   onRenameNotebook,
   onDeleteNotebook,
   onMoveNotebook,
@@ -47,6 +51,7 @@ export const NotebookTreeItem = ({
   selectedNotebookId: string | null;
   onSelect: (notebookId: string) => void;
   onCreateNotebook: (parentId?: string | null) => void;
+  onCreateMemo?: (notebookId: string, kind?: DiagramKind) => void;
   onRenameNotebook: (notebook: Notebook) => void;
   onDeleteNotebook: (notebook: Notebook) => void;
   onMoveNotebook: (notebookId: string, targetNotebookId: string, position: NotebookDropPosition) => void;
@@ -64,6 +69,7 @@ export const NotebookTreeItem = ({
   const isInbox = node.slug === "inbox";
   const hasSelectedDescendant = selectedNotebookId ? notebookTreeContainsId(node.children, selectedNotebookId) : false;
   const [dropPosition, setDropPosition] = useState<NotebookDropPosition | null>(null);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const expandTimerRef = useRef<number | null>(null);
@@ -167,7 +173,7 @@ export const NotebookTreeItem = ({
 
   return (
     <div>
-      <ContextMenu>
+      <ContextMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
         <ContextMenuTrigger asChild>
           <div
             data-notebook-id={node.id}
@@ -351,6 +357,51 @@ export const NotebookTreeItem = ({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+          {onCreateMemo ? (
+            <ContextMenuSub>
+              <ContextMenuSubTrigger
+                className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 data-[state=open]:bg-slate-50 cursor-pointer outline-none"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setContextMenuOpen(false);
+                  onCreateMemo(node.id);
+                }}
+              >
+                <FileText className="h-4 w-4" />
+                {t("notebookPane.newMemo")}
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-44 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                <ContextMenuItem
+                  className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onSelect={() => onCreateMemo(node.id)}
+                >
+                  <FileText className="h-4 w-4" />
+                  {t("diagram.normalNote")}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onSelect={() => onCreateMemo(node.id, "mind-map")}
+                >
+                  <Network className="h-4 w-4" />
+                  {t("diagram.mindMap")}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onSelect={() => onCreateMemo(node.id, "flowchart")}
+                >
+                  <Workflow className="h-4 w-4" />
+                  {t("diagram.flowchart")}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onSelect={() => onCreateMemo(node.id, "architecture")}
+                >
+                  <Boxes className="h-4 w-4" />
+                  {t("diagram.architecture")}
+                </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          ) : null}
           <ContextMenuItem
             className="flex h-9 items-center gap-2 px-3 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
             onClick={() => onCreateNotebook(node.id)}
@@ -390,6 +441,7 @@ export const NotebookTreeItem = ({
               selectedNotebookId={selectedNotebookId}
               onSelect={onSelect}
               onCreateNotebook={onCreateNotebook}
+              onCreateMemo={onCreateMemo}
               onRenameNotebook={onRenameNotebook}
               onDeleteNotebook={onDeleteNotebook}
               onMoveNotebook={onMoveNotebook}

@@ -299,6 +299,10 @@ const serveStatic = async (request) => {
     });
   }
 
+  if (extname(requestedPath)) {
+    return new Response("Not Found", { status: 404 });
+  }
+
   const index = Bun.file(join(webDirectory, "index.html"));
   return (await index.exists())
     ? new Response(index, { headers: { "Content-Type": "text/html; charset=utf-8" } })

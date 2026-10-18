@@ -1865,9 +1865,7 @@ export const WorkspaceApp = ({
   const handleImportScreenshotRef = useRef(handleImportScreenshot);
   handleImportScreenshotRef.current = handleImportScreenshot;
 
-  const handleCreateMemo = (kind?: DiagramKind) => {
-    const targetNotebookId = createMemoNotebookId;
-
+  const handleCreateMemoInNotebook = (targetNotebookId: string, kind?: DiagramKind) => {
     if (!targetNotebookId || memoView === "trash") {
       return;
     }
@@ -1890,6 +1888,14 @@ export const WorkspaceApp = ({
       contentMarkdown: diagram ? serializeDiagramDocument(diagram) : "",
       tags: [],
     });
+  };
+
+  const handleCreateMemo = (kind?: DiagramKind) => {
+    const targetNotebookId = createMemoNotebookId;
+    if (!targetNotebookId) {
+      return;
+    }
+    handleCreateMemoInNotebook(targetNotebookId, kind);
   };
 
   const handleImportMarkdownFiles = async (files: File[]) => {
@@ -3064,6 +3070,7 @@ export const WorkspaceApp = ({
                     setActivePane("memos");
                   }}
                   onCreateMemo={handleCreateMemo}
+                  onCreateMemoInNotebook={handleCreateMemoInNotebook}
                   onCreateNotebook={handleCreateNotebook}
                   onRenameNotebook={handleRenameNotebook}
                   onDeleteNotebook={handleDeleteNotebook}

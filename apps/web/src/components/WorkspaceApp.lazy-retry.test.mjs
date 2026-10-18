@@ -36,4 +36,11 @@ describe("chunk reload retry", () => {
     expect(workspaceSource).not.toContain("lazy(() => import(");
     expect(workspaceSource).toContain('from "@/lib/lazy-retry"');
   });
+
+  test("loads the public share page through the retry helper", () => {
+    const appSource = readFileSync(new URL("../app/App.tsx", import.meta.url), "utf8");
+
+    expect(appSource).toContain('lazyWithChunkRetry("PublicSharePage"');
+    expect(appSource).toContain('from "@/lib/lazy-retry"');
+  });
 });

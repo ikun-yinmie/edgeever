@@ -15,6 +15,7 @@ import {
   getCachedDesktopSession,
   saveDesktopApiBaseUrl,
 } from "@/lib/api";
+import { lazyWithChunkRetry } from "@/lib/lazy-retry";
 import { classifyLoginError, getLoginProblemMessageKey } from "@/lib/login-error";
 import { ADMIN_CONSOLE_PATH, EVERNOTE_MIGRATION_PATH } from "@/lib/routes";
 import { isBrowserOffline } from "@/lib/network-status";
@@ -26,7 +27,9 @@ const EvernoteImportGuidePane = lazy(() =>
 const LoginScreen = lazy(() => import("@/components/LoginScreen").then((module) => ({ default: module.LoginScreen })));
 const RegisterScreen = lazy(() => import("@/components/RegisterScreen").then((module) => ({ default: module.RegisterScreen })));
 const WorkspaceApp = lazy(() => import("@/components/WorkspaceApp").then((module) => ({ default: module.WorkspaceApp })));
-const PublicSharePage = lazy(() => import("@/components/PublicSharePage").then((module) => ({ default: module.PublicSharePage })));
+const PublicSharePage = lazyWithChunkRetry("PublicSharePage", () =>
+  import("@/components/PublicSharePage").then((module) => ({ default: module.PublicSharePage }))
+);
 const AdminConsolePane = lazy(() => import("@/components/AdminConsolePane").then((module) => ({ default: module.AdminConsolePane })));
 
 const AuthLoadingScreen = ({ title = "EdgeEver", detail }: { title?: string; detail?: string }) => (

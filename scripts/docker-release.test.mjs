@@ -145,6 +145,17 @@ describe("Docker release contract", () => {
     expect(selfHosted).toContain("ensureSelfHostedCredentialSecrets");
   });
 
+  test("returns 404 for missing static files instead of the SPA shell", () => {
+    const selfHosted = readProjectFile("scripts/self-hosted-server.mjs");
+    const serveStatic = selfHosted.split("const serveStatic = ")[1]?.split("const server = Bun.serve")[0] ?? "";
+
+    expect(serveStatic).toContain("if (extname(requestedPath)) {");
+    expect(serveStatic).toContain('return new Response("Not Found", { status: 404 });');
+    expect(serveStatic.indexOf("if (extname(requestedPath))")).toBeLessThan(
+      serveStatic.indexOf('Bun.file(join(webDirectory, "index.html"))'),
+    );
+  });
+
   test("persists credential encryption secrets on the data volume", () => {
     const secrets = readProjectFile("scripts/self-hosted-secrets.mjs");
     expect(secrets).toContain("edgeever-secrets.json");

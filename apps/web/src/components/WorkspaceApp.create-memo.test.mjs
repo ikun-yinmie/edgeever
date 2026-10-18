@@ -59,4 +59,10 @@ describe("desktop create-note wiring", () => {
     expect(editorSource).toContain("isCreatedMemoEditorFocused");
     expect(editorSource).toContain("currentEditor.isEditable");
   });
+
+  test("creates notes inside the right-clicked notebook from the sidebar tree", () => {
+    expect(workspaceSource).toContain("const handleCreateMemoInNotebook = (targetNotebookId: string, kind?: DiagramKind) => {");
+    expect(workspaceSource).toContain("handleCreateMemoInNotebook(targetNotebookId, kind)");
+    expect(workspaceSource).toContain("onCreateMemoInNotebook={handleCreateMemoInNotebook}");
+  });
 });

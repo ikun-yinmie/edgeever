@@ -477,6 +477,7 @@ export const NotebookPane = ({
   onOpenShared,
   isOwner,
   onCreateMemo,
+  onCreateMemoInNotebook,
   canCreateMemo,
   isCreatingMemo,
   syncSummary,
@@ -518,6 +519,7 @@ export const NotebookPane = ({
   onOpenShared?: () => void;
   isOwner?: boolean;
   onCreateMemo: (kind?: DiagramKind) => void;
+  onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;
   canCreateMemo: boolean;
   isCreatingMemo: boolean;
   syncSummary: SyncQueueSummary;
@@ -544,8 +546,8 @@ export const NotebookPane = ({
   const [expandSiblingsRequest, setExpandSiblingsRequest] = useState<{ parentId: string | null; token: number } | null>(null);
   const [notebookSortMode, setNotebookSortMode] = useState<NotebookSortMode>(readNotebookSortPreference);
   const [collapsedNotebookIds, setCollapsedNotebookIds] = useState<Set<string>>(readNotebookTreeCollapsedIdsPreference);
-  const [groupSectionOpen, setGroupSectionOpen] = useState(true);
-  const [mySharesSectionOpen, setMySharesSectionOpen] = useState(true);
+  const [groupSectionOpen, setGroupSectionOpen] = useState(false);
+  const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);
   const linkSharesQuery = useQuery({
     queryKey: ["memo-link-shares"],
     queryFn: api.listMemoLinkShares,
@@ -850,6 +852,7 @@ export const NotebookPane = ({
                 selectedNotebookId={selectedNotebookId}
                 onSelect={onSelect}
                 onCreateNotebook={onCreateNotebook}
+                onCreateMemo={onCreateMemoInNotebook}
                 onRenameNotebook={onRenameNotebook}
                 onDeleteNotebook={onDeleteNotebook}
                 onMoveNotebook={handleMoveNotebook}
