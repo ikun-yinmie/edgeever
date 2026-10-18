@@ -11,14 +11,12 @@ import {
   EDITOR_PHONE_PREVIEW_STORAGE_KEY,
   EDITOR_PHONE_PREVIEW_FOLLOW_STORAGE_KEY,
   NOTEBOOK_SORT_STORAGE_KEY,
-  NOTEBOOK_TREE_COLLAPSED_IDS_STORAGE_KEY,
   SHORTCUT_SETTINGS_STORAGE_KEY,
   getSearchShortcutScope,
   getShortcutActionForEvent,
   getNotebookSortComparator,
   readEditorContentAlignmentPreference,
   readNotebookSortPreference,
-  readNotebookTreeCollapsedIdsPreference,
   readDesktopFocusModePreference,
   readDesktopReadingProtectionPreference,
   readNoteReadingProtection,
@@ -30,7 +28,6 @@ import {
   readEditorPhonePreviewFollowPreference,
   writeEditorContentAlignmentPreference,
   writeNotebookSortPreference,
-  writeNotebookTreeCollapsedIdsPreference,
   writeDesktopFocusModePreference,
   writeDesktopReadingProtectionPreference,
   writeNoteReadingProtection,
@@ -433,43 +430,6 @@ describe("custom notebook sorting", () => {
     ];
 
     expect(notebooks.sort(compare).map((item) => item.id)).toEqual(["first", "second", "third"]);
-  });
-});
-
-describe("notebook tree collapsed preference", () => {
-  test("round-trips the user's collapsed notebook branches", () => {
-    const values = installLocalStorage();
-
-    writeNotebookTreeCollapsedIdsPreference(["notebook-2", "notebook-1", "notebook-2"]);
-
-    expect(values.get(NOTEBOOK_TREE_COLLAPSED_IDS_STORAGE_KEY)).toBe('["notebook-2","notebook-1"]');
-    expect(readNotebookTreeCollapsedIdsPreference()).toEqual(new Set(["notebook-2", "notebook-1"]));
-  });
-
-  test("ignores malformed and invalid stored values", () => {
-    const values = installLocalStorage();
-
-    values.set(NOTEBOOK_TREE_COLLAPSED_IDS_STORAGE_KEY, "{");
-    expect(readNotebookTreeCollapsedIdsPreference()).toEqual(new Set());
-
-    values.set(NOTEBOOK_TREE_COLLAPSED_IDS_STORAGE_KEY, JSON.stringify(["notebook-1", "", null, 2]));
-    expect(readNotebookTreeCollapsedIdsPreference()).toEqual(new Set(["notebook-1"]));
-  });
-
-  test("falls back to expanded when local storage is unavailable", () => {
-    globalThis.window = {
-      localStorage: {
-        getItem: () => {
-          throw new Error("blocked");
-        },
-        setItem: () => {
-          throw new Error("blocked");
-        },
-      },
-    };
-
-    expect(readNotebookTreeCollapsedIdsPreference()).toEqual(new Set());
-    expect(() => writeNotebookTreeCollapsedIdsPreference(["notebook-1"])).not.toThrow();
   });
 });
 

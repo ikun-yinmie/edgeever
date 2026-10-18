@@ -41,7 +41,7 @@ export const NotebookTreeItem = ({
   onMoveNotebook,
   onMoveMemos,
   onDragScroll,
-  collapsedNotebookIds,
+  expandedNotebookIds,
   onOpenChange,
   expandSiblingsRequest,
   onExpandSiblings,
@@ -57,13 +57,13 @@ export const NotebookTreeItem = ({
   onMoveNotebook: (notebookId: string, targetNotebookId: string, position: NotebookDropPosition) => void;
   onMoveMemos: (memoIds: string[], targetNotebookId: string) => void;
   onDragScroll: (event: DragEvent<HTMLDivElement>) => void;
-  collapsedNotebookIds: ReadonlySet<string>;
+  expandedNotebookIds: ReadonlySet<string>;
   onOpenChange: (notebookId: string, open: boolean) => void;
   expandSiblingsRequest: { parentId: string | null; token: number } | null;
   onExpandSiblings: (parentId: string | null) => void;
 }) => {
   const { t } = useTranslation();
-  const open = !collapsedNotebookIds.has(node.id);
+  const open = expandedNotebookIds.has(node.id);
   const hasChildren = node.children.length > 0;
   const selected = node.id === selectedNotebookId;
   const isInbox = node.slug === "inbox";
@@ -447,7 +447,7 @@ export const NotebookTreeItem = ({
               onMoveNotebook={onMoveNotebook}
               onMoveMemos={onMoveMemos}
               onDragScroll={onDragScroll}
-              collapsedNotebookIds={collapsedNotebookIds}
+              expandedNotebookIds={expandedNotebookIds}
               onOpenChange={onOpenChange}
               expandSiblingsRequest={expandSiblingsRequest}
               onExpandSiblings={onExpandSiblings}

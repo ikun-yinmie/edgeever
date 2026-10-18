@@ -9,6 +9,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Plus,
+  Clock,
   LayoutGrid,
   LayoutList,
   LayoutTemplate,
@@ -58,12 +59,11 @@ import type { NotebookNode, NotebookDropPosition, NotebookSortMode } from "@/lib
 import type { SyncQueueSummary } from "@/lib/sync-queue";
 import {
   buildNotebookTree,
+  getNotebookAncestorIds,
   getNotebookSortOptions,
   getNotebookSortComparator,
   hasEdgeEverDragData,
-  readNotebookTreeCollapsedIdsPreference,
   readNotebookSortPreference,
-  writeNotebookTreeCollapsedIdsPreference,
   writeNotebookSortPreference,
 } from "@/lib/app-helpers";
 import type { EdgeEverRepository } from "@/lib/repository";
@@ -466,6 +466,8 @@ export const NotebookPane = ({
   onMoveNotebook,
   onMoveMemos,
   onBackToList,
+  onOpenRecent,
+  recentActive,
   onOpenTags,
   onOpenAssets,
   onOpenTemplates,
@@ -508,6 +510,8 @@ export const NotebookPane = ({
   onMoveNotebook: (notebookId: string, targetNotebookId: string, position: NotebookDropPosition) => void;
   onMoveMemos: (memoIds: string[], targetNotebookId: string) => void;
   onBackToList: () => void;
+  onOpenRecent: () => void;
+  recentActive: boolean;
   onOpenTags: () => void;
   onOpenAssets: () => void;
   onOpenTemplates: () => void;
@@ -545,8 +549,9 @@ export const NotebookPane = ({
   const notebookScrollRef = useRef<HTMLDivElement | null>(null);
   const notebookDragScrollFrameRef = useRef<number | null>(null);
   const [expandSiblingsRequest, setExpandSiblingsRequest] = useState<{ parentId: string | null; token: number } | null>(null);
+  const expandedPathNotebookIdRef = useRef<string | null>(null);
   const [notebookSortMode, setNotebookSortMode] = useState<NotebookSortMode>(readNotebookSortPreference);
-  const [collapsedNotebookIds, setCollapsedNotebookIds] = useState<Set<string>>(readNotebookTreeCollapsedIdsPreference);
+  const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
   const [groupSectionOpen, setGroupSectionOpen] = useState(false);
   const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);
   const linkSharesQuery = useQuery({
@@ -641,20 +646,40 @@ export const NotebookPane = ({
   }, [notebookSortMode]);
 
   useEffect(() => {
-    writeNotebookTreeCollapsedIdsPreference(collapsedNotebookIds);
-  }, [collapsedNotebookIds]);
+    if (!selectedNotebookId || tree.length === 0) {
+      return;
+    }
+
+    if (expandedPathNotebookIdRef.current === selectedNotebookId) {
+      return;
+    }
+
+    expandedPathNotebookIdRef.current = selectedNotebookId;
+    const ancestorIds = getNotebookAncestorIds(tree, selectedNotebookId);
+    setExpandedNotebookIds((current) => {
+      if (ancestorIds.every((notebookId) => current.has(notebookId))) {
+        return current;
+      }
+
+      const next = new Set(current);
+      for (const notebookId of ancestorIds) {
+        next.add(notebookId);
+      }
+      return next;
+    });
+  }, [selectedNotebookId, tree]);
 
   const handleNotebookOpenChange = useCallback((notebookId: string, open: boolean) => {
-    setCollapsedNotebookIds((current) => {
-      if (current.has(notebookId) === !open) {
+    setExpandedNotebookIds((current) => {
+      if (current.has(notebookId) === open) {
         return current;
       }
 
       const next = new Set(current);
       if (open) {
-        next.delete(notebookId);
-      } else {
         next.add(notebookId);
+      } else {
+        next.delete(notebookId);
       }
       return next;
     });
@@ -672,7 +697,7 @@ export const NotebookPane = ({
 
       selectedNode?.scrollIntoView({ block: "nearest" });
     }, 0);
-  }, [selectedNotebookId, tree]);
+  }, [expandedNotebookIds, selectedNotebookId, tree]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden" data-notebook-sidebar-collapsed={collapsed ? "true" : "false"}>
@@ -780,6 +805,12 @@ export const NotebookPane = ({
 
         <nav className="mb-1 space-y-1" aria-label={t("notebookPane.entries")}>
           <SidebarNavButton
+            active={recentActive}
+            icon={<Clock className="h-4 w-4" />}
+            label={t("recentMemos.title")}
+            onClick={onOpenRecent}
+          />
+          <SidebarNavButton
             active={view === "notebook" && selectedNotebookId === null}
             icon={<LayoutList className="h-4 w-4" />}
             label={t("notebookPane.allMemos")}
@@ -859,7 +890,7 @@ export const NotebookPane = ({
                 onMoveNotebook={handleMoveNotebook}
                 onMoveMemos={onMoveMemos}
                 onDragScroll={handleNotebookScrollDragOver}
-                collapsedNotebookIds={collapsedNotebookIds}
+                expandedNotebookIds={expandedNotebookIds}
                 onOpenChange={handleNotebookOpenChange}
                 expandSiblingsRequest={expandSiblingsRequest}
                 onExpandSiblings={handleExpandNotebookSiblings}
@@ -1005,6 +1036,12 @@ export const NotebookPane = ({
             </div>
 
             <nav className="mt-3 flex min-h-0 flex-1 flex-col items-center gap-1" aria-label={t("notebookPane.entries")}>
+              <SidebarRailButton
+                active={recentActive}
+                icon={<Clock className="h-4 w-4" />}
+                label={t("recentMemos.title")}
+                onClick={onOpenRecent}
+              />
               <SidebarRailButton
                 active={view === "notebook" && selectedNotebookId === null}
                 icon={<LayoutList className="h-4 w-4" />}

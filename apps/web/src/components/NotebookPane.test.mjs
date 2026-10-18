@@ -99,16 +99,25 @@ describe("NotebookPane sidebar collapse", () => {
   });
 });
 
-describe("NotebookPane tree expansion persistence", () => {
-  test("stores collapsed branches outside individual tree items", () => {
+describe("NotebookPane tree expansion", () => {
+  test("keeps branches collapsed by default and only opens the last note's path", () => {
     const treeItemSource = readFileSync(new URL("./NotebookTreeItem.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain("readNotebookTreeCollapsedIdsPreference");
-    expect(source).toContain("writeNotebookTreeCollapsedIdsPreference(collapsedNotebookIds)");
-    expect(source).toContain("collapsedNotebookIds={collapsedNotebookIds}");
-    expect(treeItemSource).toContain("const open = !collapsedNotebookIds.has(node.id)");
+    expect(source).toContain("const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());");
+    expect(source).toContain("expandedNotebookIds={expandedNotebookIds}");
+    expect(source).toContain("getNotebookAncestorIds(tree, selectedNotebookId)");
+    expect(source).not.toContain("readNotebookTreeCollapsedIdsPreference");
+    expect(treeItemSource).toContain("const open = expandedNotebookIds.has(node.id)");
     expect(treeItemSource).not.toContain("const [open, setOpen] = useState(true)");
     expect(treeItemSource).not.toContain("if (hasSelectedDescendant) {");
+  });
+
+  test("exposes the recent-notes home from both the nav list and the collapsed rail", () => {
+    const rail = source.split("data-notebook-sidebar-rail")[1]?.split(") : (")[0];
+
+    expect(source).toContain('label={t("recentMemos.title")}');
+    expect(source).toContain("onClick={onOpenRecent}");
+    expect(rail).toContain('label={t("recentMemos.title")}');
   });
 });
 

@@ -137,6 +137,7 @@ import {
   shouldRestoreDesktopWorkspace,
   writeDesktopWorkspaceRestoreState,
 } from "@/lib/desktop-workspace-restore";
+import { readWebWorkspaceRestoreState, writeWebWorkspaceRestoreState } from "@/lib/web-workspace-restore";
 import { EditorPaneErrorBoundary, EditorRecoveryPane } from "./EditorPaneErrorBoundary";
 import { isMarkdownFile, readMarkdownFile } from "@/lib/markdown-file-import";
 import { compressImageForUpload } from "@/lib/image-compression";
@@ -150,6 +151,7 @@ const AssetsPane = lazyWithChunkRetry("AssetsPane", () => import("./AssetsPane")
 const SettingsPane = lazyWithChunkRetry("SettingsPane", () => import("./SettingsPane").then((module) => ({ default: module.SettingsPane })));
 const PluginMarketplacePane = lazyWithChunkRetry("PluginMarketplacePane", () => import("./PluginMarketplacePane").then((module) => ({ default: module.PluginMarketplacePane })));
 const NotebookPane = lazyWithChunkRetry("NotebookPane", () => import("./NotebookPane").then((module) => ({ default: module.NotebookPane })));
+const RecentMemosHome = lazyWithChunkRetry("RecentMemosHome", () => import("./RecentMemosHome").then((module) => ({ default: module.RecentMemosHome })));
 const EvernoteImportGuidePane = lazyWithChunkRetry("EvernoteImportGuidePane", () =>
   import("./EvernoteImportGuidePane").then((module) => ({ default: module.EvernoteImportGuidePane }))
 );
@@ -225,14 +227,20 @@ export const WorkspaceApp = ({
   const [rendererRecoveryMode, setRendererRecoveryMode] = useState(() =>
     Boolean(window.edgeeverDesktop?.recoveredAfterAbnormalExit) || isRendererRecoveryRequired()
   );
-  const [desktopWorkspaceRestore] = useState(() => (
-    shouldRestoreDesktopWorkspace() && !isRendererRecoveryRequired()
-      ? readDesktopWorkspaceRestoreState()
-      : null
-  ));
+  const [workspaceRestore] = useState(() => {
+    if (isRendererRecoveryRequired()) {
+      return null;
+    }
+
+    if (shouldRestoreDesktopWorkspace()) {
+      return readDesktopWorkspaceRestoreState();
+    }
+
+    return user?.id ? readWebWorkspaceRestoreState(user.id) : null;
+  });
   const [activePane, setActivePane] = useState<Pane>(() => ((isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute) && !isInitialMobileEditorReturn ? "editor" : "memos"));
   const [memoView, setMemoView] = useState<MemoView>(() => (
-    isTrashRoute ? "trash" : desktopWorkspaceRestore?.memoView ?? "notebook"
+    isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
   ));
   const {
     beginMemoSelection,
@@ -249,24 +257,34 @@ export const WorkspaceApp = ({
     setSelectedMemoIds,
     setSelectedNotebookId,
     setSelectionMoveTargetNotebookId,
-  } = useWorkspaceSelection(desktopWorkspaceRestore);
+  } = useWorkspaceSelection(workspaceRestore);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const autoSelectedDemoNotebookRef = useRef(false);
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
-  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(desktopWorkspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
   // Group-shared memos live in the author's workspace, so they never appear in
   // the personal list. The selection-normalising effect below would otherwise
   // instantly clear such an external selection; this ref holds it open.
   const externalSelectionRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!window.edgeeverDesktop?.isAvailable) return;
-    writeDesktopWorkspaceRestoreState({
-      selectedMemoId,
-      selectedNotebookId,
-      memoView,
-    });
-  }, [memoView, selectedMemoId, selectedNotebookId]);
+    if (window.edgeeverDesktop?.isAvailable) {
+      writeDesktopWorkspaceRestoreState({
+        selectedMemoId,
+        selectedNotebookId,
+        memoView,
+      });
+      return;
+    }
+
+    if (user?.id) {
+      writeWebWorkspaceRestoreState(user.id, {
+        selectedMemoId,
+        selectedNotebookId,
+        memoView,
+      });
+    }
+  }, [memoView, selectedMemoId, selectedNotebookId, user?.id]);
   const creatingMemoSelectionRef = useRef(false);
   const createMemoInFlightRef = useRef(false);
   const memoDocumentActionIdRef = useRef(0);
@@ -549,7 +567,7 @@ export const WorkspaceApp = ({
     setNotebookSidebarCollapsed,
     shortcutSettings,
   } = useWorkspacePreferences();
-  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "evernote-migration">(() =>
+  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "recent" | "evernote-migration">(() =>
     isInitialSettingsRoute
       ? "settings"
       : isInitialPluginsRoute
@@ -560,7 +578,9 @@ export const WorkspaceApp = ({
           ? "ai-prompts"
           : isInitialExecutionCenterRoute
             ? "execution-center"
-          : "editor"
+            : !isTrashRoute && !isInitialMobileEditorReturn && !workspaceRestore && !rendererRecoveryMode
+              ? "recent"
+              : "editor"
   );
   const [sharedScope, setSharedScope] = useState<SharedPaneScope>("all");
   const [sharedGroupId, setSharedGroupId] = useState<string | null>(null);
@@ -1149,6 +1169,12 @@ export const WorkspaceApp = ({
     const selectedMemoInList = selectedMemoId ? memos.some((memo) => memo.id === selectedMemoId) : false;
 
     if (rendererRecoveryMode) {
+      return;
+    }
+
+    if (rightView === "recent") {
+      // The recent-notes home deliberately keeps no note selection; picking a
+      // note there sets the selection and switches the right view back.
       return;
     }
 
@@ -2290,6 +2316,20 @@ export const WorkspaceApp = ({
     setActivePane("memos");
   };
 
+  const handleOpenRecentMemos = () => {
+    clearHiddenMobileSearch();
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setSelectedTag(null);
+    setRightView("recent");
+    setMobileBottomNavActive("home");
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setActivePane("editor");
+  };
+
   const handleMobileHome = () => {
     navigateWorkspaceHome();
     if (memoView === "trash") {
@@ -3005,6 +3045,8 @@ export const WorkspaceApp = ({
           ? t("aiPrompts.title")
         : rightView === "execution-center"
           ? t("executionHistory.centerTitle")
+        : rightView === "recent"
+          ? t("recentMemos.title")
         : rightView === "evernote-migration"
           ? t("workspace.loading.migration")
           : t("workspace.loading.editor");
@@ -3087,6 +3129,8 @@ export const WorkspaceApp = ({
                   onMoveNotebook={handleMoveNotebook}
                   onMoveMemos={handleMoveDraggedMemos}
                   onBackToList={handleSelectAllMemos}
+                  onOpenRecent={handleOpenRecentMemos}
+                  recentActive={rightView === "recent"}
                   onLogout={onLogout}
                   onOpenAdmin={handleOpenAdminConsole}
                   onOpenShared={handleOpenShared}
@@ -3110,6 +3154,7 @@ export const WorkspaceApp = ({
                     setMemoView("trash");
                     setSelectedTag(null);
                     setSelectedNotebookId(null);
+                    setRightView("editor");
                     setMobileBottomNavActive("home");
                     clearMemoSelection();
                     setSelectedMemoId(null);
@@ -3340,6 +3385,35 @@ export const WorkspaceApp = ({
                     <ExecutionCenterPane currentDeviceId={scheduledTaskDeviceId} onClose={handleCloseExecutionCenter} />
                   ) : rightView === "evernote-migration" ? (
                     <EvernoteImportGuidePane onClose={() => setRightView("settings")} onOpenExecutionCenter={handleOpenExecutionCenter} />
+                  ) : rightView === "recent" ? (
+                    <RecentMemosHome
+                      repository={repository}
+                      onClose={() => {
+                        setRightView("editor");
+                        setActivePane("memos");
+                      }}
+                      onCreateMemo={() => {
+                        setRightView("editor");
+                        setActivePane("editor");
+                        handleCreateMemo();
+                      }}
+                      onOpenMemo={(memo) => {
+                        pendingQuickSwitcherMemoIdRef.current = memo.id;
+                        navigateWorkspaceHome();
+                        setMemoView("notebook");
+                        setSelectedTag(null);
+                        setSelectedNotebookId(memo.notebookId);
+                        setSearch("");
+                        setMemoFilterMode("all");
+                        setRightView("editor");
+                        setMobileBottomNavActive("home");
+                        clearMemoSelection();
+                        clearPendingCreatedMemo();
+                        setCreatedMemoEditId(null);
+                        setSelectedMemoId(memo.id);
+                        setActivePane("editor");
+                      }}
+                    />
                   ) : rendererRecoveryMode ? (
                     <EditorRecoveryPane />
                   ) : memoSelectionModeActive ? (

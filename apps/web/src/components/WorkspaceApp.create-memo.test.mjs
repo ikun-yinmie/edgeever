@@ -47,10 +47,10 @@ describe("desktop create-note wiring", () => {
     expect(workspaceSource).toContain("evictIdleMemoDetails(queryClient, detailMemoId)");
   });
 
-  test("restores the last desktop memo after a renderer hibernate reload", () => {
+  test("restores the last memo after a renderer hibernate reload", () => {
     expect(workspaceSource).toContain("readDesktopWorkspaceRestoreState");
     expect(workspaceSource).toContain("writeDesktopWorkspaceRestoreState");
-    expect(workspaceSource).toContain("useWorkspaceSelection(desktopWorkspaceRestore)");
+    expect(workspaceSource).toContain("useWorkspaceSelection(workspaceRestore)");
     expect(editorSource).toContain("onHibernatePrepare");
   });
 
