@@ -495,18 +495,16 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           ))}
         </div>
       )}
-      {!collapsed && (
-        <NodeViewContent
-          className={isMermaid ? "edgeever-code-source edgeever-mermaid-source" : "edgeever-code-source"}
-          role="textbox"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          aria-label={isMermaid ? t("editorToolbar.mermaidSource") : undefined}
-          aria-multiline="true"
-          aria-readonly={!editor.isEditable}
-        />
-      )}
+      <NodeViewContent
+        className={isMermaid ? "edgeever-code-source edgeever-mermaid-source" : "edgeever-code-source"}
+        role="textbox"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        aria-label={isMermaid ? t("editorToolbar.mermaidSource") : undefined}
+        aria-multiline="true"
+        aria-readonly={!editor.isEditable}
+      />
       {syncToast && (
         <div
           className="edgeever-code-sync-toast"

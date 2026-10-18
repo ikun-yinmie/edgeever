@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 const codeBlock = readFileSync(new URL("./MermaidCodeBlock.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
 
 describe("MermaidCodeBlock read mode", () => {
   test("keeps collapse, width, line numbers and wrapping available without editing", () => {
@@ -27,6 +28,12 @@ describe("MermaidCodeBlock read mode", () => {
 
     expect(toolbar).toContain("setSourceVisible((visible) => !visible)");
     expect(toolbar).toContain("setViewerOpen(true)");
+  });
+
+  test("keeps the tiptap content node mounted while collapsed so CSS can hide it", () => {
+    expect(codeBlock).not.toMatch(/\{!collapsed && \(\s*<NodeViewContent/);
+    expect(codeBlock).toContain("<NodeViewContent");
+    expect(styles).toMatch(/\.edgeever-code-block-collapsed \.edgeever-code-source \{\s*display: none;/);
   });
 
   test("keeps only the document-wide sync actions behind the edit gate", () => {
