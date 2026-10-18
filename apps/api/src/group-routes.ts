@@ -20,6 +20,7 @@ import {
   isGroupMember,
   listGroupMembers,
   listGroupShares,
+  listAllGroupsForInstanceAdmin,
   listGroupsForUser,
   listSharedNotebookMemos,
   listSharedWithMe,
@@ -31,7 +32,7 @@ import {
   updateGroup,
   updateGroupShare,
 } from "./group-service";
-import { getWorkspaceId, requireOwner } from "./request-auth";
+import { getWorkspaceId, requireInstanceAdmin } from "./request-auth";
 import type { DatabaseAdapter } from "./storage-contract";
 
 type GroupRouteDependencies = {
@@ -52,7 +53,7 @@ export const registerGroupRoutes = (
   const requireAdministrator = async (context: AppContext) => {
     const denied = await requireUserRequest(context);
     if (denied) return denied;
-    return requireOwner(context);
+    return requireInstanceAdmin(context);
   };
 
   const loadGroupOr404 = async (context: AppContext, database: DatabaseAdapter) => {
@@ -61,9 +62,9 @@ export const registerGroupRoutes = (
     return { group, response: null };
   };
 
-  /** Members manage their own shares; administrators manage every group. */
+  /** Members manage their own shares; instance administrators manage every group. */
   const canManageGroup = async (database: DatabaseAdapter, groupId: string, auth: AuthContext) => {
-    if (auth.role === "owner") return true;
+    if (auth.role === "owner" || auth.role === "admin") return true;
     return (await isGroupMember(database, groupId, auth.actorId ?? "")) === "manager";
   };
 
@@ -73,7 +74,9 @@ export const registerGroupRoutes = (
     const denied = await requireUserRequest(context);
     if (denied) return denied;
     const auth = context.get("auth")!;
-    const groups = await listGroupsForUser(context.env.storage.db, auth.actorId ?? "");
+    const groups = auth.role === "owner" || auth.role === "admin"
+      ? await listAllGroupsForInstanceAdmin(context.env.storage.db, auth.actorId ?? "")
+      : await listGroupsForUser(context.env.storage.db, auth.actorId ?? "");
     return context.json({
       groups: groups.map((group) => ({
         id: group.id,

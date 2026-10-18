@@ -231,7 +231,7 @@ export const SettingsView = ({
             <Text style={styles.accountSummaryTitle}>{translate("当前账户")}</Text>
             <Text style={styles.accountSummaryName}>{currentUser?.displayName || currentUser?.username || "—"}</Text>
         <Text style={styles.accountSummaryHelp}>
-              @{currentUser?.username ?? "—"} · {currentUser?.role === "owner" ? translate("实例管理员") : translate("成员")}
+              @{currentUser?.username ?? "—"} · {currentUser?.role === "owner" ? translate("站长") : currentUser?.role === "admin" ? translate("管理员") : translate("成员")}
             </Text>
           </View>
         </View>

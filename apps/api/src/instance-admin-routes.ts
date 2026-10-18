@@ -27,7 +27,7 @@ import {
   isRegistrationEnabled,
   mapInstanceSettingsRow,
 } from "./instance-settings-service";
-import { requireOwner } from "./request-auth";
+import { requireInstanceAdmin } from "./request-auth";
 import { hitRateLimit } from "./rate-limit";
 import { sendRegistrationCodeEmail } from "./smtp-client";
 import { sha256 } from "./hash-utils";
@@ -514,17 +514,43 @@ export const registerInstanceAdminRoutes = (
     return context.json({ ok: true }, 201);
   });
 
-  // --- Owner-only admin endpoints: settings + invite management ---
+  // --- Instance admin endpoints: settings + invite management ---
+  // Administrators (site owner + appointed administrators) share these; the
+  // settings that stay owner-only are filtered field-by-field in PATCH below.
 
-  const requireOwnerRequest = async (context: AppContext) => {
+  const requireInstanceAdminRequest = async (context: AppContext) => {
     const auth = await dependencies.authenticateRequest(context, true);
     if (!auth) return unauthorizedResponse(context);
     context.set("auth", auth);
-    return requireOwner(context);
+    return requireInstanceAdmin(context);
   };
 
+  // Registration, email delivery and the abuse guard stay with the site owner.
+  const OWNER_ONLY_SETTINGS_FIELDS = [
+    "registrationEnabled",
+    "registrationCodeRequired",
+    "registrationInviteRequired",
+    "codeTtlSeconds",
+    "codeResendCooldownSeconds",
+    "codeBindIp",
+    "codeBindDevice",
+    "abuseGuardEnabled",
+    "codeIpHourlyLimit",
+    "codeIpDailyLimit",
+    "emailAllowlistEnabled",
+    "emailAllowlist",
+    "emailBlocklist",
+    "smtpHost",
+    "smtpPort",
+    "smtpSecure",
+    "smtpUsername",
+    "smtpFromAddress",
+    "smtpFromName",
+    "smtpPassword",
+  ] as const;
+
   app.get("/api/v1/admin/instance-settings", async (context) => {
-    const denied = await requireOwnerRequest(context);
+    const denied = await requireInstanceAdminRequest(context);
     if (denied) return denied;
     const settings = await getInstanceSettingsRow(context.env.storage.db);
     return context.json({ settings: mapInstanceSettingsRow(settings) });
@@ -564,10 +590,19 @@ export const registerInstanceAdminRoutes = (
     "/api/v1/admin/instance-settings",
     zValidator("json", InstanceAdminSettingsUpdateSchema),
     async (context) => {
-      const denied = await requireOwnerRequest(context);
+      const denied = await requireInstanceAdminRequest(context);
       if (denied) return denied;
 
       const input = context.req.valid("json");
+      if (context.get("auth")!.role !== "owner") {
+        const ownerOnlyField = OWNER_ONLY_SETTINGS_FIELDS.find((field) => input[field] !== undefined);
+        if (ownerOnlyField) {
+          return forbidden(
+            context,
+            "Only the site owner can change registration, email delivery or abuse protection settings.",
+          );
+        }
+      }
       const database = context.env.storage.db;
       const updates: string[] = [];
       const binds: unknown[] = [];
@@ -663,7 +698,7 @@ export const registerInstanceAdminRoutes = (
   const MAX_LISTED_INVITES = 500;
 
   app.get("/api/v1/admin/registration/invites", async (context) => {
-    const denied = await requireOwnerRequest(context);
+    const denied = await requireInstanceAdminRequest(context);
     if (denied) return denied;
     const database = context.env.storage.db;
     const result = await database
@@ -676,7 +711,7 @@ export const registerInstanceAdminRoutes = (
   });
 
   app.post("/api/v1/admin/registration/invites", zValidator("json", RegistrationInviteCreateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context);
+    const denied = await requireInstanceAdminRequest(context);
     if (denied) return denied;
     const input = context.req.valid("json");
     const database = context.env.storage.db;
@@ -718,7 +753,7 @@ export const registerInstanceAdminRoutes = (
   });
 
   app.post("/api/v1/admin/registration/invites/:inviteId/revoke", async (context) => {
-    const denied = await requireOwnerRequest(context);
+    const denied = await requireInstanceAdminRequest(context);
     if (denied) return denied;
     const database = context.env.storage.db;
     const inviteId = context.req.param("inviteId");
@@ -738,7 +773,7 @@ export const registerInstanceAdminRoutes = (
 
   // Parking an invite in the revoked list keeps it copyable and recoverable.
   app.post("/api/v1/admin/registration/invites/:inviteId/restore", async (context) => {
-    const denied = await requireOwnerRequest(context);
+    const denied = await requireInstanceAdminRequest(context);
     if (denied) return denied;
     const database = context.env.storage.db;
     const inviteId = context.req.param("inviteId");
@@ -760,7 +795,7 @@ export const registerInstanceAdminRoutes = (
     "/api/v1/admin/registration/invites/delete",
     zValidator("json", RegistrationInviteDeleteSchema),
     async (context) => {
-      const denied = await requireOwnerRequest(context);
+      const denied = await requireInstanceAdminRequest(context);
       if (denied) return denied;
       const database = context.env.storage.db;
       const actorId = context.get("auth")!.actorId;

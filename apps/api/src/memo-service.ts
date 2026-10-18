@@ -81,7 +81,7 @@ type WorkspaceIdentityRow = {
   user_id: string;
   username: string;
   display_name: string | null;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
 };
 
 type MemoImportSourceRow = {

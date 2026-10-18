@@ -22,7 +22,7 @@ const createStatement = (sql, harness) => {
       return statement;
     },
     all: async () => {
-      if (sql.includes("AND wm.role = 'owner'")) {
+      if (sql.includes("wm.role IN ('owner', 'admin')")) {
         return { results: harness.administratorIds.map((id) => ({ id })), success: true };
       }
       if (sql.includes("SELECT w.id AS workspace_id")) {
@@ -116,6 +116,13 @@ describe("user route contracts", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ error: { code: "forbidden" } });
+  });
+
+  test("lets administrators list members", async () => {
+    const app = createApp(async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }));
+    const response = await app.request("/api/v1/users", {}, createEnvironment([]));
+
+    expect(response.status).toBe(200);
   });
 
   test("maps owner-visible users at the HTTP boundary", async () => {
@@ -251,7 +258,7 @@ describe("bulk member actions", () => {
 
 describe("single member updates", () => {
   test("refuses to lock the acting owner out", async () => {
-    const app = createApp(async () => ownerAuth);
+    const app = createApp(async () => ownerAuth, { role: "owner" });
     const disableSelf = await app.request(
       "/api/v1/users/usr_owner",
       {
@@ -284,7 +291,7 @@ describe("single member updates", () => {
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ role: "owner" }),
+        body: JSON.stringify({ role: "admin" }),
       },
       environment,
     );
@@ -292,11 +299,31 @@ describe("single member updates", () => {
     expect(response.status).toBe(200);
     const roleUpdate = environment.harness.batched.find((statement) =>
       statement.sql.startsWith("UPDATE workspace_members SET role"));
-    expect(roleUpdate.bindings).toEqual(["owner", "usr_member"]);
+    expect(roleUpdate.bindings).toEqual(["admin", "usr_member"]);
   });
 
-  test("keeps the last administrator in place", async () => {
-    const app = createApp(async () => ({ ...ownerAuth, actorId: "usr_admin" }), { role: "owner" });
+  test("lets the site owner demote an administrator", async () => {
+    const app = createApp(async () => ownerAuth);
+    const environment = createEnvironment([], { role: "admin" });
+
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role: "member" }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    const roleUpdate = environment.harness.batched.find((statement) =>
+      statement.sql.startsWith("UPDATE workspace_members SET role"));
+    expect(roleUpdate.bindings).toEqual(["member", "usr_member"]);
+  });
+
+  test("refuses to change the site owner role", async () => {
+    const app = createApp(async () => ownerAuth, { role: "owner" });
     const response = await app.request(
       "/api/v1/users/usr_owner",
       {
@@ -304,10 +331,74 @@ describe("single member updates", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ role: "member" }),
       },
-      createEnvironment([], { ownerCount: 1 }),
+      createEnvironment([]),
     );
 
     expect(response.status).toBe(400);
+  });
+
+  test("lets an administrator manage regular members", async () => {
+    const app = createApp(async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }));
+    const environment = createEnvironment([]);
+
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Renamed" }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  test("stops administrators from touching the site owner or fellow administrators", async () => {
+    const ownerApp = createApp(
+      async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }),
+      { role: "owner" },
+    );
+    const ownerTarget = await ownerApp.request(
+      "/api/v1/users/usr_site_owner",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Nope" }),
+      },
+      createEnvironment([]),
+    );
+    expect(ownerTarget.status).toBe(403);
+
+    const adminApp = createApp(
+      async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }),
+      { role: "admin" },
+    );
+    const adminTarget = await adminApp.request(
+      "/api/v1/users/usr_admin2",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: "Nope" }),
+      },
+      createEnvironment([]),
+    );
+    expect(adminTarget.status).toBe(403);
+  });
+
+  test("only the site owner can appoint or remove administrators", async () => {
+    const app = createApp(async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }));
+    const response = await app.request(
+      "/api/v1/users/usr_member",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role: "admin" }),
+      },
+      createEnvironment([]),
+    );
+
+    expect(response.status).toBe(403);
   });
 
   test("edits the username, display name and email of a member", async () => {
@@ -403,6 +494,31 @@ describe("permanent member deletion", () => {
 
     expect(response.status).toBe(400);
     expect(environment.harness.batched).toEqual([]);
+  });
+
+  test("stops administrators from deleting other administrators", async () => {
+    const app = createApp(async () => ({ ...ownerAuth, actorId: "usr_admin", role: "admin" }), { role: "admin" });
+    const environment = createEnvironment([]);
+    const response = await app.request(
+      "/api/v1/users/usr_admin2",
+      { method: "DELETE" },
+      environment,
+    );
+
+    expect(response.status).toBe(403);
+    expect(environment.harness.batched).toEqual([]);
+  });
+
+  test("lets the site owner delete an administrator", async () => {
+    const app = createApp(async () => ownerAuth, { role: "admin" });
+    const environment = createEnvironment([]);
+    const response = await app.request(
+      "/api/v1/users/usr_admin2",
+      { method: "DELETE" },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
   });
 
   test("purges the member workspace and account", async () => {

@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 interface UserManagementCardProps {
   demoMode: boolean;
   currentUserId?: string | null;
+  currentUserRole: "owner" | "admin" | "member";
 }
 
 type MemberStatusFilter = "all" | "enabled" | "disabled" | "archived";
@@ -48,7 +49,7 @@ type MemberSortKey = "createdAt" | "lastLoginAt" | "username";
 
 const PAGE_SIZE = 20;
 
-export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManagementCardProps) => {
+export const UserManagementCard = ({ demoMode, currentUserId = null, currentUserRole }: UserManagementCardProps) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -91,7 +92,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
       input,
     }: {
       userId: string;
-      input: { password?: string; isDisabled?: boolean; isDeleted?: boolean; role?: "owner" | "member" };
+      input: { password?: string; isDisabled?: boolean; isDeleted?: boolean; role?: "admin" | "member" };
     }) => api.updateUser(userId, input),
     onSuccess: () => void refresh(),
   });
@@ -136,7 +137,10 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
         .some((value) => value.toLowerCase().includes(needle));
     });
     return matched.sort((left, right) => {
-      if (left.role !== right.role) return left.role === "owner" ? -1 : 1;
+      if (left.role !== right.role) {
+        const rank: Record<InstanceUser["role"], number> = { owner: 0, admin: 1, member: 2 };
+        return rank[left.role] - rank[right.role];
+      }
       if (sortKey === "username") return left.username.localeCompare(right.username);
       if (sortKey === "lastLoginAt") {
         return (right.lastLoginAt ? Date.parse(right.lastLoginAt) : 0) - (left.lastLoginAt ? Date.parse(left.lastLoginAt) : 0);
@@ -154,7 +158,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
   }, [page, totalPages]);
 
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const pageIds = pageItems.filter((user) => user.role !== "owner").map((user) => user.id);
+  const pageIds = pageItems.filter((user) => user.role === "member").map((user) => user.id);
   const selectablePageIds = pageIds;
   const selectedOnPage = selectedIds.filter((id) => selectablePageIds.includes(id));
   const allOnPageSelected = selectablePageIds.length > 0 && selectedOnPage.length === selectablePageIds.length;
@@ -385,13 +389,18 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                 <tbody className="divide-y divide-slate-100">
                   {pageItems.map((user) => {
                     const isOwner = user.role === "owner";
+                    const isAdmin = user.role === "admin";
+                    const actorIsOwner = currentUserRole === "owner";
+                    // Administrators cannot touch the site owner or other
+                    // administrators; the site owner keeps full control.
+                    const lockedForActor = !actorIsOwner && (isOwner || isAdmin);
                     return (
                       <tr key={user.id} className={cn("align-middle", user.isDeleted && "bg-slate-50/60")}>
                         <td className="px-3 py-3">
                           <Checkbox
                             aria-label={user.username}
                             checked={selectedIds.includes(user.id)}
-                            disabled={isOwner}
+                            disabled={user.role !== "member"}
                             onCheckedChange={(checked) => toggleSelect(user.id, checked === true)}
                           />
                         </td>
@@ -444,7 +453,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                           {new Date(user.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-3 py-3 text-right">
-                          {isOwner ? null : (
+                          {isOwner || lockedForActor ? null : (
                             <Switch
                               aria-label={`${user.displayName || user.username} · ${t("users.columnEnabled")}`}
                               checked={!user.isDisabled}
@@ -456,7 +465,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                           )}
                         </td>
                         <td className="px-3 py-3 text-right">
-                          {isOwner && demoMode ? null : (
+                          {lockedForActor || (isOwner && demoMode) ? null : (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -495,17 +504,18 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                       )}
                                       {user.isDisabled ? t("users.enable") : t("users.disable")}
                                     </DropdownMenuItem>
-                                    {user.role === "member" ? (
+                                    {user.role === "member" && actorIsOwner ? (
                                       <DropdownMenuItem
                                         disabled={bulkBusy}
                                         onSelect={() =>
-                                          updateMutation.mutate({ userId: user.id, input: { role: "owner" } })
+                                          updateMutation.mutate({ userId: user.id, input: { role: "admin" } })
                                         }
                                       >
                                         <ShieldCheck className="mr-2 h-3.5 w-3.5" />
                                         {t("users.makeAdmin")}
                                       </DropdownMenuItem>
-                                    ) : user.id === currentUserId ? null : (
+                                    ) : null}
+                                    {user.role === "admin" && actorIsOwner && user.id !== currentUserId ? (
                                       <DropdownMenuItem
                                         disabled={bulkBusy}
                                         onSelect={() =>
@@ -515,7 +525,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null }: UserManag
                                         <ShieldOff className="mr-2 h-3.5 w-3.5" />
                                         {t("users.removeAdmin")}
                                       </DropdownMenuItem>
-                                    )}
+                                    ) : null}
                                     <DropdownMenuSeparator />
                                     {user.isDeleted ? (
                                       <DropdownMenuItem

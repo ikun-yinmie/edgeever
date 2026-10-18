@@ -53,7 +53,7 @@ type LoginSession = {
 
 type UserWorkspace = {
   workspaceId: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
 };
 
 type AuthRouteDependencies = {

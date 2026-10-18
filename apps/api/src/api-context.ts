@@ -43,7 +43,7 @@ export type AuthContext = {
   displayName: string | null;
   scopes: string[];
   workspaceId: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
   /** "group" marks a shared account that may hold many concurrent sessions. */
   accountType: "user" | "group";
   sessionId?: string;

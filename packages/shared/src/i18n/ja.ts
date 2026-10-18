@@ -2454,7 +2454,7 @@ export const ja = {
     pageInfo: "{{page}} / {{pages}} ページ",
     pagePrev: "前へ",
     pageNext: "次へ",
-    roles: { owner: "インスタンスオーナー", member: "メンバー" },
+    roles: { owner: "オーナー", admin: "管理者", member: "メンバー" },
   },
   password: {
     title: "パスワードを変更",

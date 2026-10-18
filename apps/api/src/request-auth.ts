@@ -37,6 +37,19 @@ export const requireOwner = (c: AppContext) => {
     : forbidden(c, "Only the instance owner can manage users.");
 };
 
+/**
+ * The instance role ladder lets the site owner appoint administrators with
+ * almost the same powers. Administrator accounts pass this guard; they are
+ * kept out of owner-only settings (registration, email, object storage) and
+ * may not modify the site owner or other administrators.
+ */
+export const requireInstanceAdmin = (c: AppContext) => {
+  const auth = c.get("auth");
+  return auth?.kind === "user" && (auth.role === "owner" || auth.role === "admin")
+    ? null
+    : forbidden(c, "Only an instance administrator can manage these settings.");
+};
+
 export const requireUser = (c: AppContext) => {
   const auth = c.get("auth");
   return auth?.kind === "user"

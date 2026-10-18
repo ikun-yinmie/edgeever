@@ -336,6 +336,27 @@ export const listGroupsForUser = async (database: DatabaseAdapter, userId: strin
   return rows.results ?? [];
 };
 
+/**
+ * Instance administrators oversee every group, including groups they are not
+ * a member of. `my_role` falls back to "manager" for those groups because the
+ * request guard already grants them management rights over any group.
+ */
+export const listAllGroupsForInstanceAdmin = async (database: DatabaseAdapter, userId: string) => {
+  const rows = await database
+    .prepare(
+      `SELECT g.id, g.name, g.description, g.created_by, g.created_at, g.updated_at,
+              (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS member_count,
+              (SELECT COUNT(*) FROM group_shares s WHERE s.group_id = g.id AND s.revoked_at IS NULL) AS share_count,
+              COALESCE(gm.role, 'manager') AS my_role
+       FROM groups g
+       LEFT JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = ?
+       ORDER BY g.name COLLATE NOCASE ASC`,
+    )
+    .bind(userId)
+    .all<GroupRow & { member_count: number; share_count: number; my_role: "manager" | "member" }>();
+  return rows.results ?? [];
+};
+
 export const getGroupRow = async (database: DatabaseAdapter, groupId: string) =>
   database
     .prepare(`SELECT id, name, description, created_by, created_at, updated_at FROM groups WHERE id = ?`)

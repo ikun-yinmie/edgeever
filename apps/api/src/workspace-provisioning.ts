@@ -28,7 +28,7 @@ export const isInboxNotebook = (
 
 export type UserWorkspace = {
   workspaceId: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
 };
 
 export type DefaultNotebookRow = {
@@ -107,7 +107,7 @@ export const ensureUserWorkspace = async (
 ): Promise<UserWorkspace> => {
   const existing = await db.prepare(
     `SELECT workspace_id, role FROM workspace_members WHERE user_id = ? LIMIT 1`,
-  ).bind(userId).first<{ workspace_id: string; role: "owner" | "member" }>();
+  ).bind(userId).first<{ workspace_id: string; role: "owner" | "admin" | "member" }>();
   if (existing) {
     return { workspaceId: existing.workspace_id, role: existing.role };
   }
@@ -121,7 +121,7 @@ export const ensureUserWorkspace = async (
     ).bind(DEFAULT_WORKSPACE_ID, userId).run();
     const claimed = await db.prepare(
       `SELECT workspace_id, role FROM workspace_members WHERE user_id = ? LIMIT 1`,
-    ).bind(userId).first<{ workspace_id: string; role: "owner" | "member" }>();
+    ).bind(userId).first<{ workspace_id: string; role: "owner" | "admin" | "member" }>();
     if (claimed) {
       await db.batch(createWorkspaceDefaultSeedStatements(db, claimed.workspace_id, isoNow(), locale));
       return { workspaceId: claimed.workspace_id, role: claimed.role };

@@ -269,11 +269,19 @@ export type TagSummary = {
   updatedAt: string | null;
 };
 
+/**
+ * Instance-wide role ladder:
+ * - "owner"  the site owner (站长), exactly one, can never be demoted via the API
+ * - "admin"  an administrator appointed by the site owner, nearly the same powers
+ * - "member" a regular member
+ */
+export type InstanceRole = "owner" | "admin" | "member";
+
 export type AuthUser = {
   id: string;
   username: string;
   displayName: string | null;
-  role: "owner" | "member";
+  role: InstanceRole;
   /** "group" marks a shared account that allows many concurrent sign-ins. */
   accountType?: "user" | "group";
 };

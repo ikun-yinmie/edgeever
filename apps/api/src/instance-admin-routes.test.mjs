@@ -699,6 +699,79 @@ describe("site branding", () => {
   });
 });
 
+describe("administrator role boundaries", () => {
+  test("lets an administrator save site branding", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("admin");
+
+    const response = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ siteName: "团队站" }),
+      },
+      environment,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).settings.siteName).toBe("团队站");
+    sqlite.close();
+  });
+
+  test("keeps registration and email settings owner-only", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("admin");
+
+    const registrationAttempt = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ registrationEnabled: false }),
+      },
+      environment,
+    );
+    expect(registrationAttempt.status).toBe(403);
+
+    const smtpAttempt = await app.request(
+      "/api/v1/admin/instance-settings",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ smtpHost: "smtp.example.com" }),
+      },
+      environment,
+    );
+    expect(smtpAttempt.status).toBe(403);
+    sqlite.close();
+  });
+
+  test("lets an administrator manage invite codes", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("admin");
+
+    const create = await jsonRequest(app, "/api/v1/admin/registration/invites", { maxUses: 1 }, environment);
+    expect(create.status).toBe(201);
+
+    const list = await app.request("/api/v1/admin/registration/invites", {}, environment);
+    expect(list.status).toBe(200);
+    sqlite.close();
+  });
+
+  test("still refuses regular members", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("member");
+
+    const settings = await app.request("/api/v1/admin/instance-settings", {}, environment);
+    expect(settings.status).toBe(403);
+
+    const invites = await app.request("/api/v1/admin/registration/invites", {}, environment);
+    expect(invites.status).toBe(403);
+    sqlite.close();
+  });
+});
+
 describe("email verification code policy", () => {
   test("stores the configured lifetime and reports the resend cooldown", async () => {
     const { sqlite, environment } = createEnvironment();

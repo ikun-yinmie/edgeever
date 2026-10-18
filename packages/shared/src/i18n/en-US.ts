@@ -2454,7 +2454,7 @@ export const enUS = {
     pageInfo: "Page {{page}} / {{pages}}",
     pagePrev: "Previous",
     pageNext: "Next",
-    roles: { owner: "Instance owner", member: "Member" },
+    roles: { owner: "Site owner", admin: "Administrator", member: "Member" },
   },
   password: {
     title: "Change password",

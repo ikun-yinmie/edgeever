@@ -180,6 +180,40 @@ const buildApp = (env, auth) => {
   return app;
 };
 
+describe("instance administrator group visibility", () => {
+  test("site owner and administrators see every group, members only their own", async () => {
+    const env = createEnvironment();
+    env.seedUser("usr_owner", "site-owner");
+    env.seedUser("usr_admin", "admin-user");
+    env.seedUser("usr_alice", "alice");
+
+    const aliceGroup = await createGroup(env.database, { name: "Alice 的组", description: null, createdBy: "usr_alice" });
+    const adminGroup = await createGroup(env.database, { name: "Admin 的组", description: null, createdBy: "usr_admin" });
+    const expectedAll = [aliceGroup.id, adminGroup.id].sort();
+
+    const adminApp = buildApp(env, {
+      kind: "user", actorType: "user", actorId: "usr_admin", username: "admin-user",
+      displayName: null, scopes: [], workspaceId: "ws_usr_admin", role: "admin", accountType: "user",
+    });
+    const adminList = await (await adminApp.request("/api/v1/groups", {}, { storage: { db: env.database }, env: {} })).json();
+    expect(adminList.groups.map((group) => group.id).sort()).toEqual(expectedAll);
+
+    const ownerApp = buildApp(env, {
+      kind: "user", actorType: "user", actorId: "usr_owner", username: "site-owner",
+      displayName: null, scopes: [], workspaceId: "ws_usr_owner", role: "owner", accountType: "user",
+    });
+    const ownerList = await (await ownerApp.request("/api/v1/groups", {}, { storage: { db: env.database }, env: {} })).json();
+    expect(ownerList.groups.map((group) => group.id).sort()).toEqual(expectedAll);
+
+    const aliceApp = buildApp(env, {
+      kind: "user", actorType: "user", actorId: "usr_alice", username: "alice",
+      displayName: null, scopes: [], workspaceId: "ws_usr_alice", role: "member", accountType: "user",
+    });
+    const aliceList = await (await aliceApp.request("/api/v1/groups", {}, { storage: { db: env.database }, env: {} })).json();
+    expect(aliceList.groups.map((group) => group.id)).toEqual([aliceGroup.id]);
+  });
+});
+
 describe("group share display policy over HTTP", () => {
   test("a group member reading a shared note receives a policy-filtered document", async () => {
     const env = createEnvironment();

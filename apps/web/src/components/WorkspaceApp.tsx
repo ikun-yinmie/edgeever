@@ -3090,7 +3090,7 @@ export const WorkspaceApp = ({
                   onLogout={onLogout}
                   onOpenAdmin={handleOpenAdminConsole}
                   onOpenShared={handleOpenShared}
-                  isOwner={authRequired && user?.role === "owner"}
+                  isOwner={authRequired && (user?.role === "owner" || user?.role === "admin")}
                   isLoggingOut={isLoggingOut}
                   imageCompressionEnabled={imageCompressionEnabled}
                   onImageCompressionChange={setImageCompressionEnabled}
@@ -3294,7 +3294,7 @@ export const WorkspaceApp = ({
                     isLoggingOut={isLoggingOut}
                     authRequired={authRequired}
                     demoMode={demoMode}
-                    isOwner={authRequired && user?.role === "owner"}
+                    isOwner={authRequired && (user?.role === "owner" || user?.role === "admin")}
                     user={user}
                     refreshWorkspaceAfterImport={async () => {
                       await refreshWorkspaceFromServer("manual");

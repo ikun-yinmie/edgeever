@@ -359,7 +359,7 @@ export const UserUpdateSchema = z
     password: z.string().min(8).max(512).optional(),
     isDisabled: z.boolean().optional(),
     isDeleted: z.boolean().optional(),
-    role: z.enum(["owner", "member"]).optional(),
+    role: z.enum(["admin", "member"]).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 

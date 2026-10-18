@@ -22,7 +22,7 @@ import {
 import { createId, isoNow } from "./entity-utils";
 import { badRequest, conflict, forbidden, notFound, unauthorized } from "./http-errors";
 import { deleteStoredObjects } from "./object-storage";
-import { requireOwner } from "./request-auth";
+import { requireInstanceAdmin } from "./request-auth";
 import type { DatabaseAdapter, PreparedStatementAdapter } from "./storage-contract";
 import {
   createDefaultNotebookRows,
@@ -39,7 +39,7 @@ export type InstanceUserRow = {
   is_deleted: number;
   last_login_at: string | null;
   created_at: string;
-  role: "owner" | "member";
+  role: "owner" | "admin" | "member";
   account_type: "user" | "group" | null;
 };
 
@@ -102,14 +102,14 @@ export const permanentUserDeletionStatements = (
   return statements;
 };
 
-const requireOwnerRequest = async (
+const requireAdminRequest = async (
   context: AppContext,
   authenticateRequest: UserRouteDependencies["authenticateRequest"],
 ) => {
   const auth = await authenticateRequest(context, true);
   if (!auth) return unauthorized(context, "Authentication required.");
   context.set("auth", auth);
-  return requireOwner(context);
+  return requireInstanceAdmin(context);
 };
 
 export const registerUserRoutes = (
@@ -117,7 +117,7 @@ export const registerUserRoutes = (
   dependencies: UserRouteDependencies,
 ) => {
   app.get("/api/v1/users", async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     // Archived members stay out of the way unless the console asks for them.
@@ -128,14 +128,14 @@ export const registerUserRoutes = (
        FROM users u
        INNER JOIN workspace_members wm ON wm.user_id = u.id
        WHERE (? = 1 OR u.is_deleted = 0)
-       ORDER BY wm.role = 'owner' DESC, u.created_at ASC`,
+       ORDER BY CASE wm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.created_at ASC`,
     ).bind(includeDeleted ? 1 : 0).all<InstanceUserRow>();
 
     return context.json({ users: rows.results.map(mapInstanceUser) });
   });
 
   app.post("/api/v1/users", zValidator("json", UserCreateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     const input = context.req.valid("json");
@@ -181,7 +181,7 @@ export const registerUserRoutes = (
   });
 
   app.patch("/api/v1/users/:id", zValidator("json", UserUpdateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     const userId = context.req.param("id");
@@ -201,8 +201,27 @@ export const registerUserRoutes = (
     ) {
       return forbidden(context, "The demo owner account uses fixed credentials and cannot be modified.");
     }
+    const actor = context.get("auth")!;
+    const actorId = actor.actorId;
+    const actorRole = actor.role;
+    // Administrators manage regular members only: the site owner and fellow
+    // administrators are off-limits in every field, including role changes.
+    if (actorRole !== "owner" && (current.role === "owner" || current.role === "admin")) {
+      return forbidden(context, "Administrators cannot modify the site owner or other administrators.");
+    }
+    // Only the site owner appoints or removes administrators.
+    if (input.role !== undefined && actorRole !== "owner") {
+      return forbidden(context, "Only the site owner can change member roles.");
+    }
     if (current.role === "owner" && (input.isDisabled === true || input.isDeleted === true)) {
       return badRequest(context, "The instance owner cannot be disabled.");
+    }
+    // The single site owner role is fixed when the instance is bootstrapped.
+    if (current.role === "owner" && input.role !== undefined) {
+      return badRequest(context, "The site owner role cannot be changed.");
+    }
+    if (actorId === userId && (input.isDisabled === true || input.isDeleted === true)) {
+      return badRequest(context, "You cannot disable or archive your own account.");
     }
     if (input.username !== undefined && input.username !== current.username) {
       const takenUsername = await context.env.storage.db
@@ -217,22 +236,6 @@ export const registerUserRoutes = (
         .bind(input.email, userId)
         .first<{ id: string }>();
       if (takenEmail) return conflict(context, "email_exists", "Email already exists.");
-    }
-
-    const actorId = context.get("auth")!.actorId;
-    if (actorId === userId && (input.isDisabled === true || input.isDeleted === true)) {
-      return badRequest(context, "You cannot disable or archive your own account.");
-    }
-    if (actorId === userId && input.role === "member") {
-      return badRequest(context, "You cannot drop your own administrator role.");
-    }
-    if (current.role === "owner" && input.role === "member") {
-      const owners = await context.env.storage.db
-        .prepare(`SELECT COUNT(*) AS count FROM workspace_members WHERE role = 'owner'`)
-        .first<{ count: number }>();
-      if ((owners?.count ?? 0) <= 1) {
-        return badRequest(context, "At least one administrator must remain.");
-      }
     }
 
     const updates: string[] = [];
@@ -296,11 +299,11 @@ export const registerUserRoutes = (
     return context.json({ user: user ? mapInstanceUser(user) : null });
   });
 
-  // Bulk actions for the member list. Administrator accounts are never touched
-  // in bulk, and the acting administrator is always excluded, so a single
-  // mis-click cannot lock the instance out.
+  // Bulk actions for the member list. The site owner and administrators are
+  // never touched in bulk, and the acting administrator is always excluded,
+  // so a single mis-click cannot lock the instance out.
   app.post("/api/v1/users/bulk", zValidator("json", UserBulkUpdateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     const input = context.req.valid("json");
@@ -316,7 +319,7 @@ export const registerUserRoutes = (
       .prepare(
         `SELECT u.id FROM users u
          INNER JOIN workspace_members wm ON wm.user_id = u.id
-         WHERE u.id IN (${placeholders}) AND wm.role = 'owner'`,
+         WHERE u.id IN (${placeholders}) AND wm.role IN ('owner', 'admin')`,
       )
       .bind(...targetIds)
       .all<{ id: string }>();
@@ -324,7 +327,7 @@ export const registerUserRoutes = (
     const skippedSet = new Set(skipped);
     const affected = targetIds.filter((id) => !skippedSet.has(id));
     if (affected.length === 0) {
-      return badRequest(context, "Administrator accounts cannot be changed in bulk.");
+      return badRequest(context, "Site owner and administrator accounts cannot be changed in bulk.");
     }
 
     const affectedPlaceholders = affected.map(() => "?").join(", ");
@@ -362,20 +365,25 @@ export const registerUserRoutes = (
   });
 
   // Permanent removal of a single member: the account, its personal workspace
-  // and everything inside it. Administrators and the acting account are refused
-  // so the console can never delete the last way back in.
+  // and everything inside it. The site owner is never deleted, administrators
+  // cannot delete other administrators, and the acting account is always
+  // refused so the console can never delete the last way back in.
   app.delete("/api/v1/users/:id", async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     const userId = context.req.param("id");
     const actorId = context.get("auth")!.actorId;
+    const actorRole = context.get("auth")!.role;
     if (userId === actorId) return badRequest(context, "You cannot delete your own account.");
 
     const current = await dependencies.getInstanceUser(context.env.storage.db, userId);
     if (!current) return notFound(context, "User not found");
     if (current.role === "owner") {
-      return badRequest(context, "Administrator accounts cannot be deleted.");
+      return badRequest(context, "The site owner account cannot be deleted.");
+    }
+    if (current.role === "admin" && actorRole !== "owner") {
+      return forbidden(context, "Administrators cannot delete other administrators.");
     }
     if (
       isProtectedDemoAccount(
@@ -432,7 +440,7 @@ export const registerUserRoutes = (
   // --- Shared (public) group accounts: one credential, many live sessions ---
 
   app.get("/api/v1/group-accounts", async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
 
     const rows = await listGroupAccounts(context.env.storage.db);
@@ -448,7 +456,7 @@ export const registerUserRoutes = (
   });
 
   app.post("/api/v1/group-accounts", zValidator("json", GroupAccountCreateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
     const auth = context.get("auth")!;
     const input = context.req.valid("json");
@@ -480,7 +488,7 @@ export const registerUserRoutes = (
   });
 
   app.patch("/api/v1/group-accounts/:id", zValidator("json", GroupAccountUpdateSchema), async (context) => {
-    const denied = await requireOwnerRequest(context, dependencies.authenticateRequest);
+    const denied = await requireAdminRequest(context, dependencies.authenticateRequest);
     if (denied) return denied;
     const database = context.env.storage.db;
     const accountId = context.req.param("id");

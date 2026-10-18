@@ -27,24 +27,36 @@ type AdminTabKey =
   | "storage"
   | "shortcuts";
 
+type AdminTab = { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> };
+
 export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTabKey>("members");
+  const [activeTab, setActiveTab] = useState<AdminTabKey>("site");
 
-  if (!user || user.role !== "owner") {
+  if (!user || (user.role !== "owner" && user.role !== "admin")) {
     return <Navigate to="/" replace />;
   }
 
-  const tabs: { key: AdminTabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+  // Registration, email delivery and object storage stay with the site owner.
+  const isOwner = user.role === "owner";
+  const ownerOnlyTabs: AdminTab[] = isOwner
+    ? [
+        { key: "registration", label: t("adminConsole.navRegistration"), icon: UserPlus },
+        { key: "email", label: t("adminConsole.navEmail"), icon: Mail },
+      ]
+    : [];
+  const ownerOnlyStorageTab: AdminTab[] = isOwner
+    ? [{ key: "storage", label: t("adminConsole.navStorage"), icon: Database }]
+    : [];
+  const tabs: AdminTab[] = [
     { key: "site", label: t("adminConsole.navSite"), icon: Globe },
+    { key: "members", label: t("adminConsole.navMembers"), icon: Users },
     { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
-    { key: "registration", label: t("adminConsole.navRegistration"), icon: UserPlus },
-    { key: "email", label: t("adminConsole.navEmail"), icon: Mail },
+    ...ownerOnlyTabs,
     { key: "messages", label: t("adminConsole.navMessages"), icon: MessageSquareText },
-    { key: "storage", label: t("adminConsole.navStorage"), icon: Database },
+    ...ownerOnlyStorageTab,
     { key: "shortcuts", label: t("adminConsole.navShortcuts"), icon: Keyboard },
   ];
 
@@ -77,7 +89,13 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
           </>
         );
       default:
-        return <UserManagementCard currentUserId={user.id} demoMode={false} />;
+        return (
+          <UserManagementCard
+            currentUserId={user.id}
+            currentUserRole={user.role}
+            demoMode={false}
+          />
+        );
     }
   };
 

@@ -31,7 +31,7 @@ type SessionRow = {
   expires_at: string;
   last_seen_at: string | null;
   workspace_id: string | null;
-  role: "owner" | "member" | null;
+  role: "owner" | "admin" | "member" | null;
 };
 
 const SESSION_COOKIE = "edgeever_session";

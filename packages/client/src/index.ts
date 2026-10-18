@@ -1627,7 +1627,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         password?: string;
         isDisabled?: boolean;
         isDeleted?: boolean;
-        role?: "owner" | "member";
+        role?: "admin" | "member";
       },
     ) =>
       request<UserResponse>(`/api/v1/users/${userId}`, {

@@ -2452,7 +2452,7 @@ export const zhCN = {
     pageInfo: "第 {{page}}/{{pages}} 页",
     pagePrev: "上一页",
     pageNext: "下一页",
-    roles: { owner: "实例管理员", member: "成员" },
+    roles: { owner: "站长", admin: "管理员", member: "成员" },
   },
   password: {
     title: "修改密码",
