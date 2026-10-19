@@ -12,6 +12,12 @@ import { downloadContentDispositionFromRequest, isSafeResourceId, parseByteRange
 import { isSupportedAssociatedFile } from "./file-association.mjs";
 import { accountDataDirectory, accountScopeKey } from "./account-scope.mjs";
 import { rotateDiagnosticLog } from "./diagnostic-log.mjs";
+import {
+  chooseFasterRoute,
+  normalizeProxySettings,
+  proxySessionConfig,
+  startupProxySessionConfig,
+} from "./network-proxy.mjs";
 import { restrictDirectory, restrictFile } from "./file-permissions.mjs";
 import {
   STAGED_RESOURCE_PART_BYTES,
@@ -119,6 +125,7 @@ const apiBaseUrl = (!app.isPackaged && (process.env.EDGE_EVER_API_URL || process
   ? process.env.EDGE_EVER_API_URL || webUrl
   : "").replace(/\/$/, "");
 let configuredApiBaseUrl = apiBaseUrl;
+let primaryApiBaseUrl = apiBaseUrl;
 const packagedSidecarName = process.platform === "win32" ? "edgeever-sidecar.exe" : "edgeever-sidecar";
 const sidecarPath = process.env.EDGE_EVER_SIDECAR_PATH || (app.isPackaged
   ? join(process.resourcesPath, "sidecar", packagedSidecarName)
@@ -173,14 +180,18 @@ const scheduledTaskScheduler = new ScheduledTaskScheduler({
 });
 const updateCheckIntervalMs = 60 * 60 * 1_000;
 const updateCheckFocusThrottleMs = 15 * 60 * 1_000;
+const proxyProbeTimeoutMs = 5_000;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const windowStatePath = () => join(app.getPath("userData"), "window-state.json");
 const instanceUrlPath = () => join(app.getPath("userData"), "instance-url");
+const primaryApiBaseUrlPath = () => join(app.getPath("userData"), "instance-primary-url");
+const proxySettingsPath = () => join(app.getPath("userData"), "proxy-settings.json");
 const sessionTokenPath = () => join(app.getPath("userData"), "session-token");
 const crashMarkerPath = () => join(app.getPath("userData"), "last-session-active");
 const installationMarkerPath = () => join(app.getPath("userData"), "installation-confirmed");
 const logPath = () => join(app.getPath("userData"), "logs", "desktop.log");
 let desktopSessionToken = "";
+let proxySettings = null;
 let storageDataRoot = "";
 let storageMigrationInProgress = false;
 const storageLocationPath = () => storageLocationConfigPath(app.getPath("userData"));
@@ -195,7 +206,7 @@ const currentStorageRoot = () => storageDataRoot || app.getPath("userData");
 const sidecarDataDirectory = (accountId = null) => {
   const root = currentStorageRoot();
   return accountId
-    ? accountDataDirectory(root, configuredApiBaseUrl, accountId)
+    ? accountDataDirectory(root, primaryApiBaseUrl, accountId)
     : root;
 };
 const legacyDataDirectory = () => app.getPath("userData");
@@ -213,7 +224,7 @@ const migrateLegacyAccountData = async (accountId) => {
     const sourcePath = join(source, name);
     if (existsSync(sourcePath)) await movePath(sourcePath, join(destination, name));
   }
-  void writeDiagnostic("sidecar.legacy-data-migrated", { scope: accountScopeKey(configuredApiBaseUrl, accountId) });
+  void writeDiagnostic("sidecar.legacy-data-migrated", { scope: accountScopeKey(primaryApiBaseUrl, accountId) });
 };
 
 protocol.registerSchemesAsPrivileged([{
@@ -495,6 +506,19 @@ const loadConfiguredApiBaseUrl = async () => {
   }
 };
 
+const loadPrimaryApiBaseUrl = async () => {
+  try {
+    const stored = (await readFile(primaryApiBaseUrlPath(), "utf8")).trim().replace(/\/$/, "");
+    if (stored.startsWith("http://") || stored.startsWith("https://")) {
+      primaryApiBaseUrl = stored;
+      return;
+    }
+  } catch {
+    // Installations upgraded from the single-address era reuse instance-url.
+  }
+  primaryApiBaseUrl = configuredApiBaseUrl;
+};
+
 const loadDesktopSessionToken = async () => {
   try {
     const encrypted = await readFile(sessionTokenPath());
@@ -503,6 +527,14 @@ const loadDesktopSessionToken = async () => {
     // Existing installations have no main-process credential until the
     // renderer migrates the legacy localStorage token after upgrading.
     desktopSessionToken = "";
+  }
+};
+
+const loadProxySettings = async () => {
+  try {
+    proxySettings = normalizeProxySettings(JSON.parse(await readFile(proxySettingsPath(), "utf8")));
+  } catch {
+    proxySettings = null;
   }
 };
 
@@ -1196,7 +1228,7 @@ const startSidecar = async (accountId = null) => {
 
   await migrateLegacyAccountData(accountId);
   const migrationsPath = app.isPackaged ? join(process.resourcesPath, "migrations") : join(projectRoot, "migrations");
-  sidecarScopeKey = accountScopeKey(configuredApiBaseUrl, accountId);
+  sidecarScopeKey = accountScopeKey(primaryApiBaseUrl, accountId);
   activeAccountId = accountId;
   const spawnedProcess = spawn(sidecarPath, ["--data-dir", sidecarDataDirectory(accountId), "--migrations-dir", migrationsPath], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -1519,13 +1551,23 @@ const startApplication = async () => {
     return;
   }
   await loadConfiguredApiBaseUrl();
+  await loadPrimaryApiBaseUrl();
   await loadDesktopSessionToken();
+  await loadProxySettings();
   await loadStorageLocation();
   app.setAsDefaultProtocolClient("edgeever");
   recoveredAfterAbnormalExit = existsSync(crashMarkerPath());
   void writeDiagnostic(recoveredAfterAbnormalExit ? "session.recovered-after-abnormal-exit" : "session.started");
   await writeFile(crashMarkerPath(), new Date().toISOString());
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  await session.defaultSession.setProxy(startupProxySessionConfig(proxySettings));
+  app.on("login", (event, _webContents, _authenticationResponseDetails, authInfo, callback) => {
+    if (!authInfo?.isProxy) return;
+    // Cancel proxy credential prompts so a broken proxy fails fast instead of
+    // blocking every request behind a hidden dialog.
+    event.preventDefault();
+    callback();
+  });
   registerDesktopAppProtocol();
   registerResourceProtocol();
   await preparePackagedRendererOrigin();
@@ -1594,7 +1636,7 @@ const startApplication = async () => {
   ipcMain.handle("desktop:set-account-scope", async (_event, accountId) => {
     if (storageMigrationInProgress) throw new Error("EdgeEver is moving local data to another folder");
     const normalizedAccountId = typeof accountId === "string" && accountId.trim() ? accountId.trim() : null;
-    const nextScopeKey = accountScopeKey(configuredApiBaseUrl, normalizedAccountId);
+    const nextScopeKey = accountScopeKey(primaryApiBaseUrl, normalizedAccountId);
     scheduledTaskScheduler.clear();
     if (sidecar && sidecarScopeKey === nextScopeKey) {
       await sidecar.waitUntilReady();
@@ -1619,6 +1661,7 @@ const startApplication = async () => {
     if (rendererStartupGuard?.complete()) void writeDiagnostic("renderer.bootstrap-ready");
   });
   ipcMain.on("desktop:api-base-url-sync", (event) => { event.returnValue = configuredApiBaseUrl; });
+  ipcMain.on("desktop:proxy-settings-sync", (event) => { event.returnValue = proxySettings; });
   ipcMain.on("desktop:session-token-sync", (event) => { event.returnValue = desktopSessionToken; });
   ipcMain.on("desktop:recovered-after-abnormal-exit-sync", (event) => { event.returnValue = recoveredAfterAbnormalExit; });
   ipcMain.handle("desktop:copy-text", (_event, value) => {
@@ -1758,13 +1801,110 @@ const startApplication = async () => {
     scheduledTaskScheduler.clear();
     configuredApiBaseUrl = normalized;
     await writeFile(instanceUrlPath(), configuredApiBaseUrl);
-    if (sidecar) {
+    const nextScopeKey = accountScopeKey(primaryApiBaseUrl, activeAccountId);
+    if (sidecar && sidecarScopeKey !== nextScopeKey) {
       await stopSidecar();
       const nextSidecar = await startSidecar(activeAccountId);
       if (!nextSidecar) throw new Error("EdgeEver sidecar is unavailable after changing instance");
       await nextSidecar.waitUntilReady();
     }
     return configuredApiBaseUrl;
+  });
+  ipcMain.handle("desktop:set-primary-api-base-url", async (_event, value) => {
+    const normalized = typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
+    if (!normalized) throw new Error("Desktop API URL must be a valid HTTP(S) URL");
+    let parsed;
+    try { parsed = new URL(normalized); } catch { throw new Error("Desktop API URL must be a valid HTTP(S) URL"); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Desktop API URL must use HTTP(S)");
+    if (normalized === primaryApiBaseUrl) return primaryApiBaseUrl;
+    primaryApiBaseUrl = normalized;
+    await writeFile(primaryApiBaseUrlPath(), primaryApiBaseUrl);
+    const nextScopeKey = accountScopeKey(primaryApiBaseUrl, activeAccountId);
+    if (sidecar && sidecarScopeKey !== nextScopeKey) {
+      await stopSidecar();
+      const nextSidecar = await startSidecar(activeAccountId);
+      if (!nextSidecar) throw new Error("EdgeEver sidecar is unavailable after changing instance identity");
+      await nextSidecar.waitUntilReady();
+    }
+    void writeDiagnostic("instance.primary-changed", { scope: accountScopeKey(primaryApiBaseUrl, activeAccountId) });
+    return primaryApiBaseUrl;
+  });
+  ipcMain.handle("desktop:probe-instance-urls", async (event, values) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Instance probes must come from the main window");
+    const urls = [];
+    if (Array.isArray(values)) {
+      for (const value of values) {
+        if (urls.length >= 8) break;
+        const normalized = typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
+        if (!normalized || urls.includes(normalized)) continue;
+        let parsed;
+        try { parsed = new URL(normalized); } catch { continue; }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+        urls.push(normalized);
+      }
+    }
+    const results = [];
+    for (const url of urls) {
+      const startedAt = Date.now();
+      let ms = null;
+      try {
+        const response = await net.fetch(`${url}/api/health`, { signal: AbortSignal.timeout(proxyProbeTimeoutMs) });
+        ms = response.ok ? Date.now() - startedAt : null;
+      } catch {
+        ms = null;
+      }
+      results.push({ url, ms });
+    }
+    void writeDiagnostic("instance.probed", { results });
+    return results;
+  });
+  ipcMain.handle("desktop:set-proxy-settings", async (_event, value) => {
+    const normalized = normalizeProxySettings(value);
+    if (!normalized) throw new Error("Desktop proxy settings are invalid");
+    proxySettings = normalized;
+    await writeFile(proxySettingsPath(), JSON.stringify(proxySettings));
+    await session.defaultSession.setProxy(startupProxySessionConfig(proxySettings));
+    void writeDiagnostic("proxy.updated", {
+      mode: proxySettings.mode,
+      protocol: proxySettings.protocol,
+      host: proxySettings.host,
+      port: proxySettings.port,
+    });
+    return proxySettings;
+  });
+  ipcMain.handle("desktop:probe-proxy-for-session", async (event, baseUrl) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Proxy probes must come from the main window");
+    const normalized = typeof baseUrl === "string" ? baseUrl.trim().replace(/\/$/, "") : "";
+    let parsed;
+    try { parsed = new URL(normalized); } catch { throw new Error("Proxy probe needs a valid HTTP(S) instance URL"); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("Proxy probe needs a valid HTTP(S) instance URL");
+    }
+
+    const probeOnce = async () => {
+      const startedAt = Date.now();
+      try {
+        const response = await net.fetch(`${normalized}/api/health`, { signal: AbortSignal.timeout(proxyProbeTimeoutMs) });
+        return response.ok ? Date.now() - startedAt : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const mode = proxySettings?.mode ?? "off";
+    if (mode === "off" || !proxySettings?.host || !(proxySettings.port >= 1)) {
+      await session.defaultSession.setProxy({ mode: "direct" });
+      return { directMs: await probeOnce(), proxyMs: null, chosen: "direct" };
+    }
+
+    await session.defaultSession.setProxy({ mode: "direct" });
+    const directMs = await probeOnce();
+    await session.defaultSession.setProxy(proxySessionConfig(proxySettings));
+    const proxyMs = await probeOnce();
+    const chosen = mode === "always" ? "proxy" : chooseFasterRoute(directMs, proxyMs);
+    await session.defaultSession.setProxy(chosen === "proxy" ? proxySessionConfig(proxySettings) : { mode: "direct" });
+    void writeDiagnostic("proxy.probed", { chosen, directMs, proxyMs });
+    return { directMs, proxyMs, chosen };
   });
   ipcMain.handle("desktop:update-status", () => desktopUpdateStatus());
   ipcMain.handle("desktop:check-update", async () => {

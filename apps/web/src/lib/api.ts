@@ -6,6 +6,7 @@ import {
 import type { AuthSession } from "@edgeever/shared";
 import { normalizeInstanceUrl } from "@edgeever/shared";
 import { createClientUuid } from "./client-id";
+import { readDesktopInstanceCandidates } from "./desktop-instance-urls";
 
 export { ApiRequestError };
 export type {
@@ -148,12 +149,41 @@ export const saveDesktopApiBaseUrl = async (value: string) => {
     throw new DesktopInstanceUrlError();
   }
 
-  if (getConfiguredDesktopApiBaseUrl() !== normalized) {
+  const savedPrimary = readDesktopInstanceCandidates()[0] ?? "";
+  const identityChanged = savedPrimary
+    ? savedPrimary !== normalized
+    : getConfiguredDesktopApiBaseUrl() !== normalized;
+  if (identityChanged) {
     clearCachedDesktopSession();
   }
   await window.edgeeverDesktop?.setApiBaseUrl(normalized);
+  await window.edgeeverDesktop?.setPrimaryApiBaseUrl?.(normalized);
   window.localStorage.setItem(DESKTOP_API_BASE_URL_STORAGE_KEY, normalized);
   return normalized;
+};
+
+export const selectActiveDesktopApiBaseUrl = async (value: string) => {
+  const normalized = normalizeInstanceUrl(value);
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new DesktopInstanceUrlError();
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new DesktopInstanceUrlError();
+  }
+
+  if (getConfiguredDesktopApiBaseUrl() === normalized) return normalized;
+  await window.edgeeverDesktop?.setApiBaseUrl(normalized);
+  window.localStorage.setItem(DESKTOP_API_BASE_URL_STORAGE_KEY, normalized);
+  return normalized;
+};
+
+export const probeDesktopInstanceUrls = async (urls: string[]) => {
+  const bridge = window.edgeeverDesktop;
+  if (!bridge?.isAvailable || !bridge.probeInstanceUrls || urls.length === 0) return [];
+  return bridge.probeInstanceUrls(urls);
 };
 
 const createWebDeviceId = () => `web-${createClientUuid()}`;

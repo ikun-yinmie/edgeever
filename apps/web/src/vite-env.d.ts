@@ -20,6 +20,30 @@ interface EdgeEverDesktopBridge {
   recoveredAfterAbnormalExit: boolean;
   apiBaseUrl: string;
   setApiBaseUrl(value: string): Promise<string>;
+  setPrimaryApiBaseUrl?(value: string): Promise<string>;
+  probeInstanceUrls?(urls: string[]): Promise<Array<{ url: string; ms: number | null }>>;
+  getProxySettings(): {
+    mode: "off" | "auto" | "always";
+    protocol: "http" | "socks5";
+    host: string;
+    port: number;
+  } | null;
+  setProxySettings(value: {
+    mode: "off" | "auto" | "always";
+    protocol: "http" | "socks5";
+    host: string;
+    port: number;
+  }): Promise<{
+    mode: "off" | "auto" | "always";
+    protocol: "http" | "socks5";
+    host: string;
+    port: number;
+  }>;
+  probeProxyForSession(baseUrl: string): Promise<{
+    directMs: number | null;
+    proxyMs: number | null;
+    chosen: "direct" | "proxy";
+  }>;
   getSessionToken(): string;
   copyText(value: string): Promise<boolean>;
   copyHtml(html: string, plainText: string): Promise<boolean>;

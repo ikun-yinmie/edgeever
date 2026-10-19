@@ -16,6 +16,7 @@ import {
   getConfiguredDesktopApiBaseUrl,
   getCachedDesktopSession,
   saveDesktopApiBaseUrl,
+  selectActiveDesktopApiBaseUrl,
 } from "@/lib/api";
 import { lazyWithChunkRetry } from "@/lib/lazy-retry";
 import { classifyLoginError, getLoginProblemMessageKey } from "@/lib/login-error";
@@ -232,9 +233,12 @@ const AuthenticatedWorkspace = () => {
   }, [desktopAccountId, desktopBridge, desktopScopeAttempt, sessionQuery.isLoading]);
 
   const loginMutation = useMutation({
-    mutationFn: async (payload: { instanceUrl?: string; username: string; password: string }) => {
+    mutationFn: async (payload: { instanceUrl?: string; instanceActiveUrl?: string; username: string; password: string }) => {
       if (desktopBridge?.isAvailable && payload.instanceUrl !== undefined) {
         await saveDesktopApiBaseUrl(payload.instanceUrl);
+      }
+      if (desktopBridge?.isAvailable && payload.instanceActiveUrl) {
+        await selectActiveDesktopApiBaseUrl(payload.instanceActiveUrl);
       }
       const session = await api.login({ username: payload.username, password: payload.password });
       await cacheDesktopSession(session);
