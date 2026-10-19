@@ -30,7 +30,9 @@ describe("session bootstrap", () => {
     expect(source).toContain("getSessionWithTimeout");
   });
 
-  test("falls back to the cached session on timeout or offline instead of the login screen", () => {
-    expect(source).toContain("error instanceof SessionRequestTimeoutError || isBrowserOffline()");
+  test("falls back to the cached session whenever the server is unreachable instead of the login screen", () => {
+    expect(source).toContain("cached?.authenticated && isServerUnreachableError(error)");
+    expect(source).toContain("const isServerUnreachableError = (error: unknown) => {");
+    expect(source).toContain("isBrowserOffline()");
   });
 });

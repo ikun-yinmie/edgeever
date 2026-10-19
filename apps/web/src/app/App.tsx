@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   api,
+  ApiRequestError,
   cacheDesktopSession,
   clearCachedDesktopSession,
   getConfiguredDesktopApiBaseUrl,
@@ -152,6 +153,18 @@ class SessionRequestTimeoutError extends Error {
   }
 }
 
+/**
+ * A session request that never reached the API says nothing about whether the
+ * session is still valid. Treat tunnel/gateway failures like an outage so the
+ * cached session keeps working instead of forcing a re-login.
+ */
+const isServerUnreachableError = (error: unknown) => {
+  if (error instanceof SessionRequestTimeoutError) return true;
+  if (isBrowserOffline()) return true;
+  if (error instanceof ApiRequestError) return error.status === 0 || error.status >= 500;
+  return error instanceof TypeError || error instanceof SyntaxError;
+};
+
 const getSessionWithTimeout = async (): Promise<AuthSession> => {
   let timer: number | undefined;
   try {
@@ -187,7 +200,7 @@ const AuthenticatedWorkspace = () => {
         return session;
       } catch (error) {
         const cached = getCachedDesktopSession();
-        if (cached?.authenticated && (error instanceof SessionRequestTimeoutError || isBrowserOffline())) {
+        if (cached?.authenticated && isServerUnreachableError(error)) {
           return cached;
         }
         throw error;

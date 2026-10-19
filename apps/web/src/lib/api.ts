@@ -197,11 +197,18 @@ const confirmSessionLost = async (): Promise<boolean> => {
         credentials: "include",
         headers,
       });
-      if (!response.ok) return true;
-      const session = await response.json().catch(() => null) as AuthSession | null;
-      return !session?.authenticated;
+      if (response.ok) {
+        const session = await response.json().catch(() => null) as AuthSession | null;
+        return !session?.authenticated;
+      }
+      // Only an explicit rejection disproves the session. Gateway and tunnel
+      // failures (CF 502/1033 pages, 5xx, rate limits) must not sign the user
+      // out just because the network is flaky.
+      return response.status === 401 || response.status === 403;
     } catch {
-      return true;
+      // The network itself failed, so the session cannot be disproved here;
+      // keep it and let a later request decide.
+      return false;
     } finally {
       queueMicrotask(() => {
         unauthorizedConfirmPromise = null;
