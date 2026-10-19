@@ -524,6 +524,39 @@ await request("memo.delete", { memoId: "memo_remote_in_flight", permanent: true 
 const remoteCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === "memo_remote_in_flight");
 for (const item of remoteCleanup) await request("sync.outbox.discard", { id: item.id });
 
+// A move queued while the create is in flight must wait for the create
+// acknowledgement and then follow the durable id instead of the temporary one,
+// otherwise the server rejects the batch forever with `missing_memos`.
+const outboxMoveFor = (items, memoId) =>
+  items.find((item) => item.kind === "memo.move" && Array.isArray(item.payload.memoIds) && item.payload.memoIds.includes(memoId));
+const moveRaceNotebook = (await request("notebook.create", { name: "Move race destination" })).notebook;
+const moveRaceNote = await request("memo.create", { notebookId: inbox.id, title: "Move race", contentMarkdown: "moved before create ack", tags: [] });
+const moveRaceCreate = (await request("sync.outbox.list", { limit: 200 })).items.find((item) => item.kind === "memo.create" && item.entityId === moveRaceNote.memo.id);
+assert.ok(moveRaceCreate, "move race fixture should queue a create");
+await request("memo.moveBatch", { memoIds: [moveRaceNote.memo.id], notebookId: moveRaceNotebook.id });
+assert.ok(
+  !outboxMoveFor((await request("sync.outbox.list", { limit: 200 })).items, moveRaceNote.memo.id),
+  "a move carrying a temporary id must wait for the create acknowledgement",
+);
+const remoteMoveRace = {
+  ...moveRaceNote.memo,
+  id: "memo_remote_move_race",
+  revision: 1,
+  updatedAt: "2026-09-06T02:00:00.000Z",
+};
+await request("sync.outbox.ack", { id: moveRaceCreate.id, version: moveRaceCreate.version, remoteMemo: remoteMoveRace });
+const releasedMove = outboxMoveFor((await request("sync.outbox.list", { limit: 200 })).items, "memo_remote_move_race");
+assert.ok(releasedMove, "acknowledging the create should release the dependent move");
+assert.deepEqual(releasedMove.payload.memoIds, ["memo_remote_move_race"], "the acknowledgement must remap nested batch payload ids");
+assert.equal(releasedMove.entityId, moveRaceNotebook.id, "a move outbox item is keyed by its destination notebook");
+await request("sync.outbox.discard", { id: releasedMove.id });
+await request("memo.delete", { memoId: "memo_remote_move_race", permanent: true });
+const moveRaceCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === "memo_remote_move_race");
+for (const item of moveRaceCleanup) await request("sync.outbox.discard", { id: item.id });
+await request("notebook.delete", { notebookId: moveRaceNotebook.id });
+const moveRaceNotebookCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === moveRaceNotebook.id);
+for (const item of moveRaceNotebookCleanup) await request("sync.outbox.discard", { id: item.id });
+
 // Remote snapshots must not overwrite a pending local delete; server-side
 // deletions still apply.
 await applyRemoteMemo(remoteMemo("memo_e2e_pull_guard"));
@@ -546,4 +579,4 @@ assert.equal(
 
 child.stdin.end();
 await new Promise((resolve) => child.once("close", resolve));
-console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.apply.pending-delete-guard", "sync.outbox", "sync.outbox.claim", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard", "sync.outbox.cancel-unsynced-create", "sync.outbox.deferred-delete-remap"] }));
+console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.apply.pending-delete-guard", "sync.outbox", "sync.outbox.claim", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard", "sync.outbox.cancel-unsynced-create", "sync.outbox.deferred-delete-remap", "sync.outbox.deferred-move-remap"] }));

@@ -217,32 +217,54 @@ export const queueMemoRestore = async (scope: string, payload: MemoRestoreSyncPa
   });
 };
 
+const BATCH_ACTION_KINDS = ["memo.moveBatch", "memo.deleteBatch", "memo.pinBatch"] as const;
+
+const isBatchActionKind = (kind: string): kind is (typeof BATCH_ACTION_KINDS)[number] =>
+  (BATCH_ACTION_KINDS as readonly string[]).includes(kind);
+
 const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo: MemoDetail) => {
   const remoteId = remoteMemo.id;
   const remappedIds: string[] = [];
-  const items = (await localDb.syncQueue.toArray()).filter(
-    (item) => item.scope === scope && item.memoId === temporaryId && item.kind !== "memo.create"
-  );
+  // Batch actions (move/delete/pin/merge) keep their memo ids in `payload.memoIds`
+  // instead of `memoId`, so matching on `memoId` alone left them pointing at a
+  // temporary id the server never saw and rejected with `missing_memos`.
+  const items = (await localDb.syncQueue.toArray()).filter((item) => {
+    if (item.scope !== scope || item.kind === "memo.create") return false;
+    if (item.memoId === temporaryId) return true;
+    const payload = item.payload as { memoIds?: unknown };
+    return Array.isArray(payload.memoIds) && payload.memoIds.includes(temporaryId);
+  });
   await localDb.transaction("rw", [localDb.syncQueue, localDb.drafts], async () => {
     for (const item of items) {
       const payload = { ...item.payload } as Record<string, unknown>;
-      if ("memoId" in payload) payload.memoId = remoteId;
+      const isDirect = item.memoId === temporaryId;
+      if (isDirect && "memoId" in payload) payload.memoId = remoteId;
+      let nextMemoId = isDirect ? remoteId : item.memoId;
+      if (Array.isArray(payload.memoIds)) {
+        const memoIds = payload.memoIds.map((value) => (value === temporaryId ? remoteId : value));
+        payload.memoIds = memoIds;
+        if (isBatchActionKind(item.kind)) {
+          nextMemoId = memoIds.filter((value): value is string => typeof value === "string").join(",");
+        }
+      }
       if (item.kind === "memo.update") {
         payload.expectedRevision = remoteMemo.revision;
         payload.expectedContentHash = remoteMemo.contentHash;
       }
       const nextId = item.kind === "memo.update"
-        ? getMemoUpdateQueueId(remoteId)
+        ? getMemoUpdateQueueId(nextMemoId)
         : item.kind === "memo.delete"
-          ? getMemoDeleteQueueId(remoteId)
+          ? getMemoDeleteQueueId(nextMemoId)
           : item.kind === "memo.restore"
-            ? getMemoRestoreQueueId(remoteId)
-            : item.id;
+            ? getMemoRestoreQueueId(nextMemoId)
+            : isBatchActionKind(item.kind)
+              ? getLocalActionQueueId(scope, item.kind, nextMemoId)
+              : item.id;
       if (nextId !== item.id) await localDb.syncQueue.delete(item.id);
       await localDb.syncQueue.put({
         ...item,
         id: nextId,
-        memoId: remoteId,
+        memoId: nextMemoId,
         payload: payload as SyncQueueItem["payload"],
       });
       remappedIds.push(nextId);
@@ -322,6 +344,17 @@ export const isRetryableSyncQueueError = (error: unknown) => {
   }
   return true;
 };
+
+/**
+ * Terminal failures stop retrying in the background, but a move or pin batch
+ * rejected with a permanent missing-memo code is worth one more pass: the
+ * tolerant batch handlers resolve it by moving or pinning whatever still exists
+ * (acknowledging the rest) instead of wedging the sync badge forever.
+ */
+export const shouldRetryMissingMemoBatch = (item: Pick<SyncQueueItem, "kind" | "status" | "lastErrorCode">) =>
+  item.status === "error"
+  && ((item.kind === "memo.moveBatch" && item.lastErrorCode === "missing_memos")
+    || (item.kind === "memo.pinBatch" && (item.lastErrorCode === "not_found" || item.lastErrorCode === "http_404")));
 
 export const observeRetryableSyncErrors = (scope: string, onChange: (count: number) => void) => {
   const subscription = liveQuery(async () => {
@@ -442,6 +475,25 @@ export const syncQueuedChanges = (options: {
   return activeSyncPromise;
 };
 
+// Batch payloads carry their own memo ids, so a move/pin must also look inside
+// `payload.memoIds` to notice that one of its notes still awaits the create
+// acknowledgement that remaps the temporary id in place.
+const referencesOpenCreateMemo = (item: SyncQueueItem, openCreateIds: Set<string>) => {
+  if (openCreateIds.has(item.memoId)) return true;
+  const payload = item.payload as { memoIds?: unknown };
+  return Array.isArray(payload.memoIds)
+    && payload.memoIds.some((memoId) => typeof memoId === "string" && openCreateIds.has(memoId));
+};
+
+const waitsForOpenCreate = (item: SyncQueueItem, openCreateIds: Set<string>) =>
+  item.kind !== "memo.create"
+  && (item.kind === "memo.delete"
+    || item.kind === "memo.update"
+    || item.kind === "memo.restore"
+    || item.kind === "memo.moveBatch"
+    || item.kind === "memo.pinBatch")
+  && referencesOpenCreateMemo(item, openCreateIds);
+
 const runQueuedChanges = async (options: {
   scope?: string;
   onMemoAcknowledged?: (memo: MemoDetail, item: SyncQueueItem, acknowledgement: MemoUpdateAcknowledgement) => void | Promise<void>;
@@ -458,9 +510,10 @@ const runQueuedChanges = async (options: {
   const allQueued = await localDb.syncQueue.toArray();
   const queued = allQueued.filter((item) => item.status === "pending" || item.status === "error");
   // Terminal failures leave `nextAttemptAt` empty so they stop retrying in the
-  // background; only fresh items and scheduled retries run here.
+  // background; only fresh items, scheduled retries, and recoverable
+  // missing-memo batches run here.
   const candidates = queued
-    .filter((item) => item.status === "pending" || (item.nextAttemptAt !== null && new Date(item.nextAttemptAt) <= now))
+    .filter((item) => item.status === "pending" || shouldRetryMissingMemoBatch(item) || (item.nextAttemptAt !== null && new Date(item.nextAttemptAt) <= now))
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   // Includes in-flight creates: their dependent deletes must wait for the
   // acknowledgement that remaps the temporary id, never race ahead of it.
@@ -486,12 +539,10 @@ const runQueuedChanges = async (options: {
 
     // A delete/update/restore must wait for the note's own create to reach the
     // server. Otherwise the server acks the delete for an unknown temporary id
-    // and the later create retry resurrects the note.
-    if (
-      ready.kind !== "memo.create" &&
-      openCreateIds.has(ready.memoId) &&
-      (ready.kind === "memo.delete" || ready.kind === "memo.update" || ready.kind === "memo.restore")
-    ) {
+    // and the later create retry resurrects the note. A move/pin batch carrying
+    // a temporary id must wait as well: the server rejects it with
+    // `missing_memos` until the create acknowledgement remaps the payload.
+    if (waitsForOpenCreate(ready, openCreateIds)) {
       continue;
     }
 
@@ -518,6 +569,10 @@ const runQueuedChanges = async (options: {
           for (const remapped of remappedItems) {
             if (!remapped || items.some((queuedItem) => queuedItem.id === remapped.id)) continue;
             if (remapped.status === "pending" || remapped.status === "error") {
+              // One create acknowledgement can rewrite part of a batch while
+              // other ids still wait for their own create; keep it parked
+              // until every referenced create resolved.
+              if (waitsForOpenCreate(remapped, openCreateIds)) continue;
               items.push(remapped);
             }
           }
@@ -815,7 +870,26 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
   }
   if (item.kind === "memo.moveBatch") {
     const payload = item.payload as LocalActionPayload;
-    await api.moveMemos({ memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((value): value is string => typeof value === "string") : [], notebookId: String(payload.notebookId ?? "") });
+    const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((value): value is string => typeof value === "string") : [];
+    const notebookId = String(payload.notebookId ?? "");
+    try {
+      await api.moveMemos({ memoIds, notebookId });
+    } catch (error) {
+      // A note whose create never reached the server cannot be moved. Fall
+      // back to per-id moves so the rest of the batch still follows.
+      if (!(error instanceof ApiRequestError) || error.status !== 400 || error.code !== "missing_memos") {
+        throw error;
+      }
+      for (const memoId of memoIds) {
+        try {
+          await api.moveMemos({ memoIds: [memoId], notebookId });
+        } catch (nested) {
+          if (!(nested instanceof ApiRequestError) || nested.status !== 400 || nested.code !== "missing_memos") {
+            throw nested;
+          }
+        }
+      }
+    }
     return null;
   }
   if (item.kind === "memo.deleteBatch") {
@@ -850,7 +924,17 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
   if (item.kind === "memo.pinBatch") {
     const payload = item.payload as LocalActionPayload;
     const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((value): value is string => typeof value === "string") : [];
-    await Promise.all(memoIds.map((memoId) => api.updateMemo(memoId, { isPinned: Boolean(payload.isPinned) })));
+    for (const memoId of memoIds) {
+      try {
+        await api.updateMemo(memoId, { isPinned: Boolean(payload.isPinned) });
+      } catch (error) {
+        // The note may be already gone (removed on another device, or its
+        // create never reached the server); the rest of the batch still pins.
+        if (!(error instanceof ApiRequestError) || error.status !== 404) {
+          throw error;
+        }
+      }
+    }
     return null;
   }
   if (item.kind === "memo.merge") {

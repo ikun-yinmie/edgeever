@@ -19,8 +19,9 @@ const {
   rewriteStagedResource,
   shouldAttemptDesktopRecoveryPull,
   shouldPullDesktopChanges,
+  syncOutboxItem,
 } = await import("./desktop-sync.ts");
-const { ApiRequestError } = await import("./api.ts");
+const { ApiRequestError, api } = await import("./api.ts");
 
 describe("desktop staged resource sync", () => {
   test("rewrites placeholders in memo JSON and markdown", () => {
@@ -323,6 +324,127 @@ describe("desktop sync failure handling", () => {
     expect(shouldAttemptDesktopRecoveryPull("finalize_resource_remap", { pending: 0, syncing: 0 }, true)).toBe(false);
     expect(shouldAttemptDesktopRecoveryPull("sync_staged_resources", { pending: 0, syncing: 0 }, false)).toBe(false);
   });
+});
+
+describe("desktop batch outbox sync", () => {
+  const withSidecar = (body, acked = []) => async () => {
+    const previousWindow = globalThis.window;
+    globalThis.window = {
+      edgeeverDesktop: {
+        isAvailable: true,
+        sidecarRequest: async (method, params) => {
+          if (method === "sync.outbox.ack") {
+            acked.push(params);
+            return {};
+          }
+          throw new Error(`Unexpected sidecar request: ${method}`);
+        },
+      },
+    };
+    try {
+      await body();
+    } finally {
+      if (previousWindow === undefined) delete globalThis.window;
+      else globalThis.window = previousWindow;
+    }
+  };
+
+  test("moves what it can when the batch carries a temporary id the server never saw", withSidecar(async () => {
+    const originalMoveMemos = api.moveMemos;
+    const calls = [];
+    api.moveMemos = async (input) => {
+      calls.push(input);
+      if (input.memoIds.length > 1 || input.memoIds[0] === "memo_temp_2") {
+        throw new ApiRequestError("One or more memos cannot be moved.", 400, "missing_memos");
+      }
+      return { ok: true, moved: input.memoIds.length };
+    };
+
+    try {
+      const result = await syncOutboxItem({
+        id: 9,
+        kind: "memo.move",
+        entityId: "memo_remote_1,memo_temp_2",
+        payload: { memoIds: ["memo_remote_1", "memo_temp_2"], notebookId: "nb_target" },
+        attemptCount: 0,
+        version: 3,
+      }, []);
+      expect(result).toBeNull();
+      expect(calls).toEqual([
+        { memoIds: ["memo_remote_1", "memo_temp_2"], notebookId: "nb_target" },
+        { memoIds: ["memo_remote_1"], notebookId: "nb_target" },
+        { memoIds: ["memo_temp_2"], notebookId: "nb_target" },
+      ]);
+    } finally {
+      api.moveMemos = originalMoveMemos;
+    }
+  }));
+
+  test("keeps a move failure when the target notebook is missing", withSidecar(async () => {
+    const originalMoveMemos = api.moveMemos;
+    api.moveMemos = async () => {
+      throw new ApiRequestError("Target notebook not found", 404, "not_found");
+    };
+
+    try {
+      await expect(syncOutboxItem({
+        id: 10,
+        kind: "memo.move",
+        entityId: "memo_remote_1",
+        payload: { memoIds: ["memo_remote_1"], notebookId: "nb_missing" },
+        attemptCount: 0,
+        version: 1,
+      }, [])).rejects.toThrow("Target notebook not found");
+    } finally {
+      api.moveMemos = originalMoveMemos;
+    }
+  }));
+
+  test("pins the surviving memos when one target is already gone", withSidecar(async () => {
+    const originalUpdateMemo = api.updateMemo;
+    const pinned = [];
+    api.updateMemo = async (memoId, patch) => {
+      if (memoId === "memo_gone") {
+        throw new ApiRequestError("Memo not found", 404, "not_found");
+      }
+      pinned.push({ memoId, isPinned: patch.isPinned });
+      return { memo: { id: memoId } };
+    };
+
+    try {
+      await syncOutboxItem({
+        id: 11,
+        kind: "memo.pinBatch",
+        entityId: "memo_a,memo_gone",
+        payload: { memoIds: ["memo_a", "memo_gone"], isPinned: true },
+        attemptCount: 0,
+        version: 1,
+      }, []);
+      expect(pinned).toEqual([{ memoId: "memo_a", isPinned: true }]);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  }));
+
+  test("still fails a pin batch on a transient error", withSidecar(async () => {
+    const originalUpdateMemo = api.updateMemo;
+    api.updateMemo = async () => {
+      throw new ApiRequestError("Temporarily unavailable", 503);
+    };
+
+    try {
+      await expect(syncOutboxItem({
+        id: 12,
+        kind: "memo.pinBatch",
+        entityId: "memo_a",
+        payload: { memoIds: ["memo_a"], isPinned: true },
+        attemptCount: 0,
+        version: 1,
+      }, [])).rejects.toThrow("Temporarily unavailable");
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  }));
 });
 
 describe("shared snapshot sync diff", () => {

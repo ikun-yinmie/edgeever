@@ -144,14 +144,16 @@ pub(crate) fn sync_outbox_list(database: &Connection, params: &Value) -> Result<
     let sql = if include_conflicts {
         "SELECT id, kind, entity_id, payload_json, attempt_count, status, last_error, version, last_error_code, retryable, next_attempt_at, created_at, updated_at FROM _edgeever_sidecar_outbox WHERE status IN ('pending', 'error', 'conflict') ORDER BY id LIMIT ?1"
     } else {
-        // A delete/restore must wait for the note's own create to reach the
-        // server: the server would ack the delete for an id it never saw, and
-        // the later create retry would resurrect the note.
+        // A dependent batch must wait for the note's own create to reach the
+        // server: the server would ack the delete for an id it never saw and
+        // the later create retry would resurrect the note, while a move or pin
+        // carrying the temporary id is rejected as `missing_memos`. Waiting
+        // lets the create acknowledgement remap the batch payload first.
         "SELECT o.id, o.kind, o.entity_id, o.payload_json, o.attempt_count, o.status, o.last_error, o.version, o.last_error_code, o.retryable, o.next_attempt_at, o.created_at, o.updated_at
          FROM _edgeever_sidecar_outbox o
          WHERE (o.status = 'pending' OR (o.status = 'error' AND o.retryable = 1 AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))
            AND NOT (
-             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash')
+             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash', 'memo.move', 'memo.pinBatch')
              AND EXISTS (
                SELECT 1 FROM _edgeever_sidecar_outbox c
                WHERE c.kind = 'memo.create'
@@ -190,6 +192,31 @@ pub(crate) fn sync_outbox_claim(database: &Connection, params: &Value) -> Result
     }
     .map_err(|e| e.to_string())?;
     Ok(json!({ "ok": true, "claimed": updated == 1 }))
+}
+
+/// Rewrites every string value that exactly matches `from`. Batch payloads
+/// (`memoIds` arrays for move/pin/merge/delete) must follow a create or merge
+/// acknowledgement too, otherwise they keep referring to a dead temporary id
+/// and the server rejects them forever with `missing_memos`.
+fn replace_exact_string(value: &mut Value, from: &str, to: &str) {
+    match value {
+        Value::String(text) => {
+            if text == from {
+                *text = to.to_owned();
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                replace_exact_string(item, from, to);
+            }
+        }
+        Value::Object(entries) => {
+            for entry in entries.values_mut() {
+                replace_exact_string(entry, from, to);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<Value, String> {
@@ -350,12 +377,7 @@ pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<V
                 }
                 let mut payload: Value =
                     serde_json::from_str(&payload_text).unwrap_or_else(|_| json!({}));
-                if payload.get("memoId").and_then(Value::as_str) == Some(entity_id.as_str()) {
-                    payload["memoId"] = json!(remote_id);
-                }
-                if payload.get("temporaryId").and_then(Value::as_str) == Some(entity_id.as_str()) {
-                    payload["temporaryId"] = json!(remote_id);
-                }
+                replace_exact_string(&mut payload, &entity_id, &remote_id);
                 if payload.get("memoId").and_then(Value::as_str) == Some(remote_id.as_str()) {
                     if let Some(revision) = remote.get("revision") {
                         payload["expectedRevision"] = revision.clone();
@@ -1014,4 +1036,32 @@ pub(crate) fn apply_sync_changes(database: &Connection, params: &Value) -> Resul
     }
     tx.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "applied": changes.len() }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replace_exact_string;
+    use serde_json::json;
+
+    #[test]
+    fn replaces_remapped_memo_ids_in_nested_batch_payloads() {
+        let mut payload = json!({
+            "memoIds": ["memo_local_1", "memo_keep"],
+            "memoId": "memo_local_1",
+            "temporaryId": "memo_local_1",
+            "note": "memo_local_10 and memo_local_1 stay inline",
+            "nested": { "memoIds": ["memo_local_1"] }
+        });
+
+        replace_exact_string(&mut payload, "memo_local_1", "memo_remote_1");
+
+        assert_eq!(payload["memoIds"], json!(["memo_remote_1", "memo_keep"]));
+        assert_eq!(payload["memoId"], json!("memo_remote_1"));
+        assert_eq!(payload["temporaryId"], json!("memo_remote_1"));
+        assert_eq!(
+            payload["note"],
+            json!("memo_local_10 and memo_local_1 stay inline")
+        );
+        assert_eq!(payload["nested"]["memoIds"], json!(["memo_remote_1"]));
+    }
 }

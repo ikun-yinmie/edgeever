@@ -177,6 +177,42 @@ pub(crate) fn ensure_sidecar_schema(connection: &Connection) -> rusqlite::Result
             [],
         )?;
     }
+    requeue_recoverable_missing_memo_batches(connection)?;
+    Ok(())
+}
+
+/// Older clients stored temporary memo ids in batch payloads, so a move or pin
+/// that raced a create acknowledgement failed permanently with
+/// `missing_memos`/`not_found`. Current clients resolve those items instead of
+/// wedging the sync badge, but a terminal error is never retried automatically.
+/// Requeue them once so an upgrade heals existing failures without user action.
+pub(crate) fn requeue_recoverable_missing_memo_batches(
+    connection: &Connection,
+) -> rusqlite::Result<()> {
+    const REPAIR_KEY: &str = "repair.requeue_missing_memo_batches";
+    let applied: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM _edgeever_sidecar_meta WHERE key = ?1)",
+        [REPAIR_KEY],
+        |row| row.get(0),
+    )?;
+    if applied {
+        return Ok(());
+    }
+    connection.execute(
+        "UPDATE _edgeever_sidecar_outbox
+            SET status = 'pending', retryable = 1, next_attempt_at = NULL,
+                last_error = NULL, last_error_code = NULL,
+                version = version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+          WHERE status = 'error'
+            AND ((kind = 'memo.move' AND last_error_code = 'missing_memos')
+              OR (kind = 'memo.pinBatch' AND last_error_code IN ('not_found', 'http_404')))",
+        [],
+    )?;
+    connection.execute(
+        "INSERT INTO _edgeever_sidecar_meta (key, value, updated_at)
+         VALUES (?1, '1', strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        [REPAIR_KEY],
+    )?;
     Ok(())
 }
 
@@ -408,5 +444,58 @@ mod tests {
             )
             .expect("read upgraded row");
         assert_eq!(upgraded, (true, None, None));
+    }
+
+    #[test]
+    fn requeues_stuck_missing_memo_batches_once() {
+        let connection = Connection::open_in_memory().expect("open test database");
+        ensure_sidecar_schema(&connection).expect("create schema");
+        connection
+            .execute_batch(
+                "INSERT INTO _edgeever_sidecar_outbox
+                   (kind, entity_id, payload_json, status, last_error, last_error_code, retryable, next_attempt_at)
+                 VALUES
+                   ('memo.move', 'nb_move_missing', '{\"memoIds\":[\"memo_local_1\"]}', 'error', 'One or more memos cannot be moved.', 'missing_memos', 0, NULL),
+                   ('memo.pinBatch', 'batch', '{\"memoIds\":[\"memo_2\"]}', 'error', 'Memo not found', 'not_found', 0, NULL),
+                   ('memo.move', 'nb_move_deferred', '{\"memoIds\":[\"memo_3\"]}', 'error', 'Server exploded', 'http_500', 1, '2099-01-01T00:00:00.000Z'),
+                   ('memo.merge', 'memo_4', '{\"memoIds\":[\"memo_5\"]}', 'error', 'One or more memos cannot be merged.', 'missing_memos', 0, NULL);",
+            )
+            .expect("seed failed outbox items");
+
+        // The schema creation above consumed the one-time guard on an empty
+        // table; clear it to simulate the first launch after an upgrade.
+        connection
+            .execute(
+                "DELETE FROM _edgeever_sidecar_meta WHERE key = 'repair.requeue_missing_memo_batches'",
+                [],
+            )
+            .expect("reset repair guard");
+        requeue_recoverable_missing_memo_batches(&connection).expect("run repair");
+
+        let read = |entity_id: &str| -> (String, bool, Option<String>) {
+            connection
+                .query_row(
+                    "SELECT status, retryable, last_error_code FROM _edgeever_sidecar_outbox WHERE entity_id = ?1",
+                    [entity_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("read repaired row")
+        };
+        assert_eq!(read("nb_move_missing"), ("pending".to_owned(), true, None));
+        assert_eq!(read("batch"), ("pending".to_owned(), true, None));
+        assert_eq!(read("memo_4"), ("error".to_owned(), false, Some("missing_memos".to_owned())));
+        assert_eq!(read("nb_move_deferred"), ("error".to_owned(), true, Some("http_500".to_owned())));
+
+        // The repair must only run once per database.
+        connection
+            .execute(
+                "INSERT INTO _edgeever_sidecar_outbox
+                   (kind, entity_id, payload_json, status, last_error, last_error_code, retryable)
+                 VALUES ('memo.move', 'nb_2', '{\"memoIds\":[\"memo_6\"]}', 'error', 'gone', 'missing_memos', 0)",
+                [],
+            )
+            .expect("seed new failure");
+        ensure_sidecar_schema(&connection).expect("re-open schema");
+        assert_eq!(read("nb_2"), ("error".to_owned(), false, Some("missing_memos".to_owned())));
     }
 }

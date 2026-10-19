@@ -7,7 +7,7 @@ globalThis.IDBKeyRange = IDBKeyRange;
 const { localDb } = await import("./local-db.ts");
 const { ApiRequestError, api } = await import("./api.ts");
 const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources } = await import("./local-mirror.ts");
-const { discardWebConflicts, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, syncQueuedChanges } = await import("./sync-queue.ts");
+const { discardWebConflicts, getLocalActionQueueId, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, shouldRetryMissingMemoBatch, syncQueuedChanges } = await import("./sync-queue.ts");
 
 afterEach(async () => {
   await localDb.transaction(
@@ -486,4 +486,150 @@ describe("web sync conflict recovery", () => {
       if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
     }
   });
+});
+
+describe("web batch action recovery", () => {
+  const withOnline = (body) => async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    try {
+      await body();
+    } finally {
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  };
+
+  test("retries only terminal missing-memo batch failures", () => {
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.moveBatch", status: "error", lastErrorCode: "missing_memos" })).toBe(true);
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.pinBatch", status: "error", lastErrorCode: "not_found" })).toBe(true);
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.pinBatch", status: "error", lastErrorCode: "http_404" })).toBe(true);
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.pinBatch", status: "pending", lastErrorCode: "not_found" })).toBe(false);
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.deleteBatch", status: "error", lastErrorCode: "missing_memos" })).toBe(false);
+    expect(shouldRetryMissingMemoBatch({ kind: "memo.moveBatch", status: "error", lastErrorCode: "http_500" })).toBe(false);
+  });
+
+  test("moves an offline-created memo after the create acknowledgement remaps the batch", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const localMemo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: localMemo.id,
+      notebookId: localMemo.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+      createdAt: localMemo.createdAt,
+      updatedAt: localMemo.updatedAt,
+    });
+    await queueLocalAction(scope, "memo.moveBatch", localMemo.id, { memoIds: [localMemo.id], notebookId: "nb-target" });
+    const remoteMemo = { ...localMemo, id: "memo-remote-move", revision: 1, contentHash: "remote-hash" };
+    const original = { createMemo: api.createMemo, moveMemos: api.moveMemos };
+    const moveCalls = [];
+    api.createMemo = async () => ({ memo: remoteMemo });
+    api.moveMemos = async (input) => {
+      moveCalls.push(input);
+      return { ok: true, moved: input.memoIds.length };
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 2, failed: 0, conflicted: 0 });
+      expect(moveCalls).toEqual([{ memoIds: [remoteMemo.id], notebookId: "nb-target" }]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.createMemo = original.createMemo;
+      api.moveMemos = original.moveMemos;
+    }
+  }));
+
+  test("waits for the create before moving a memo that is still syncing", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const localMemo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: localMemo.id,
+      notebookId: localMemo.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+      createdAt: localMemo.createdAt,
+      updatedAt: localMemo.updatedAt,
+    });
+    await queueLocalAction(scope, "memo.moveBatch", localMemo.id, { memoIds: [localMemo.id], notebookId: "nb-target" });
+    const original = { createMemo: api.createMemo, moveMemos: api.moveMemos };
+    const moveCalls = [];
+    api.moveMemos = async (input) => {
+      moveCalls.push(input);
+      return { ok: true, moved: input.memoIds.length };
+    };
+    api.createMemo = async () => {
+      throw new ApiRequestError("Server unavailable", 500);
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 0, failed: 1, conflicted: 0 });
+      expect(moveCalls).toEqual([]);
+      const moveItem = await localDb.syncQueue.get(getLocalActionQueueId(scope, "memo.moveBatch", localMemo.id));
+      expect(moveItem?.status).toBe("pending");
+      expect(moveItem?.payload).toMatchObject({ memoIds: [localMemo.id] });
+    } finally {
+      api.createMemo = original.createMemo;
+      api.moveMemos = original.moveMemos;
+    }
+  }));
+
+  test("recovers a move batch stuck on a terminal missing_memos failure", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const moveId = getLocalActionQueueId(scope, "memo.moveBatch", "memo-dead");
+    await queueLocalAction(scope, "memo.moveBatch", "memo-dead", { memoIds: ["memo-dead"], notebookId: "nb-target" });
+    await localDb.syncQueue.update(moveId, {
+      status: "error",
+      lastError: "One or more memos cannot be moved.",
+      lastErrorCode: "missing_memos",
+      nextAttemptAt: null,
+    });
+    const originalMoveMemos = api.moveMemos;
+    const calls = [];
+    api.moveMemos = async (input) => {
+      calls.push(input);
+      if (input.memoIds.length === 1 && input.memoIds[0] === "memo-dead") {
+        throw new ApiRequestError("One or more memos cannot be moved.", 400, "missing_memos");
+      }
+      return { ok: true, moved: input.memoIds.length };
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      expect(calls).toEqual([
+        { memoIds: ["memo-dead"], notebookId: "nb-target" },
+        { memoIds: ["memo-dead"], notebookId: "nb-target" },
+      ]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.moveMemos = originalMoveMemos;
+    }
+  }));
+
+  test("pins what it can when a note in the batch is already gone", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await queueLocalAction(scope, "memo.pinBatch", "memo-a,memo-gone", { memoIds: ["memo-a", "memo-gone"], isPinned: true });
+    const originalUpdateMemo = api.updateMemo;
+    const pinned = [];
+    api.updateMemo = async (memoId, patch) => {
+      if (memoId === "memo-gone") {
+        throw new ApiRequestError("Memo not found", 404, "not_found");
+      }
+      pinned.push({ memoId, isPinned: patch.isPinned });
+      return { memo: { id: memoId } };
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      expect(pinned).toEqual([{ memoId: "memo-a", isPinned: true }]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  }));
 });

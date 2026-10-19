@@ -301,7 +301,7 @@ const acknowledge = async (
   await request("sync.outbox.ack", { id: item.id, version: item.version, remoteMemo, remoteNotebook, remoteTemplate });
 };
 
-const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedResourceRewrite[]) => {
+export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedResourceRewrite[]) => {
   const rewrittenPayload = stagedRewrites.length > 0
     ? rewriteStagedResource(item.payload, stagedRewrites.filter((rewrite) => rewrite.memoId === String(item.payload.memoId ?? item.entityId))) as Record<string, unknown>
     : item.payload;
@@ -426,7 +426,17 @@ const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedRes
 
   if (item.kind === "memo.pinBatch") {
     const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [];
-    await Promise.all(memoIds.map((memoId) => api.updateMemo(memoId, { isPinned: Boolean(payload.isPinned) })));
+    for (const memoId of memoIds) {
+      try {
+        await api.updateMemo(memoId, { isPinned: Boolean(payload.isPinned) });
+      } catch (error) {
+        // The note may be already gone (removed on another device, or its
+        // create never reached the server); the rest of the batch still pins.
+        if (!(error instanceof ApiRequestError) || error.status !== 404) {
+          throw error;
+        }
+      }
+    }
     await acknowledge(item);
     return null;
   }
@@ -512,10 +522,26 @@ const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedRes
   }
 
   if (item.kind === "memo.move") {
-    await api.moveMemos({
-      memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [],
-      notebookId: String(payload.notebookId ?? ""),
-    });
+    const memoIds = Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [];
+    const notebookId = String(payload.notebookId ?? "");
+    try {
+      await api.moveMemos({ memoIds, notebookId });
+    } catch (error) {
+      // A note whose create never reached the server cannot be moved. Fall
+      // back to per-id moves so the rest of the batch still follows.
+      if (!(error instanceof ApiRequestError) || error.status !== 400 || error.code !== "missing_memos") {
+        throw error;
+      }
+      for (const memoId of memoIds) {
+        try {
+          await api.moveMemos({ memoIds: [memoId], notebookId });
+        } catch (nested) {
+          if (!(nested instanceof ApiRequestError) || nested.status !== 400 || nested.code !== "missing_memos") {
+            throw nested;
+          }
+        }
+      }
+    }
     await acknowledge(item);
     return null;
   }
