@@ -291,6 +291,7 @@ import {
   shouldRetryCreatedMemoFocus,
   MOBILE_DRAFT_PERSIST_DELAY_MS,
   MOBILE_EDITOR_QUERY,
+  PHONE_PREVIEW_STAGE_QUERY,
   requiresLocalEditSession,
   setMobilePlainTextElementValue,
   SUPPORTED_PASTE_IMAGE_TYPES,
@@ -521,6 +522,10 @@ const RichEditorPane = ({
   const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
   const [editorOutlineCollapsed, setEditorOutlineCollapsed] = useState(readEditorOutlineCollapsedPreference);
   const [phonePreviewOpen, setPhonePreviewOpen] = useState(readEditorPhonePreviewPreference);
+  const [phonePreviewScroller, setPhonePreviewScroller] = useState<HTMLDivElement | null>(null);
+  const [phonePreviewStageVisible, setPhonePreviewStageVisible] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(PHONE_PREVIEW_STAGE_QUERY).matches
+  );
   const [memoIdCopyNotice, setMemoIdCopyNotice] = useState<{ status: "copied" | "error"; id: string } | null>(null);
   const handledSaveAndSyncTokenRef = useRef(saveAndSyncToken);
   const handledReadingProtectionToggleTokenRef = useRef(readingProtectionToggleToken);
@@ -855,6 +860,16 @@ const RichEditorPane = ({
     mediaQuery.addEventListener("change", updateMobileViewport);
 
     return () => mediaQuery.removeEventListener("change", updateMobileViewport);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(PHONE_PREVIEW_STAGE_QUERY);
+    const updatePhonePreviewStage = () => setPhonePreviewStageVisible(mediaQuery.matches);
+
+    updatePhonePreviewStage();
+    mediaQuery.addEventListener("change", updatePhonePreviewStage);
+
+    return () => mediaQuery.removeEventListener("change", updatePhonePreviewStage);
   }, []);
 
   useEffect(() => {
@@ -4497,12 +4512,14 @@ const RichEditorPane = ({
               editor={editor}
               title={getEditableMemoTitle(memo?.title)}
               scrollContainer={editorScrollContainer}
+              onScrollerChange={setPhonePreviewScroller}
             />
           )}
-          {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && !phonePreviewOpen && (
+          {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
             <EditorOutline
               editor={editor}
               scrollContainer={editorScrollContainer}
+              previewContainer={phonePreviewOpen && phonePreviewStageVisible ? phonePreviewScroller : null}
               collapsed={editorOutlineCollapsed}
               shortcutLabel={formatShortcutBinding(shortcutSettings.toggleOutline)}
               onCollapsedChange={handleEditorOutlineCollapsedChange}

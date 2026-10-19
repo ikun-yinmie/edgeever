@@ -24,6 +24,7 @@ type EditorPhonePreviewProps = {
   editor: Editor | null;
   title?: string;
   scrollContainer?: HTMLDivElement | null;
+  onScrollerChange?: (element: HTMLDivElement | null) => void;
   className?: string;
 };
 
@@ -61,7 +62,7 @@ const alignElement = (scroller: HTMLElement, target: HTMLElement, viewportTop: n
   scroller.scrollTop += delta;
 };
 
-export const EditorPhonePreview = ({ editor, title, scrollContainer, className }: EditorPhonePreviewProps) => {
+export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerChange, className }: EditorPhonePreviewProps) => {
   const { t } = useTranslation();
   const { editorTheme } = useEditorTheme();
   const { mermaidTheme } = useMermaidTheme();
@@ -206,7 +207,13 @@ export const EditorPhonePreview = ({ editor, title, scrollContainer, className }
           <div className="edgeever-phone-device__island" aria-hidden="true">
             <span className="edgeever-phone-device__lens" />
           </div>
-          <div className="edgeever-phone-preview" ref={previewRef}>
+          <div
+            className="edgeever-phone-preview"
+            ref={(element) => {
+              previewRef.current = element;
+              onScrollerChange?.(element);
+            }}
+          >
             {title?.trim() ? <p className="edgeever-phone-shell-title">{title.trim()}</p> : null}
             {markup.html ? (
               <div

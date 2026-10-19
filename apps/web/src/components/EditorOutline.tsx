@@ -10,9 +10,24 @@ import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 type EditorOutlineProps = {
   editor: Editor | null;
   scrollContainer: HTMLDivElement | null;
+  previewContainer?: HTMLDivElement | null;
   collapsed: boolean;
   shortcutLabel: string;
   onCollapsedChange: (collapsed: boolean) => void;
+};
+
+const EDITOR_READ_LINE_OFFSET = 96;
+const PREVIEW_READ_LINE_OFFSET = 72;
+const PREVIEW_HEADING_SELECTOR = "h1, h2, h3, h4, h5, h6";
+const ALIGN_TOLERANCE_PX = 4;
+
+const getPreviewHeadingElements = (container: HTMLDivElement | null) => {
+  if (!container) {
+    return [];
+  }
+  return [...container.querySelectorAll<HTMLElement>(PREVIEW_HEADING_SELECTOR)].filter(
+    (element) => (element.textContent ?? "").trim().length > 0
+  );
 };
 
 const stripLeadingEmoji = (str: string): string => {
@@ -47,7 +62,7 @@ const sameOutlineItems = (left: OutlineItem[], right: OutlineItem[]) =>
     return other?.level === item.level && other.pos === item.pos && other.text === item.text;
   });
 
-export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabel, onCollapsedChange }: EditorOutlineProps) => {
+export const EditorOutline = ({ editor, scrollContainer, previewContainer = null, collapsed, shortcutLabel, onCollapsedChange }: EditorOutlineProps) => {
   const { t } = useTranslation();
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [activePos, setActivePos] = useState<number | null>(null);
@@ -106,8 +121,22 @@ export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabe
     });
   }, [items]);
 
+  const resolveHeadingElement = useCallback((item: OutlineItem): HTMLElement | null => {
+    if (previewContainer) {
+      const index = items.findIndex((candidate) => candidate.pos === item.pos);
+      if (index < 0) {
+        return null;
+      }
+      return getPreviewHeadingElements(previewContainer)[index] ?? null;
+    }
+
+    const element = editor?.view.nodeDOM(item.pos);
+    return element instanceof HTMLElement ? element : null;
+  }, [editor, items, previewContainer]);
+
   useEffect(() => {
-    if (!scrollContainer || items.length === 0) {
+    const trackingContainer = previewContainer ?? scrollContainer;
+    if (!trackingContainer || items.length === 0) {
       return;
     }
 
@@ -116,12 +145,13 @@ export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabe
         return;
       }
 
-      const threshold = scrollContainer.getBoundingClientRect().top + 96;
+      const offset = previewContainer ? PREVIEW_READ_LINE_OFFSET : EDITOR_READ_LINE_OFFSET;
+      const threshold = trackingContainer.getBoundingClientRect().top + offset;
       let activeItem: OutlineItem | null = null;
 
       for (const item of items) {
-        const element = editor?.view.nodeDOM(item.pos);
-        if (element instanceof HTMLElement && element.getBoundingClientRect().top <= threshold) {
+        const element = resolveHeadingElement(item);
+        if (element && element.getBoundingClientRect().top <= threshold) {
           activeItem = item;
         }
       }
@@ -132,21 +162,33 @@ export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabe
       }
     };
 
-    scrollContainer.addEventListener("scroll", updateFromScroll, { passive: true });
+    trackingContainer.addEventListener("scroll", updateFromScroll, { passive: true });
     updateFromScroll();
-    return () => scrollContainer.removeEventListener("scroll", updateFromScroll);
-  }, [editor, items, scrollContainer]);
+    return () => trackingContainer.removeEventListener("scroll", updateFromScroll);
+  }, [items, previewContainer, resolveHeadingElement, scrollContainer]);
 
   const jumpToHeading = (item: OutlineItem) => {
-    if (!editor || editor.isDestroyed) {
-      return;
-    }
-
     // Keep the clicked heading active while smooth scrolling. Without this
     // guard, intermediate scroll positions can briefly reactivate an earlier
     // heading and make two rows appear selected (active + hovered).
     scrollTrackingPausedUntilRef.current = Date.now() + 800;
     setActivePos(item.pos);
+
+    if (previewContainer) {
+      const previewElement = resolveHeadingElement(item);
+      if (previewElement) {
+        const delta = previewElement.getBoundingClientRect().top
+          - (previewContainer.getBoundingClientRect().top + PREVIEW_READ_LINE_OFFSET);
+        if (Math.abs(delta) >= ALIGN_TOLERANCE_PX) {
+          previewContainer.scrollTo({ top: previewContainer.scrollTop + delta, behavior: "smooth" });
+        }
+      }
+      return;
+    }
+
+    if (!editor || editor.isDestroyed) {
+      return;
+    }
 
     let domElement: HTMLElement | null = null;
     const domNode = editor.view.nodeDOM(item.pos);
@@ -268,10 +310,10 @@ export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabe
     <TooltipProvider delayDuration={350} skipDelayDuration={100}>
       <aside
         className={cn(
-          "select-none overflow-x-hidden",
+          "select-none",
           collapsed
-            ? "absolute right-2 top-6 z-10 h-8 w-8 overflow-hidden"
-            : "sticky top-6 h-fit max-h-[calc(100vh-8rem)] shrink-0 overflow-y-auto py-2"
+            ? "sticky top-6 z-20 h-8 w-0 shrink-0 self-start overflow-visible"
+            : "sticky top-6 h-fit max-h-[calc(100vh-8rem)] shrink-0 overflow-y-auto overflow-x-hidden py-2"
         )}
         style={{
           ...(!collapsed ? { width: EDITOR_OUTLINE_WIDTH } : {}),
@@ -279,7 +321,7 @@ export const EditorOutline = ({ editor, scrollContainer, collapsed, shortcutLabe
         }}
         aria-label={t("editor.outline")}
       >
-        <div className={cn("flex", collapsed ? "justify-center" : "mb-3 justify-between px-1")}>
+        <div className={cn("flex", collapsed ? "absolute right-0 top-0 h-8 w-8 justify-center" : "mb-3 justify-between px-1")}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button

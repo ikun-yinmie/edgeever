@@ -11,6 +11,7 @@ import type { NoteLinkHintPosition } from "./EditorPaneChrome";
 
 export const SUPPORTED_PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
 export const MOBILE_EDITOR_QUERY = "(max-width: 639px)";
+export const PHONE_PREVIEW_STAGE_QUERY = "(min-width: 1280px)";
 export const MOBILE_DRAFT_PERSIST_DELAY_MS = 800;
 
 export const createLocalEditSession = (memo: MemoDetail): MemoEditSession => ({
