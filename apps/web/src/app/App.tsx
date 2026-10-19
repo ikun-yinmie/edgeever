@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { Navigate, Route, Routes, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { PwaUpdateNotice } from "@/components/PwaUpdateNotice";
@@ -35,12 +36,32 @@ const AdminConsolePane = lazy(() => import("@/components/AdminConsolePane").then
 
 const AuthLoadingScreen = ({ title, detail }: { title?: string; detail?: string }) => {
   const branding = useSiteBranding();
+  const { t } = useTranslation();
+  const [slowNetwork, setSlowNetwork] = useState(false);
+  const [stalled, setStalled] = useState(false);
+
+  useEffect(() => {
+    const slowTimer = window.setTimeout(() => setSlowNetwork(true), 10000);
+    const stalledTimer = window.setTimeout(() => setStalled(true), 30000);
+    return () => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(stalledTimer);
+    };
+  }, []);
 
   return (
     <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
-      <div role="status" aria-live="polite">
-        <div className="text-sm font-semibold">{title ?? getSiteDisplayName(branding)}</div>
-        {detail && <div className="mt-2 text-xs text-slate-500">{detail}</div>}
+      <div className="flex flex-col items-center" role="status" aria-live="polite">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" aria-hidden="true" />
+        <div className="mt-3 text-sm font-semibold">{title ?? getSiteDisplayName(branding)}</div>
+        <div className="mt-2 text-xs text-slate-500">
+          {detail ?? (slowNetwork ? t("appLoading.slowNetwork") : t("appLoading.waiting"))}
+        </div>
+        {stalled && (
+          <Button className="mt-4" size="sm" variant="outline" onClick={() => window.location.reload()}>
+            {t("appLoading.reload")}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -122,6 +143,32 @@ const AuthEntryScreen = ({
   );
 };
 
+const SESSION_REQUEST_TIMEOUT_MS = 15000;
+
+class SessionRequestTimeoutError extends Error {
+  constructor() {
+    super("session request timed out");
+    this.name = "SessionRequestTimeoutError";
+  }
+}
+
+const getSessionWithTimeout = async (): Promise<AuthSession> => {
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      api.getSession(),
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(
+          () => reject(new SessionRequestTimeoutError()),
+          SESSION_REQUEST_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
+};
+
 const AuthenticatedWorkspace = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -135,12 +182,14 @@ const AuthenticatedWorkspace = () => {
     queryKey: ["auth", "session"],
     queryFn: async () => {
       try {
-        const session = await api.getSession();
+        const session = await getSessionWithTimeout();
         await cacheDesktopSession(session);
         return session;
       } catch (error) {
         const cached = getCachedDesktopSession();
-        if (cached?.authenticated && isBrowserOffline()) return cached;
+        if (cached?.authenticated && (error instanceof SessionRequestTimeoutError || isBrowserOffline())) {
+          return cached;
+        }
         throw error;
       }
     },

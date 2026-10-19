@@ -20,7 +20,9 @@ import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoListPane, MemoSelectionActionBar } from "./MemoListPane";
+import { MemoTabsBar } from "./MemoTabsBar";
 import { MobileBottomNav, MobileNotebookPicker } from "./WorkspaceMobileChrome";
 import { QuickMemoSwitcher } from "./QuickMemoSwitcher";
 import { AppConfirmDialog, MemoDeleteConfirmDialog, NotebookNameDialog } from "./dialogs/ConfirmDialogs";
@@ -69,6 +71,9 @@ import {
   MIN_MEMO_LIST_WIDTH_PX,
   MAX_MEMO_LIST_WIDTH_PX,
   DEFAULT_MEMO_LIST_WIDTH_PX,
+  MIN_NOTEBOOK_SIDEBAR_WIDTH_PX,
+  MAX_NOTEBOOK_SIDEBAR_WIDTH_PX,
+  DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX,
   isTextEntryTarget,
   getSearchShortcutScope,
   getShortcutActionForEvent,
@@ -288,6 +293,11 @@ export const WorkspaceApp = ({
   const creatingMemoSelectionRef = useRef(false);
   const createMemoInFlightRef = useRef(false);
   const memoDocumentActionIdRef = useRef(0);
+  const [openMemoTabs, setOpenMemoTabs] = useState<string[]>([]);
+  const [memoTabTitles, setMemoTabTitles] = useState<Record<string, string>>({});
+  // Set when the user closes the last note tab; keeps the auto-select effect
+  // from instantly re-opening the first memo until they pick one explicitly.
+  const suppressAutoOpenRef = useRef(false);
   const [memoDocumentActionRequest, setMemoDocumentActionRequest] = useState<MemoDocumentActionRequest | null>(null);
   const [memoDeleteConfirmation, setMemoDeleteConfirmation] = useState<MemoDeleteConfirmation | null>(null);
   const [emptyTrashConfirmationOpen, setEmptyTrashConfirmationOpen] = useState(false);
@@ -559,12 +569,15 @@ export const WorkspaceApp = ({
     imageCompressionEnabled,
     memoListWidth,
     notebookSidebarCollapsed,
+    notebookSidebarWidth,
     resetMemoListWidth,
+    resetNotebookSidebarWidth,
     setDesktopFocusMode,
     setEditorContentAlignment,
     setImageCompressionEnabled,
     setMemoListWidth,
     setNotebookSidebarCollapsed,
+    setNotebookSidebarWidth,
     shortcutSettings,
   } = useWorkspacePreferences();
   const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "recent" | "evernote-migration">(() =>
@@ -1166,6 +1179,12 @@ export const WorkspaceApp = ({
   const detailMemoId = rendererRecoveryMode ? null : selectedMemoId ?? memos[0]?.id ?? null;
 
   useEffect(() => {
+    if (suppressAutoOpenRef.current) {
+      // The user closed the last note tab on purpose; keep the editor idle
+      // until they explicitly pick a note again.
+      return;
+    }
+
     const selectedMemoInList = selectedMemoId ? memos.some((memo) => memo.id === selectedMemoId) : false;
 
     if (rendererRecoveryMode) {
@@ -1215,6 +1234,28 @@ export const WorkspaceApp = ({
       setSelectedMemoId(memos[0].id);
     }
   }, [createdMemoEditId, memos, rendererRecoveryMode, rightView, selectedMemoId]);
+
+  useEffect(() => {
+    if (selectedMemoId) {
+      suppressAutoOpenRef.current = false;
+    }
+  }, [selectedMemoId]);
+
+  useEffect(() => {
+    if (!selectedMemoId || rendererRecoveryMode) {
+      return;
+    }
+
+    if (rightView !== "editor" || memoView === "trash") {
+      return;
+    }
+
+    if (suppressAutoOpenRef.current) {
+      return;
+    }
+
+    setOpenMemoTabs((current) => (current.includes(selectedMemoId) ? current : [...current, selectedMemoId]));
+  }, [memoView, rendererRecoveryMode, rightView, selectedMemoId]);
 
   useEffect(() => {
     if (!rendererRecoveryMode || !selectedMemoId) return;
@@ -1592,6 +1633,7 @@ export const WorkspaceApp = ({
         for (const memoId of deletedMemoIds) {
           queryClient.removeQueries({ queryKey: ["memo", memoId] });
         }
+        setOpenMemoTabs((current) => current.filter((id) => !deletedMemoIds.has(id)));
       }
 
       void Promise.all([
@@ -1646,6 +1688,7 @@ export const WorkspaceApp = ({
 
       if (!_error) {
         queryClient.removeQueries({ queryKey: ["memo", variables?.memoId] });
+        setOpenMemoTabs((current) => current.filter((id) => id !== variables?.memoId));
       }
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["memos"], refetchType }),
@@ -1756,6 +1799,68 @@ export const WorkspaceApp = ({
   const selectedMemosInCurrentList = useMemo(
     () => memos.filter((memo) => selectedMemoIds.has(memo.id)),
     [memos, selectedMemoIds]
+  );
+  const openMemoTabItems = useMemo(
+    () =>
+      openMemoTabs.map((id) => ({
+        id,
+        title: memoTabTitles[id] ?? memos.find((memo) => memo.id === id)?.title ?? t("common.untitledMemo"),
+      })),
+    [memos, memoTabTitles, openMemoTabs, t]
+  );
+  const showMemoTabsBar = Boolean(
+    isDesktop && rightView === "editor" && memoView !== "trash" && !desktopFocusModeActive && openMemoTabItems.length > 0
+  );
+
+  useEffect(() => {
+    if (!selectedMemo) return;
+    const title = selectedMemo.title?.trim() ? selectedMemo.title : t("common.untitledMemo");
+    setMemoTabTitles((current) =>
+      current[selectedMemo.id] === title ? current : { ...current, [selectedMemo.id]: title }
+    );
+  }, [selectedMemo, t]);
+
+  const handleSelectMemoTab = useCallback(
+    (memoId: string) => {
+      if (memoId === selectedMemoId && rightView === "editor" && activePane === "editor") {
+        return;
+      }
+
+      // Tabs may point at notes outside the current notebook list; hold the
+      // selection open the same way quick-switcher opens do.
+      pendingQuickSwitcherMemoIdRef.current = memoId;
+      setRightView("editor");
+      setSelectedMemoId(memoId);
+      setActivePane("editor");
+    },
+    [activePane, rightView, selectedMemoId, setActivePane, setRightView, setSelectedMemoId]
+  );
+
+  const closeMemoTab = useCallback(
+    (memoId: string) => {
+      const index = openMemoTabs.indexOf(memoId);
+      if (index === -1) {
+        return;
+      }
+
+      const remaining = openMemoTabs.filter((id) => id !== memoId);
+      setOpenMemoTabs(remaining);
+
+      if (selectedMemoId !== memoId) {
+        return;
+      }
+
+      const neighbor = remaining[index] ?? remaining[index - 1] ?? null;
+      if (neighbor) {
+        pendingQuickSwitcherMemoIdRef.current = neighbor;
+        setSelectedMemoId(neighbor);
+        return;
+      }
+
+      suppressAutoOpenRef.current = true;
+      setSelectedMemoId(null);
+    },
+    [openMemoTabs, selectedMemoId, setSelectedMemoId]
   );
 
   useEffect(() => {
@@ -3029,6 +3134,62 @@ export const WorkspaceApp = ({
     updateMemoListWidth(nextWidth);
   };
 
+  const handleNotebookSidebarResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isDesktopViewport() || desktopNotebookSidebarCollapsed) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    const startX = event.clientX;
+    const startWidth = notebookSidebarWidth;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setNotebookSidebarWidth(startWidth + moveEvent.clientX - startX);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
+
+  const handleNotebookSidebarResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isDesktopViewport() || desktopNotebookSidebarCollapsed) {
+      return;
+    }
+
+    const step = event.shiftKey ? 48 : 16;
+    let nextWidth: number | null = null;
+
+    if (event.key === "ArrowLeft") {
+      nextWidth = notebookSidebarWidth - step;
+    } else if (event.key === "ArrowRight") {
+      nextWidth = notebookSidebarWidth + step;
+    } else if (event.key === "Home") {
+      nextWidth = MIN_NOTEBOOK_SIDEBAR_WIDTH_PX;
+    } else if (event.key === "End") {
+      nextWidth = MAX_NOTEBOOK_SIDEBAR_WIDTH_PX;
+    } else if (event.key === "Enter" || event.key === " ") {
+      nextWidth = DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX;
+    }
+
+    if (nextWidth === null) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setNotebookSidebarWidth(nextWidth);
+  };
+
   const shouldRenderRightPane = isDesktop || visibleActivePane === "editor";
   const rightPaneLoadingLabel =
     rightView === "settings"
@@ -3089,12 +3250,19 @@ export const WorkspaceApp = ({
                 : "edgeever-workspace-grid--single-right",
             !desktopFocusModeActive && desktopNotebookSidebarCollapsed && "edgeever-workspace-grid--sidebar-collapsed"
           )}
-          style={{ "--memo-list-width": `${memoListWidth}px` } as CSSProperties}
+          style={
+            {
+              "--memo-list-width": `${memoListWidth}px`,
+              ...(!desktopNotebookSidebarCollapsed && {
+                "--notebook-sidebar-width": `${notebookSidebarWidth}px`,
+              }),
+            } as CSSProperties
+          }
         >
           <aside
             id="edgeever-notebook-sidebar"
             className={cn(
-              "edgeever-workspace-sidebar min-h-0 overflow-hidden border-r",
+              "edgeever-workspace-sidebar relative min-h-0 overflow-hidden border-r",
               desktopFocusModeActive
                 ? "hidden"
                 : visibleActivePane === "notebooks"
@@ -3168,6 +3336,28 @@ export const WorkspaceApp = ({
                   onToggleCollapsed={() => setNotebookSidebarCollapsed(!notebookSidebarCollapsed)}
                 />
               </Suspense>
+            )}
+            {!desktopFocusModeActive && !desktopNotebookSidebarCollapsed && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className="absolute inset-y-0 right-[-3px] z-20 hidden w-1.5 cursor-col-resize transition hover:bg-slate-300/70 focus-visible:bg-slate-400/80 focus-visible:outline-none lg:block"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-valuemin={MIN_NOTEBOOK_SIDEBAR_WIDTH_PX}
+                    aria-valuemax={MAX_NOTEBOOK_SIDEBAR_WIDTH_PX}
+                    aria-valuenow={notebookSidebarWidth}
+                    aria-label={t("workspaceDialogs.resizeNotebookSidebar")}
+                    tabIndex={0}
+                    onDoubleClick={resetNotebookSidebarWidth}
+                    onKeyDown={handleNotebookSidebarResizeKeyDown}
+                    onPointerDown={handleNotebookSidebarResizePointerDown}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {t("workspaceDialogs.resizeNotebookSidebarHint")}
+                </TooltipContent>
+              </Tooltip>
             )}
           </aside>
 
@@ -3321,7 +3511,16 @@ export const WorkspaceApp = ({
             />
           </section>
 
-          <section className={cn("edgeever-workspace-editor min-h-0 min-w-0 lg:block", visibleActivePane === "editor" ? "block" : "hidden")}>
+          <section className={cn("edgeever-workspace-editor min-h-0 min-w-0 flex-col lg:flex", visibleActivePane === "editor" ? "flex" : "hidden")}>
+            {showMemoTabsBar && (
+              <MemoTabsBar
+                tabs={openMemoTabItems}
+                activeMemoId={selectedMemoId}
+                onSelect={handleSelectMemoTab}
+                onClose={closeMemoTab}
+              />
+            )}
+            <div className="min-h-0 min-w-0 flex-1">
             {shouldRenderRightPane && (
               <Suspense fallback={<PaneLoadingFallback label={rightPaneLoadingLabel} />}>
                 <m.div key={rightView} className="h-full min-h-0 min-w-0" {...paneEnterMotion}>
@@ -3565,6 +3764,7 @@ export const WorkspaceApp = ({
                 </m.div>
               </Suspense>
             )}
+            </div>
           </section>
         </main>
       </div>
@@ -3689,6 +3889,10 @@ export const WorkspaceApp = ({
           notebooks={notebooks}
           selectedNotebookId={selectedNotebookId}
           onClose={() => setMobileNotebookPickerOpen(false)}
+          onCreateNotebook={(parentId) => {
+            setMobileNotebookPickerOpen(false);
+            handleCreateNotebook(parentId);
+          }}
           onOpenShared={() => {
             setMobileNotebookPickerOpen(false);
             handleOpenShared();

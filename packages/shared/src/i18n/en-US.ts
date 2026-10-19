@@ -2179,6 +2179,15 @@ export const enUS = {
     close: "Close note picker",
     openHint: "Hold {{modifier}} and click to open the link. To open links with a single click, turn this option off in Profile → General",
   },
+  appLoading: {
+    waiting: "Loading…",
+    slowNetwork: "The network is slow. Still loading…",
+    reload: "Reload",
+  },
+  memoTabs: {
+    label: "Open notes",
+    close: "Close tab",
+  },
   mobileNotebookPicker: {
     title: "Switch notebook",
     current: "Current: {{name}}",
@@ -2200,6 +2209,7 @@ export const enUS = {
     collapse: "Collapse {{name}}",
     expand: "Expand {{name}}",
     currentNotebook: "Current: {{name}}",
+    createNotebook: "New notebook",
     switchToNotebook: "Switch to {{name}}",
   },
   workspaceDialogs: {
@@ -2213,6 +2223,8 @@ export const enUS = {
     ok: "OK",
     resizeMemoList: "Resize note list",
     resizeMemoListHint: "Drag to resize the list column, double-click to reset, or use arrow keys for fine tuning",
+    resizeNotebookSidebar: "Resize notebook sidebar",
+    resizeNotebookSidebarHint: "Drag to resize the notebook column, double-click to reset, or use arrow keys for fine tuning",
   },
   evernoteGuide: {
     title: "Evernote migration guide",

@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   DEFAULT_MEMO_LIST_WIDTH_PX,
+  DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX,
   clampMemoListWidth,
+  clampNotebookSidebarWidth,
   readDesktopFocusModePreference,
   readEditorContentAlignmentPreference,
   readImageCompressionPreference,
   readMemoListWidthPreference,
   readNotebookSidebarCollapsedPreference,
+  readNotebookSidebarWidthPreference,
   writeDesktopFocusModePreference,
   writeEditorContentAlignmentPreference,
   writeImageCompressionPreference,
   writeMemoListWidthPreference,
   writeNotebookSidebarCollapsedPreference,
+  writeNotebookSidebarWidthPreference,
   type ShortcutSettings,
   type EditorContentAlignment,
 } from "@/lib/app-helpers";
@@ -27,6 +31,7 @@ export const useWorkspacePreferences = () => {
   const [editorContentAlignment, setEditorContentAlignmentState] = useState(readEditorContentAlignmentPreference);
   const [shortcutSettings, setShortcutSettingsState] = useState<ShortcutSettings>(resolveShortcutSettings);
   const [memoListWidth, setMemoListWidthState] = useState(readMemoListWidthPreference);
+  const [notebookSidebarWidth, setNotebookSidebarWidthState] = useState(readNotebookSidebarWidthPreference);
 
   useEffect(() => writeImageCompressionPreference(imageCompressionEnabled), [imageCompressionEnabled]);
 
@@ -72,18 +77,31 @@ export const useWorkspacePreferences = () => {
     setMemoListWidth(DEFAULT_MEMO_LIST_WIDTH_PX);
   }, [setMemoListWidth]);
 
+  const setNotebookSidebarWidth = useCallback((width: number) => {
+    const nextWidth = clampNotebookSidebarWidth(width);
+    setNotebookSidebarWidthState(nextWidth);
+    writeNotebookSidebarWidthPreference(nextWidth);
+  }, []);
+
+  const resetNotebookSidebarWidth = useCallback(() => {
+    setNotebookSidebarWidth(DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX);
+  }, [setNotebookSidebarWidth]);
+
   return {
     desktopFocusMode,
     editorContentAlignment,
     imageCompressionEnabled,
     memoListWidth,
     notebookSidebarCollapsed,
+    notebookSidebarWidth,
     resetMemoListWidth,
+    resetNotebookSidebarWidth,
     setDesktopFocusMode,
     setEditorContentAlignment,
     setImageCompressionEnabled,
     setMemoListWidth,
     setNotebookSidebarCollapsed,
+    setNotebookSidebarWidth,
     shortcutSettings,
   };
 };

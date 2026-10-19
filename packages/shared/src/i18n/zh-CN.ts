@@ -2177,6 +2177,15 @@ export const zhCN = {
     close: "关闭引用笔记",
     openHint: "按住 {{modifier}} 点击链接即可打开。如需改为单击打开，请前往个人中心 → 常规设置关闭此选项",
   },
+  appLoading: {
+    waiting: "正在加载…",
+    slowNetwork: "网络较慢，正在努力加载…",
+    reload: "重新加载",
+  },
+  memoTabs: {
+    label: "打开的笔记",
+    close: "关闭标签",
+  },
   mobileNotebookPicker: {
     title: "切换笔记本",
     current: "当前：{{name}}",
@@ -2198,6 +2207,7 @@ export const zhCN = {
     collapse: "收起 {{name}}",
     expand: "展开 {{name}}",
     currentNotebook: "当前：{{name}}",
+    createNotebook: "新建笔记本",
     switchToNotebook: "切换到 {{name}}",
   },
   workspaceDialogs: {
@@ -2211,6 +2221,8 @@ export const zhCN = {
     ok: "知道了",
     resizeMemoList: "调整笔记列表宽度",
     resizeMemoListHint: "拖拽调整列表栏宽度，双击恢复默认，方向键微调",
+    resizeNotebookSidebar: "调整笔记本栏宽度",
+    resizeNotebookSidebarHint: "拖拽调整笔记本栏宽度，双击恢复默认，方向键微调",
   },
   evernoteGuide: {
     title: "印象笔记迁移指引",

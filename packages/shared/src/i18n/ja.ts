@@ -2179,6 +2179,15 @@ export const ja = {
     close: "ノート選択を閉じる",
     openHint: "{{modifier}} を押しながらクリックするとリンクを開きます。1 クリックで開く場合は、プロフィール → 一般でこの設定をオフにしてください",
   },
+  appLoading: {
+    waiting: "読み込み中…",
+    slowNetwork: "ネットワークが遅いため、読み込みを続けています…",
+    reload: "再読み込み",
+  },
+  memoTabs: {
+    label: "開いているノート",
+    close: "タブを閉じる",
+  },
   mobileNotebookPicker: {
     title: "ノートブックを切り替え",
     current: "現在：{{name}}",
@@ -2200,6 +2209,7 @@ export const ja = {
     collapse: "{{name}} を閉じる",
     expand: "{{name}} を開く",
     currentNotebook: "現在：{{name}}",
+    createNotebook: "新しいノートブック",
     switchToNotebook: "{{name}} に切り替え",
   },
   workspaceDialogs: {
@@ -2213,6 +2223,8 @@ export const ja = {
     ok: "OK",
     resizeMemoList: "ノート一覧の幅を変更",
     resizeMemoListHint: "ドラッグで一覧欄の幅を変え、ダブルクリックでリセット、矢印キーで微調整できます",
+    resizeNotebookSidebar: "ノートブック欄の幅を変更",
+    resizeNotebookSidebarHint: "ドラッグでノートブック欄の幅を変え、ダブルクリックでリセット、矢印キーで微小調整できます",
   },
   evernoteGuide: {
     title: "Evernote 移行ガイド",

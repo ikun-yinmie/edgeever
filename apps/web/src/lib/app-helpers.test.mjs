@@ -5,6 +5,10 @@ import {
   DESKTOP_READING_PROTECTION_STORAGE_KEY,
   NOTE_READING_PROTECTION_STORAGE_KEY,
   NOTEBOOK_SIDEBAR_COLLAPSED_STORAGE_KEY,
+  NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY,
+  DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX,
+  MIN_NOTEBOOK_SIDEBAR_WIDTH_PX,
+  MAX_NOTEBOOK_SIDEBAR_WIDTH_PX,
   EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY,
   EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY,
   EDITOR_TOOLBAR_EXPANDED_STORAGE_KEY,
@@ -40,6 +44,9 @@ import {
   getMemoIdsNeedingMove,
   getActiveBlockValue,
   parseHeadingBlockValue,
+  clampNotebookSidebarWidth,
+  readNotebookSidebarWidthPreference,
+  writeNotebookSidebarWidthPreference,
 } from "./app-helpers.ts";
 import {
   resolveShortcutSettings,
@@ -81,6 +88,33 @@ describe("search shortcut scope", () => {
 
   test("uses memo-list search when no note is open", () => {
     expect(getSearchShortcutScope(null)).toBe("memo-list");
+  });
+});
+
+describe("notebook sidebar width preference", () => {
+  test("clamps widths into the draggable range", () => {
+    expect(clampNotebookSidebarWidth(10)).toBe(MIN_NOTEBOOK_SIDEBAR_WIDTH_PX);
+    expect(clampNotebookSidebarWidth(9999)).toBe(MAX_NOTEBOOK_SIDEBAR_WIDTH_PX);
+    expect(clampNotebookSidebarWidth(257.6)).toBe(258);
+  });
+
+  test("falls back to the default when nothing is stored or the value is malformed", () => {
+    installLocalStorage();
+    expect(readNotebookSidebarWidthPreference()).toBe(DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX);
+
+    window.localStorage.setItem(NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY, "not-a-number");
+    expect(readNotebookSidebarWidthPreference()).toBe(DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX);
+  });
+
+  test("persists a clamped width and reads it back", () => {
+    const values = installLocalStorage();
+
+    writeNotebookSidebarWidthPreference(1000);
+    expect(values.get(NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY)).toBe(String(MAX_NOTEBOOK_SIDEBAR_WIDTH_PX));
+    expect(readNotebookSidebarWidthPreference()).toBe(MAX_NOTEBOOK_SIDEBAR_WIDTH_PX);
+
+    writeNotebookSidebarWidthPreference(220);
+    expect(readNotebookSidebarWidthPreference()).toBe(220);
   });
 });
 

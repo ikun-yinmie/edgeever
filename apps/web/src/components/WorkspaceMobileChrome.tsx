@@ -102,6 +102,7 @@ export const MobileNotebookPicker = ({
   notebooks,
   selectedNotebookId,
   onClose,
+  onCreateNotebook,
   onOpenShared,
   onSelectAll,
   onSelect,
@@ -110,6 +111,7 @@ export const MobileNotebookPicker = ({
   notebooks: Notebook[];
   selectedNotebookId: string | null;
   onClose: () => void;
+  onCreateNotebook?: (parentId?: string | null) => void;
   onOpenShared?: () => void;
   onSelectAll: () => void;
   onSelect: (notebookId: string) => void;
@@ -239,6 +241,20 @@ export const MobileNotebookPicker = ({
             >
               <Users className="h-4 w-4 shrink-0 text-slate-500" />
               <span className="min-w-0 flex-1 truncate text-base">{t("sharedPane.title")}</span>
+            </button>
+          ) : null}
+          {onCreateNotebook ? (
+            <button
+              className="mb-1 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+              type="button"
+              aria-label={t("mobileNotebookPicker.createNotebook")}
+              onClick={() => {
+                onClose();
+                onCreateNotebook(null);
+              }}
+            >
+              <Plus className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="min-w-0 flex-1 truncate text-base">{t("mobileNotebookPicker.createNotebook")}</span>
             </button>
           ) : null}
           {filteredTree.length > 0 ? (

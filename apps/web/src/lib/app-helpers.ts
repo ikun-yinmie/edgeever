@@ -141,11 +141,15 @@ export const EDITOR_PHONE_PREVIEW_STORAGE_KEY = "edgeever.editor.phonePreviewOpe
 export const EDITOR_PHONE_PREVIEW_FOLLOW_STORAGE_KEY = "edgeever.editor.phonePreviewFollow";
 export const MEMO_LIST_DENSITY_STORAGE_KEY = "edgeever.memoListDensity";
 export const MEMO_LIST_WIDTH_STORAGE_KEY = "edgeever.memoListWidth";
+export const NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY = "edgeever.notebookSidebarWidth";
 export const NOTEBOOK_SORT_STORAGE_KEY = "edgeever.notebookSort";
 export const SHORTCUT_SETTINGS_STORAGE_KEY = "edgeever.shortcutSettings";
 export const DEFAULT_MEMO_LIST_WIDTH_PX = 360;
 export const MIN_MEMO_LIST_WIDTH_PX = 300;
 export const MAX_MEMO_LIST_WIDTH_PX = 540;
+export const DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX = 240;
+export const MIN_NOTEBOOK_SIDEBAR_WIDTH_PX = 180;
+export const MAX_NOTEBOOK_SIDEBAR_WIDTH_PX = 420;
 export const EDITOR_LOCAL_SAVE_DELAY_MS = 1_200;
 
 export const MEMO_DRAG_MIME = "application/x-edgeever-memos";
@@ -548,6 +552,30 @@ export const readMemoListWidthPreference = () => {
 export const writeMemoListWidthPreference = (width: number) => {
   try {
     window.localStorage.setItem(MEMO_LIST_WIDTH_STORAGE_KEY, String(clampMemoListWidth(width)));
+  } catch {
+    // Local storage can be unavailable in private or restricted browser contexts.
+  }
+};
+
+export const clampNotebookSidebarWidth = (width: number) =>
+  Math.min(MAX_NOTEBOOK_SIDEBAR_WIDTH_PX, Math.max(MIN_NOTEBOOK_SIDEBAR_WIDTH_PX, Math.round(width)));
+
+export const readNotebookSidebarWidthPreference = () => {
+  try {
+    const raw = window.localStorage.getItem(NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY);
+    if (raw === null || raw.trim() === "") {
+      return DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX;
+    }
+    const width = Number(raw);
+    return Number.isFinite(width) ? clampNotebookSidebarWidth(width) : DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX;
+  } catch {
+    return DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX;
+  }
+};
+
+export const writeNotebookSidebarWidthPreference = (width: number) => {
+  try {
+    window.localStorage.setItem(NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY, String(clampNotebookSidebarWidth(width)));
   } catch {
     // Local storage can be unavailable in private or restricted browser contexts.
   }
