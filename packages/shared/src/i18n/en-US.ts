@@ -698,6 +698,7 @@ export const enUS = {
       start: "Align left",
     },
     editorThemes: {
+      followDevice: "Follow device default",
       default: "Native theme",
       letter: "Warm Page",
       guide: "Lesson Page",
@@ -2114,6 +2115,10 @@ export const enUS = {
     highlightColorReset: "Clear highlight",
     fontSize: "Font size",
     fontSizeReset: "Reset size",
+    fontSizeIncrease: "Increase font size",
+    fontSizeDecrease: "Decrease font size",
+    fontSizeCustom: "Custom font size",
+    fontSizeApply: "Apply",
     codeLineNumbers: "Line numbers",
     codeWrapLines: "Wrap lines",
     codeMoreActions: "More code block actions",

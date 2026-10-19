@@ -39,6 +39,8 @@ const EDITOR_SHORTCUT_I18N_KEYS: Record<EditorShortcutId, string> = {
   blockquote: "editorToolbar.quote",
   codeBlock: "editorToolbar.codeBlock",
   horizontalRule: "editorToolbar.horizontalRule",
+  "font-size-increase": "editorToolbar.fontSizeIncrease",
+  "font-size-decrease": "editorToolbar.fontSizeDecrease",
   clearFormatting: "editorToolbar.clearFormatting",
 };
 

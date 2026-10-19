@@ -35,6 +35,7 @@ export type BackupMemoDetailRow = {
   title: string | null;
   excerpt: string;
   tags_json: string;
+  theme?: string | null;
   is_pinned: number;
   is_archived: number;
   is_deleted: number;
@@ -127,7 +128,7 @@ export const parseMarkdownExportMemoIds = (value: string | undefined): { ids: st
   return { ids };
 };
 
-const MEMO_EXPORT_SELECT_SQL = `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+const MEMO_EXPORT_SELECT_SQL = `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
             m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
             mc.content_json, mc.content_markdown, mc.content_text, mc.content_hash,
             m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id

@@ -40,7 +40,7 @@ const createSyncIntegrationFixture = () => {
     CREATE TABLE memos (
       id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, notebook_id TEXT NOT NULL, title TEXT,
       excerpt TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
-      is_pinned INTEGER NOT NULL DEFAULT 0, is_archived INTEGER NOT NULL DEFAULT 0,
+      is_pinned INTEGER NOT NULL DEFAULT 0, theme TEXT, is_archived INTEGER NOT NULL DEFAULT 0,
       is_deleted INTEGER NOT NULL DEFAULT 0, source_memo_ids TEXT NOT NULL DEFAULT '[]',
       merge_source_count INTEGER NOT NULL DEFAULT 0, merged_into_memo_id TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
@@ -124,7 +124,7 @@ describe("sync route contracts", () => {
       CREATE TABLE memos (
         id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, notebook_id TEXT NOT NULL, title TEXT,
         excerpt TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
-        is_pinned INTEGER NOT NULL DEFAULT 0, is_archived INTEGER NOT NULL DEFAULT 0,
+        is_pinned INTEGER NOT NULL DEFAULT 0, theme TEXT, is_archived INTEGER NOT NULL DEFAULT 0,
         is_deleted INTEGER NOT NULL DEFAULT 0, source_memo_ids TEXT NOT NULL DEFAULT '[]',
         merge_source_count INTEGER NOT NULL DEFAULT 0, merged_into_memo_id TEXT,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT

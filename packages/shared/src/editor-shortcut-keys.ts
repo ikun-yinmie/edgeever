@@ -1,6 +1,7 @@
 import { Extension } from "@tiptap/core";
 import type { Editor } from "@tiptap/core";
 import { keymap } from "@tiptap/pm/keymap";
+import { parseFontSizePx, stepFontSizePx } from "./font-size-scale";
 
 /**
  * Editor formatting shortcuts (Yuque-style), separate from the app-level
@@ -27,6 +28,8 @@ export type EditorShortcutId =
   | "blockquote"
   | "codeBlock"
   | "horizontalRule"
+  | "font-size-increase"
+  | "font-size-decrease"
   | "clearFormatting";
 
 export type EditorShortcutBinding = {
@@ -58,6 +61,8 @@ export const DEFAULT_EDITOR_SHORTCUT_SETTINGS: EditorShortcutSettings = {
   blockquote: { key: "u", ctrlOrMeta: true, shift: true, alt: false },
   codeBlock: { key: "c", ctrlOrMeta: true, shift: true, alt: false },
   horizontalRule: { key: "s", ctrlOrMeta: true, shift: false, alt: true },
+  "font-size-increase": { key: "=", ctrlOrMeta: true, shift: false, alt: false },
+  "font-size-decrease": { key: "-", ctrlOrMeta: true, shift: false, alt: false },
   clearFormatting: { key: "\\", ctrlOrMeta: true, shift: false, alt: false },
 };
 
@@ -156,6 +161,12 @@ const runEditorShortcut = (editor: Editor, id: EditorShortcutId): boolean => {
     case "blockquote": return chain.toggleBlockquote().run();
     case "codeBlock": return chain.setCodeBlock().run();
     case "horizontalRule": return chain.setHorizontalRule().run();
+    case "font-size-increase":
+    case "font-size-decrease": {
+      const current = parseFontSizePx(editor.getAttributes("textStyle").fontSize);
+      const next = stepFontSizePx(current, id === "font-size-increase" ? 1 : -1);
+      return chain.setFontSize(`${next}px`).run();
+    }
     case "clearFormatting": return chain.unsetAllMarks().clearNodes().run();
     default: return false;
   }
@@ -214,5 +225,7 @@ export const EDITOR_SHORTCUT_ACTION_LABELS: Record<EditorShortcutId, string> = {
   blockquote: "quote",
   codeBlock: "codeBlock",
   horizontalRule: "horizontalRule",
+  "font-size-increase": "fontSizeIncrease",
+  "font-size-decrease": "fontSizeDecrease",
   clearFormatting: "clearFormatting",
 };

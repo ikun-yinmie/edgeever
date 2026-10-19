@@ -14,7 +14,7 @@ use crate::database::{backup_database, list_backups, restore_database};
 use crate::memo::{
     cache_memo_revision, create_memo, delete_memo, delete_memos, empty_trash, list_memo_revisions,
     list_memos, memo_value, merge_memos, move_memos, pin_memos, restore_memo,
-    restore_memo_revision, update_memo,
+    restore_memo_revision, set_memo_theme, update_memo,
 };
 use crate::shared_snapshots::{
     get_shared_snapshot, list_shared_snapshots, prune_shared_snapshots, save_shared_snapshot,
@@ -136,6 +136,9 @@ pub(crate) fn handle(
         "memo.deleteBatch" => delete_memos(database, &request.params),
         "memo.emptyTrash" => empty_trash(database),
         "memo.pinBatch" => pin_memos(database, &request.params),
+        "memo.setTheme" => {
+            set_memo_theme(database, &request.params).map(|memo| json!({ "memo": memo }))
+        }
         "memo.merge" => merge_memos(database, &request.params),
         "memo.list" => list_memos(database, &request.params),
         "memo.get" => {

@@ -445,6 +445,90 @@ describe("desktop batch outbox sync", () => {
       api.updateMemo = originalUpdateMemo;
     }
   }));
+
+  test("pushes a memo theme and acknowledges with the remote snapshot", async () => {
+    const originalUpdateMemo = api.updateMemo;
+    const updates = [];
+    const remoteMemo = { id: "memo_themed", theme: "letter" };
+    api.updateMemo = async (memoId, patch) => {
+      updates.push({ memoId, patch });
+      return { memo: remoteMemo };
+    };
+
+    try {
+      const acked = [];
+      const previousWindow = globalThis.window;
+      globalThis.window = {
+        edgeeverDesktop: {
+          isAvailable: true,
+          sidecarRequest: async (method, params) => {
+            if (method === "sync.outbox.ack") {
+              acked.push(params);
+              return {};
+            }
+            throw new Error(`Unexpected sidecar request: ${method}`);
+          },
+        },
+      };
+      try {
+        await syncOutboxItem({
+          id: 13,
+          kind: "memo.setTheme",
+          entityId: "memo_themed",
+          payload: { memoId: "memo_themed", theme: "letter" },
+          attemptCount: 0,
+          version: 1,
+        }, []);
+      } finally {
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+      }
+      expect(updates).toEqual([{ memoId: "memo_themed", patch: { theme: "letter" } }]);
+      expect(acked).toEqual([{ id: 13, version: 1, remoteMemo }]);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  });
+
+  test("acknowledges a theme change for a note that is already gone", async () => {
+    const originalUpdateMemo = api.updateMemo;
+    api.updateMemo = async () => {
+      throw new ApiRequestError("Memo not found", 404, "not_found");
+    };
+
+    try {
+      const acked = [];
+      const previousWindow = globalThis.window;
+      globalThis.window = {
+        edgeeverDesktop: {
+          isAvailable: true,
+          sidecarRequest: async (method, params) => {
+            if (method === "sync.outbox.ack") {
+              acked.push(params);
+              return {};
+            }
+            throw new Error(`Unexpected sidecar request: ${method}`);
+          },
+        },
+      };
+      try {
+        await syncOutboxItem({
+          id: 14,
+          kind: "memo.setTheme",
+          entityId: "memo_gone",
+          payload: { memoId: "memo_gone", theme: null },
+          attemptCount: 0,
+          version: 1,
+        }, []);
+      } finally {
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+      }
+      expect(acked).toEqual([{ id: 14, version: 1, remoteMemo: undefined }]);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  });
 });
 
 describe("shared snapshot sync diff", () => {

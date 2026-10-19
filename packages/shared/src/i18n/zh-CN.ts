@@ -698,6 +698,7 @@ export const zhCN = {
       start: "靠左显示",
     },
     editorThemes: {
+      followDevice: "跟随设备默认",
       default: "原生主题",
       letter: "日暖素笺",
       guide: "青页讲义",
@@ -2112,6 +2113,10 @@ export const zhCN = {
     highlightColorReset: "清除背景色",
     fontSize: "字号",
     fontSizeReset: "恢复默认字号",
+    fontSizeIncrease: "增大字号",
+    fontSizeDecrease: "减小字号",
+    fontSizeCustom: "自定义字号",
+    fontSizeApply: "应用",
     codeLineNumbers: "行号",
     codeWrapLines: "自动换行",
     codeMoreActions: "更多代码块操作",

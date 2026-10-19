@@ -77,6 +77,7 @@ export type EdgeEverRepository = {
   deleteMemos(input: { memoIds: string[]; permanent?: boolean }): Promise<{ ok: true; deleted: number }>;
   emptyTrash(): Promise<{ ok: true; deleted: number }>;
   pinMemos(input: { memoIds: string[]; isPinned: boolean }): Promise<{ ok: true; updated: number }>;
+  setMemoTheme(memoId: string, theme: string | null): Promise<{ memo: MemoDetail }>;
   mergeMemos(input: { memoIds: string[]; notebookId?: string; title?: string }): Promise<{ memo: MemoDetail }>;
   listMemos(params: LocalMemoListParams): Promise<LocalMemoListResponse>;
   getMemo(memoId: string, includeDeleted?: boolean): Promise<{ memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null }>;
@@ -442,6 +443,14 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     await queueLocalAction(scope, "memo.pinBatch", memoIds.join(","), { memoIds, isPinned });
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
     return { ok: true as const, updated };
+  },
+  setMemoTheme: async (memoId, theme) => {
+    const { applyLocalMemoTheme } = await import("@/lib/local-mirror");
+    const memo = await applyLocalMemoTheme(scope, memoId, theme);
+    if (!memo) throw new Error("Memo is not available in the local mirror");
+    await queueLocalAction(scope, "memo.setTheme", memoId, { memoId, theme });
+    notifySyncQueueDeferred();
+    return { memo };
   },
   mergeMemos: async (input) => {
     const memo = await mergeLocalMemos(scope, input);

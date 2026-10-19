@@ -197,8 +197,8 @@ describe("copy pipeline wiring", () => {
     expect(vars["--publish-ornament-brush"]).toContain("url(\"data:image/svg+xml");
     expect(css).toContain("--editor-theme-accent: var(--publish-accent)");
     expect(css).toContain("--brand-green: var(--publish-accent)");
-    expect(editorPane).toContain("isPaperEditorTheme(editorTheme)");
-    expect(editorPane).toContain('data-paper-theme={isPaperEditorTheme(editorTheme) ? "true" : undefined}');
+    expect(editorPane).toContain("isPaperEditorTheme(resolvedEditorTheme)");
+    expect(editorPane).toContain('data-paper-theme={isPaperEditorTheme(resolvedEditorTheme) ? "true" : undefined}');
     expect(editorPane).toContain("publishEditorCssVars");
     expect(editorPane).toContain('data-publish-surface={isMobileViewport ? "phone" : "desktop"}');
     expect(css).toContain("counter-increment: publish-h2");

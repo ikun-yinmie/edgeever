@@ -632,4 +632,74 @@ describe("web batch action recovery", () => {
       api.updateMemo = originalUpdateMemo;
     }
   }));
+
+  test("flushes a memo theme change and clears it from the queue", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await queueLocalAction(scope, "memo.setTheme", "memo-a", { memoId: "memo-a", theme: "letter" });
+    const originalUpdateMemo = api.updateMemo;
+    const updates = [];
+    api.updateMemo = async (memoId, patch) => {
+      updates.push({ memoId, patch });
+      return { memo: { id: memoId, theme: patch.theme ?? null } };
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      expect(updates).toEqual([{ memoId: "memo-a", patch: { theme: "letter" } }]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  }));
+
+  test("drops a theme change whose note is already gone", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await queueLocalAction(scope, "memo.setTheme", "memo-gone", { memoId: "memo-gone", theme: null });
+    const originalUpdateMemo = api.updateMemo;
+    api.updateMemo = async () => {
+      throw new ApiRequestError("Memo not found", 404, "not_found");
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.updateMemo = originalUpdateMemo;
+    }
+  }));
+
+  test("applies a theme chosen offline after the create acknowledgement remaps the id", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const localMemo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: localMemo.id,
+      notebookId: localMemo.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+      createdAt: localMemo.createdAt,
+      updatedAt: localMemo.updatedAt,
+    });
+    await queueLocalAction(scope, "memo.setTheme", localMemo.id, { memoId: localMemo.id, theme: "letter" });
+    const remoteMemo = { ...localMemo, id: "memo-remote-theme", revision: 1, contentHash: "remote-hash" };
+    const original = { createMemo: api.createMemo, updateMemo: api.updateMemo };
+    const updates = [];
+    api.createMemo = async () => ({ memo: remoteMemo });
+    api.updateMemo = async (memoId, patch) => {
+      updates.push({ memoId, patch });
+      return { memo: { ...remoteMemo, theme: patch.theme ?? null } };
+    };
+
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(result).toMatchObject({ synced: 2, failed: 0, conflicted: 0 });
+      expect(updates).toEqual([{ memoId: remoteMemo.id, patch: { theme: "letter" } }]);
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.createMemo = original.createMemo;
+      api.updateMemo = original.updateMemo;
+    }
+  }));
 });

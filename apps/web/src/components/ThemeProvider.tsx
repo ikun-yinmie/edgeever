@@ -121,6 +121,12 @@ export type EditorThemeName = string;
 export const isNamedEditorTheme = (theme: string) =>
   (EDITOR_THEME_NAMES as readonly string[]).includes(theme) && theme !== "custom";
 
+// An article-bound theme is a built-in editor theme stored on the note itself
+// so every device renders the same layout; anything else (custom palettes,
+// unknown ids) falls back to the device preference.
+export const resolveMemoEditorTheme = (theme: string | null | undefined): EditorThemeName | null =>
+  typeof theme === "string" && isNamedEditorTheme(theme) ? theme : null;
+
 interface AppearanceThemeContextValue {
   preference: ThemePreference;
   resolvedTheme: ResolvedTheme;

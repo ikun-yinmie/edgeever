@@ -151,7 +151,7 @@ const cancelUnsyncedMemoCreate = async (scope: string, memoId: string) => {
     const dependents = (await localDb.syncQueue.toArray()).filter(
       (item) => item.memoId === memoId
         && (item.scope === scope || !item.scope)
-        && (item.kind === "memo.update" || item.kind === "memo.restore")
+        && (item.kind === "memo.update" || item.kind === "memo.restore" || item.kind === "memo.setTheme")
         && item.status !== "syncing",
     );
     for (const item of dependents) {
@@ -491,7 +491,8 @@ const waitsForOpenCreate = (item: SyncQueueItem, openCreateIds: Set<string>) =>
     || item.kind === "memo.update"
     || item.kind === "memo.restore"
     || item.kind === "memo.moveBatch"
-    || item.kind === "memo.pinBatch")
+    || item.kind === "memo.pinBatch"
+    || item.kind === "memo.setTheme")
   && referencesOpenCreateMemo(item, openCreateIds);
 
 const runQueuedChanges = async (options: {
@@ -933,6 +934,20 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
         if (!(error instanceof ApiRequestError) || error.status !== 404) {
           throw error;
         }
+      }
+    }
+    return null;
+  }
+  if (item.kind === "memo.setTheme") {
+    const payload = item.payload as LocalActionPayload;
+    const memoId = String(payload.memoId ?? item.memoId);
+    try {
+      await api.updateMemo(memoId, { theme: typeof payload.theme === "string" ? payload.theme : null });
+    } catch (error) {
+      // The note may be already gone (removed on another device, or its create
+      // never reached the server); there is nothing left to theme.
+      if (!(error instanceof ApiRequestError) || error.status !== 404) {
+        throw error;
       }
     }
     return null;

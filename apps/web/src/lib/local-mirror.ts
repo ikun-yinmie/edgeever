@@ -90,6 +90,7 @@ export type PendingMemoSyncState = {
   updateIds: Set<string>;
   restoreIds: Set<string>;
   emptyTrashIds: Set<string>;
+  themes: Map<string, string | null>;
 };
 
 /**
@@ -103,6 +104,7 @@ export const collectPendingMemoSyncState = async (scope: string): Promise<Pendin
     updateIds: new Set(),
     restoreIds: new Set(),
     emptyTrashIds: new Set(),
+    themes: new Map(),
   };
 
   for (const item of await localDb.syncQueue.toArray()) {
@@ -118,6 +120,8 @@ export const collectPendingMemoSyncState = async (scope: string): Promise<Pendin
       state.updateIds.add(item.memoId);
     } else if (item.kind === "memo.restore") {
       state.restoreIds.add(payloadMemoId);
+    } else if (item.kind === "memo.setTheme") {
+      state.themes.set(payloadMemoId, typeof payload.theme === "string" ? payload.theme : null);
     } else if (item.kind === "memo.deleteBatch") {
       for (const memoId of Array.isArray(payload.memoIds) ? payload.memoIds : []) {
         if (typeof memoId === "string") state.deleteIds.add(memoId);
@@ -140,17 +144,23 @@ export const shouldApplyRemoteMemoChange = (memo: MemoDetail, pending: PendingMe
   return true;
 };
 
+const applyPendingTheme = <T extends MemoDetail>(memo: T, pending: PendingMemoSyncState): T => {
+  const theme = pending.themes.get(memo.id);
+  return theme === undefined ? memo : { ...memo, theme };
+};
+
 const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDetail[]) => {
   const pending = await collectPendingMemoSyncState(scope);
   const now = new Date().toISOString();
   const projectedMemos = memos.map((memo) => {
-    if ((pending.deleteIds.has(memo.id) || pending.emptyTrashIds.has(memo.id)) && !memo.isDeleted) {
-      return { ...memo, isDeleted: true, deletedAt: memo.deletedAt ?? now };
+    const projected = applyPendingTheme(memo, pending);
+    if ((pending.deleteIds.has(projected.id) || pending.emptyTrashIds.has(projected.id)) && !projected.isDeleted) {
+      return { ...projected, isDeleted: true, deletedAt: projected.deletedAt ?? now };
     }
-    if (pending.restoreIds.has(memo.id) && memo.isDeleted) {
-      return { ...memo, isDeleted: false, deletedAt: null };
+    if (pending.restoreIds.has(projected.id) && projected.isDeleted) {
+      return { ...projected, isDeleted: false, deletedAt: null };
     }
-    return memo;
+    return projected;
   });
 
   await localDb.transaction("rw", [localDb.notebooks, localDb.memos, localDb.revisions, localDb.resources], async () => {
@@ -174,7 +184,7 @@ const applyChanges = async (scope: string, changes: SyncChangesResponse["changes
         if (change.operation === "delete" || !change.memo) {
           await localDb.memos.delete([scope, change.entityId]);
         } else if (shouldApplyRemoteMemoChange(change.memo, pending)) {
-          await localDb.memos.put({ ...change.memo, scope });
+          await localDb.memos.put({ ...applyPendingTheme(change.memo, pending), scope });
         }
         continue;
       }
@@ -465,13 +475,19 @@ export const replaceLocalMemoId = async (scope: string, temporaryId: string, mem
             updatedAt: temporaryMemo.updatedAt,
           }
         : null;
-    const remappedMemo: MemoDetail = contentSource
-      ? {
-          ...memo,
-          ...contentSource,
-          excerpt: createExcerpt(contentSource.contentText),
-        }
-      : memo;
+    const remappedMemo: MemoDetail = {
+      ...(contentSource
+        ? {
+            ...memo,
+            ...contentSource,
+            excerpt: createExcerpt(contentSource.contentText),
+          }
+        : memo),
+      // A create acknowledgement returns the server's fresh (unthemed) row, but
+      // the note may already carry a locally chosen theme whose setTheme action
+      // is still queued. Keep that choice until its own acknowledgement lands.
+      theme: memo.theme ?? temporaryMemo?.theme ?? null,
+    };
 
     await localDb.memos.put({ ...remappedMemo, scope });
     await localDb.memos.delete([scope, temporaryId]);
@@ -789,6 +805,11 @@ export const applyLocalMemoMove = (scope: string, memoIds: string[], notebookId:
 
 export const applyLocalMemoPin = (scope: string, memoIds: string[], isPinned: boolean) =>
   updateLocalMemos(scope, memoIds, (memo) => ({ ...memo, isPinned, updatedAt: new Date().toISOString() }));
+
+export const applyLocalMemoTheme = async (scope: string, memoId: string, theme: string | null) => {
+  await updateLocalMemos(scope, [memoId], (memo) => ({ ...memo, theme, updatedAt: new Date().toISOString() }));
+  return getLocalMemo(scope, memoId);
+};
 
 export const applyLocalMemoDeleteBatch = async (scope: string, memoIds: string[], permanent = false) => {
   if (permanent) return updateLocalMemos(scope, memoIds, () => null);

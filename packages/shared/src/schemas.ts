@@ -42,6 +42,7 @@ export const MemoUpdateSchema = z.object({
   notebookId: z.string().trim().min(1).optional(),
   title: z.string().trim().max(160).optional(),
   isPinned: z.boolean().optional(),
+  theme: z.string().trim().max(64).nullable().optional(),
   contentJson: z.unknown().optional(),
   contentMarkdown: z.string().optional(),
   tags: z.array(z.string()).optional(),

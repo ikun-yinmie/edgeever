@@ -40,7 +40,7 @@ fn settle_pending_memo_create(
         // The note never reached the server, so its queued edits are moot and
         // would otherwise surface as unresolvable missing-memo sync issues.
         tx.execute(
-            "DELETE FROM _edgeever_sidecar_outbox WHERE entity_id = ?1 AND kind IN ('memo.update', 'memo.restore') AND status <> 'syncing'",
+            "DELETE FROM _edgeever_sidecar_outbox WHERE entity_id = ?1 AND kind IN ('memo.update', 'memo.restore', 'memo.setTheme') AND status <> 'syncing'",
             [memo_id],
         )
         .map_err(|e| e.to_string())?;
@@ -58,6 +58,7 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "excerpt": row.get::<_, String>("excerpt")?,
         "tags": tags_from_json(&tags),
         "isPinned": row.get::<_, i64>("is_pinned")? != 0,
+        "theme": row.get::<_, Option<String>>("theme")?,
         "isArchived": row.get::<_, i64>("is_archived")? != 0,
         "isDeleted": row.get::<_, i64>("is_deleted")? != 0,
         "revision": row.get::<_, i64>("revision")?,
@@ -73,7 +74,7 @@ pub(crate) fn memo_value(
     include_deleted: bool,
 ) -> Result<Value, String> {
     let mut statement = database.prepare(
-        "SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.is_archived, m.is_deleted,
+        "SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.is_archived, m.is_deleted,
                 m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id, m.created_at, m.updated_at, m.deleted_at,
                 c.content_json, c.content_markdown, c.content_text, c.content_hash, c.revision
            FROM memos m JOIN memo_contents c ON c.memo_id = m.id
@@ -87,6 +88,7 @@ pub(crate) fn memo_value(
             "id": row.get::<_, String>("id")?, "notebookId": row.get::<_, String>("notebook_id")?,
             "title": row.get::<_, Option<String>>("title")?, "excerpt": row.get::<_, String>("excerpt")?,
             "tags": tags_from_json(&tags), "isPinned": row.get::<_, i64>("is_pinned")? != 0,
+            "theme": row.get::<_, Option<String>>("theme")?,
             "isArchived": row.get::<_, i64>("is_archived")? != 0, "isDeleted": row.get::<_, i64>("is_deleted")? != 0,
             "revision": row.get::<_, i64>("revision")?, "createdAt": row.get::<_, String>("created_at")?,
             "updatedAt": row.get::<_, String>("updated_at")?, "deletedAt": row.get::<_, Option<String>>("deleted_at")?,
@@ -347,6 +349,28 @@ pub(crate) fn pin_memos(database: &Connection, params: &Value) -> Result<Value, 
     Ok(json!({ "ok": true, "updated": updated }))
 }
 
+pub(crate) fn set_memo_theme(database: &Connection, params: &Value) -> Result<Value, String> {
+    let memo_id = string_param(params, "memoId")?;
+    let theme = params
+        .get("theme")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    database
+        .execute(
+            "UPDATE memos SET theme = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_by = 'desktop' WHERE id = ?2 AND is_deleted = 0",
+            rusqlite::params![theme, memo_id],
+        )
+        .map_err(|e| e.to_string())?;
+    let memo = memo_value(database, &memo_id, false)?;
+    enqueue_change(
+        database,
+        "memo.setTheme",
+        &memo_id,
+        &json!({ "memoId": memo_id, "theme": theme }),
+    )?;
+    Ok(memo)
+}
+
 pub(crate) fn merge_memos(database: &Connection, params: &Value) -> Result<Value, String> {
     let memo_ids = params
         .get("memoIds")
@@ -536,7 +560,7 @@ pub(crate) fn list_memos(database: &Connection, params: &Value) -> Result<Value,
                 WHERE LOWER(TRIM(CAST(memo_tag.value AS TEXT))) = LOWER(?5)
             )){filter}"
     );
-    let query = format!("SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.is_archived, m.is_deleted,
+    let query = format!("SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.is_archived, m.is_deleted,
                 c.revision, m.created_at, m.updated_at, m.deleted_at
            FROM memos m JOIN memo_contents c ON c.memo_id = m.id
           WHERE {where_clause}

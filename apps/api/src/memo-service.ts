@@ -251,7 +251,7 @@ export const searchMemoSummaries = async (
              FROM raw_matches
              GROUP BY memo_id
            )
-           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
                   m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
                   c.content_text
            FROM search_matches s
@@ -270,7 +270,7 @@ export const searchMemoSummaries = async (
 
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -298,7 +298,7 @@ export const listMemosForMcp = async (
   if (options.includeContent) {
     const rows = await db
       .prepare(
-        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
                 m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
                 c.content_json, c.content_markdown, c.content_text, c.content_hash,
                 m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -324,7 +324,7 @@ export const listMemosForMcp = async (
 
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -355,7 +355,7 @@ export const getMemoDetailRow = async (
 ): Promise<MemoDetailRow | null> =>
   db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_json, c.content_markdown, c.content_text, c.content_hash,
               m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -575,7 +575,7 @@ export const getMemosForBulkAction = async (db: DatabaseAdapter, workspaceId: st
   const placeholders = uniqueMemoIds.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -824,7 +824,7 @@ export const mergeMemosRecord = async (
   const placeholders = uniqueMemoIds.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_json, c.content_markdown, c.content_text, c.content_hash,
               m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -1278,6 +1278,7 @@ export const updateMemoRecord = async (
   }
 
   const isPinned = input.isPinned ?? Boolean(current.is_pinned);
+  const theme = input.theme === undefined ? current.theme ?? null : normalizeMemoTheme(input.theme);
   const hasContentUpdate =
     input.notebookId !== undefined ||
     input.title !== undefined ||
@@ -1290,7 +1291,9 @@ export const updateMemoRecord = async (
   const updatedAt = input.updatedAt ?? now;
 
   if (!hasContentUpdate) {
-    if (input.isPinned === undefined || isPinned === Boolean(current.is_pinned)) {
+    const pinChanged = input.isPinned !== undefined && isPinned !== Boolean(current.is_pinned);
+    const themeChanged = input.theme !== undefined && theme !== (current.theme ?? null);
+    if (!pinChanged && !themeChanged) {
       if (commit) await db.batch([...commit.before, ...commit.after(id)]);
       const memo = await getMemoDetail(db, workspaceId, id);
 
@@ -1306,11 +1309,19 @@ export const updateMemoRecord = async (
       db
         .prepare(
           `UPDATE memos
-           SET is_pinned = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
+           SET is_pinned = ?, theme = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
            WHERE id = ? AND workspace_id = ? AND is_deleted = 0`
         )
-        .bind(isPinned ? 1 : 0, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId),
-      auditStatement(db, actor.actorType, actor.actorId, isPinned ? "memo.pin" : "memo.unpin", "memo", id, {}),
+        .bind(isPinned ? 1 : 0, theme, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId),
+      auditStatement(
+        db,
+        actor.actorType,
+        actor.actorId,
+        pinChanged ? (isPinned ? "memo.pin" : "memo.unpin") : "memo.theme",
+        "memo",
+        id,
+        themeChanged ? { theme } : {},
+      ),
       ...(commit?.after(id) ?? []),
     ]);
 
@@ -1357,6 +1368,7 @@ export const updateMemoRecord = async (
     && title === normalizeMemoTitle(current.title)
     && JSON.stringify(tags) === current.tags_json
     && isPinned === Boolean(current.is_pinned)
+    && theme === (current.theme ?? null)
     && contentHash === current.content_hash
     && input.createdAt === undefined
     && input.updatedAt === undefined;
@@ -1405,11 +1417,11 @@ export const updateMemoRecord = async (
     db
       .prepare(
         `UPDATE memos
-         SET notebook_id = ?, title = ?, excerpt = ?, tags_json = ?, is_pinned = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
+         SET notebook_id = ?, title = ?, excerpt = ?, tags_json = ?, is_pinned = ?, theme = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
          WHERE id = ? AND workspace_id = ? AND is_deleted = 0
            AND EXISTS (SELECT 1 FROM notebooks n WHERE n.id = ? AND n.workspace_id = ? AND n.is_deleted = 0)`
       )
-      .bind(notebookId, title, excerpt, JSON.stringify(tags), isPinned ? 1 : 0, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId, notebookId, workspaceId),
+      .bind(notebookId, title, excerpt, JSON.stringify(tags), isPinned ? 1 : 0, theme, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId, notebookId, workspaceId),
     db
       .prepare(
         `UPDATE memo_contents
@@ -1449,4 +1461,9 @@ const parseDoc = (json: string): TiptapDoc => {
 const normalizeMemoTitle = (value: string | null | undefined) => {
   const title = value?.trim();
   return title || DEFAULT_MEMO_TITLE;
+};
+
+const normalizeMemoTheme = (value: string | null | undefined) => {
+  const theme = value?.trim();
+  return theme ? theme : null;
 };

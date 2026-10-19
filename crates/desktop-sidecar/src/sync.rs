@@ -153,7 +153,7 @@ pub(crate) fn sync_outbox_list(database: &Connection, params: &Value) -> Result<
          FROM _edgeever_sidecar_outbox o
          WHERE (o.status = 'pending' OR (o.status = 'error' AND o.retryable = 1 AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))
            AND NOT (
-             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash', 'memo.move', 'memo.pinBatch')
+             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash', 'memo.move', 'memo.pinBatch', 'memo.setTheme')
              AND EXISTS (
                SELECT 1 FROM _edgeever_sidecar_outbox c
                WHERE c.kind = 'memo.create'
@@ -827,6 +827,44 @@ fn notebook_is_active(tx: &Transaction<'_>, notebook_id: &str) -> Result<bool, S
     .map_err(|e| e.to_string())
 }
 
+/// A locally queued theme change must win over a stale server snapshot until its
+/// own acknowledgement lands; otherwise a remote upsert arriving between the
+/// change and its flush would visibly revert the note's theme. The
+/// acknowledgement passes the outbox id so the authoritative snapshot applies.
+fn pending_memo_theme_override(
+    tx: &Transaction<'_>,
+    ignore_outbox_id: Option<i64>,
+    entity_id: &str,
+    placeholder_entity_id: Option<&str>,
+) -> Result<Option<Option<String>>, String> {
+    let mut statement = tx
+        .prepare(
+            "SELECT payload_json FROM _edgeever_sidecar_outbox
+             WHERE kind = 'memo.setTheme'
+               AND (?1 IS NULL OR id <> ?1)
+               AND (entity_id = ?2 OR instr(payload_json, ?2) > 0
+                    OR (?3 IS NOT NULL AND (entity_id = ?3 OR instr(payload_json, ?3) > 0)))
+             ORDER BY id DESC
+             LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+    let payload: Option<String> = statement
+        .query_row(
+            rusqlite::params![ignore_outbox_id, entity_id, placeholder_entity_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let theme = serde_json::from_str::<Value>(&payload)
+        .ok()
+        .and_then(|value| value.get("theme").cloned())
+        .and_then(|value| value.as_str().map(str::to_owned));
+    Ok(Some(theme))
+}
+
 fn apply_one_sync_change(
     tx: &Transaction<'_>,
     change: &Value,
@@ -972,6 +1010,12 @@ fn apply_one_sync_change(
         .cloned()
         .unwrap_or_else(|| json!([]))
         .to_string();
+    let theme = if rebuilding {
+        memo.get("theme").and_then(Value::as_str).map(str::to_owned)
+    } else {
+        pending_memo_theme_override(tx, ignore_outbox_id, &entity_id, placeholder_entity_id)?
+            .unwrap_or_else(|| memo.get("theme").and_then(Value::as_str).map(str::to_owned))
+    };
     let source_memo_ids = memo
         .get("sourceMemoIds")
         .and_then(Value::as_array)
@@ -1001,7 +1045,7 @@ fn apply_one_sync_change(
         .unwrap_or_else(|| json!({"type":"doc","content":[]}));
     let requested_notebook_id = string_param(memo, "notebookId")?;
     let notebook_id = resolve_sync_notebook_id(tx, &requested_notebook_id)?;
-    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, is_pinned, is_archived, is_deleted, source_memo_ids, merge_source_count, merged_into_memo_id, created_at, updated_at, deleted_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) ON CONFLICT(id) DO UPDATE SET notebook_id=excluded.notebook_id, title=excluded.title, excerpt=excluded.excerpt, tags_json=excluded.tags_json, is_pinned=excluded.is_pinned, is_archived=excluded.is_archived, is_deleted=excluded.is_deleted, source_memo_ids=excluded.source_memo_ids, merge_source_count=excluded.merge_source_count, merged_into_memo_id=excluded.merged_into_memo_id, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at", rusqlite::params![entity_id, notebook_id, memo.get("title").and_then(Value::as_str), string_param(memo, "excerpt")?, tags, memo.get("isPinned").and_then(Value::as_bool).unwrap_or(false) as i64, memo.get("isArchived").and_then(Value::as_bool).unwrap_or(false) as i64, memo.get("isDeleted").and_then(Value::as_bool).unwrap_or(false) as i64, source_ids, memo.get("mergeSourceCount").and_then(Value::as_i64).unwrap_or(0), merge_target, string_param(memo, "createdAt")?, string_param(memo, "updatedAt")?, memo.get("deletedAt").and_then(Value::as_str)]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, is_pinned, theme, is_archived, is_deleted, source_memo_ids, merge_source_count, merged_into_memo_id, created_at, updated_at, deleted_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) ON CONFLICT(id) DO UPDATE SET notebook_id=excluded.notebook_id, title=excluded.title, excerpt=excluded.excerpt, tags_json=excluded.tags_json, is_pinned=excluded.is_pinned, theme=excluded.theme, is_archived=excluded.is_archived, is_deleted=excluded.is_deleted, source_memo_ids=excluded.source_memo_ids, merge_source_count=excluded.merge_source_count, merged_into_memo_id=excluded.merged_into_memo_id, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at", rusqlite::params![entity_id, notebook_id, memo.get("title").and_then(Value::as_str), string_param(memo, "excerpt")?, tags, memo.get("isPinned").and_then(Value::as_bool).unwrap_or(false) as i64, theme, memo.get("isArchived").and_then(Value::as_bool).unwrap_or(false) as i64, memo.get("isDeleted").and_then(Value::as_bool).unwrap_or(false) as i64, source_ids, memo.get("mergeSourceCount").and_then(Value::as_i64).unwrap_or(0), merge_target, string_param(memo, "createdAt")?, string_param(memo, "updatedAt")?, memo.get("deletedAt").and_then(Value::as_str)]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_text, content_hash, revision) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(memo_id) DO UPDATE SET content_json=excluded.content_json, content_markdown=excluded.content_markdown, content_text=excluded.content_text, content_hash=excluded.content_hash, revision=excluded.revision, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')", rusqlite::params![entity_id, content_json.to_string(), string_param(memo, "contentMarkdown")?, string_param(memo, "contentText")?, string_param(memo, "contentHash")?, memo.get("revision").and_then(Value::as_i64).unwrap_or(0)]).map_err(|e| e.to_string())?;
     for source_id in source_memo_ids.iter().filter_map(Value::as_str) {
         tx.execute(

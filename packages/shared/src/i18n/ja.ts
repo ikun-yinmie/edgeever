@@ -698,6 +698,7 @@ export const ja = {
       start: "左揃え",
     },
     editorThemes: {
+      followDevice: "デバイスの既定に従う",
       default: "標準テーマ",
       letter: "あたたかな紙",
       guide: "講義ノート",
@@ -2114,6 +2115,10 @@ export const ja = {
     highlightColorReset: "背景色を解除",
     fontSize: "フォントサイズ",
     fontSizeReset: "サイズをリセット",
+    fontSizeIncrease: "フォントサイズを大きく",
+    fontSizeDecrease: "フォントサイズを小さく",
+    fontSizeCustom: "カスタム文字サイズ",
+    fontSizeApply: "適用",
     codeLineNumbers: "行番号",
     codeWrapLines: "自動折り返し",
     codeMoreActions: "その他のコードブロック操作",

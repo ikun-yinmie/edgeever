@@ -1,7 +1,14 @@
+import { useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Baseline, ChevronDown, Highlighter } from "lucide-react";
+import {
+  AArrowDown,
+  AArrowUp,
+  Baseline,
+  ChevronDown,
+  Highlighter,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,9 +17,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import {
+  FONT_SIZE_BASE_PX,
+  FONT_SIZE_PX_MAX,
+  FONT_SIZE_PX_MIN,
+  FONT_SIZE_SCALE,
+  clampFontSizePx,
+  parseFontSizePx,
+  stepFontSizePx,
+} from "@edgeever/shared";
 
-const FONT_SIZES = ["12px", "13px", "14px", "15px", "16px", "19px", "22px", "24px", "29px", "32px", "40px", "48px"];
+const FONT_SIZES = FONT_SIZE_SCALE.map((size) => `${size}px`);
 
 export const FONT_SIZE_MENU_VALUES = FONT_SIZES;
 
@@ -104,6 +122,8 @@ const CustomColorItem = ({ label, onPick }: CustomColorItemProps) => (
 export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuProps) => {
   const { t } = useTranslation();
   const currentSize = readTextStyleAttr(editor, "fontSize");
+  const [open, setOpen] = useState(false);
+  const [customValue, setCustomValue] = useState("");
 
   const run = (command: (activeEditor: Editor) => void) => {
     if (!editor || editor.isDestroyed || readOnly) return;
@@ -111,8 +131,23 @@ export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuPr
     command(editor);
   };
 
+  const parsedCustom = Number.parseInt(customValue.trim(), 10);
+  const customValid = Number.isFinite(parsedCustom);
+
+  const applyCustomSize = () => {
+    if (!customValid) return;
+    run((active) => active.chain().focus().setFontSize(`${clampFontSizePx(parsedCustom)}px`).run());
+    setOpen(false);
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        setCustomValue(nextOpen ? String(parseFontSizePx(currentSize) ?? FONT_SIZE_BASE_PX) : "");
+      }}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild disabled={readOnly}>
@@ -135,6 +170,40 @@ export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuPr
         <TooltipContent side="top">{t("editorToolbar.fontSize")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="max-h-80 min-w-24 overflow-y-auto">
+        <div
+          className="flex items-center gap-1.5 px-2 py-1.5"
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={FONT_SIZE_PX_MIN}
+            max={FONT_SIZE_PX_MAX}
+            value={customValue}
+            disabled={readOnly}
+            placeholder={String(FONT_SIZE_BASE_PX)}
+            aria-label={t("editorToolbar.fontSizeCustom")}
+            className="h-7 w-16 px-2 text-[13px] tabular-nums"
+            onChange={(event) => setCustomValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                applyCustomSize();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="h-7 px-2 text-[13px] font-normal"
+            disabled={readOnly || !customValid}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={applyCustomSize}
+          >
+            {t("editorToolbar.fontSizeApply")}
+          </Button>
+        </div>
+        <DropdownMenuSeparator />
         {FONT_SIZES.map((size) => (
           <DropdownMenuItem
             key={size}
@@ -151,6 +220,44 @@ export const EditorFontSizeMenu = ({ editor, readOnly }: EditorInlineStyleMenuPr
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+};
+
+export const EditorFontSizeStepButtons = ({ editor, readOnly }: EditorInlineStyleMenuProps) => {
+  const { t } = useTranslation();
+
+  const step = (direction: 1 | -1) => {
+    if (!editor || editor.isDestroyed || readOnly) return;
+    const current = parseFontSizePx(readTextStyleAttr(editor, "fontSize"));
+    const next = stepFontSizePx(current, direction);
+    editor.chain().focus().setFontSize(`${next}px`).run();
+  };
+
+  const stepButtons = [
+    { direction: -1 as const, label: t("editorToolbar.fontSizeDecrease"), Icon: AArrowDown },
+    { direction: 1 as const, label: t("editorToolbar.fontSizeIncrease"), Icon: AArrowUp },
+  ];
+
+  return (
+    <>
+      {stepButtons.map(({ direction, label, Icon }) => (
+        <Tooltip key={direction}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent bg-transparent text-slate-700 transition hover:border-slate-200 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40"
+              disabled={readOnly}
+              aria-label={label}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => step(direction)}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{label}</TooltipContent>
+        </Tooltip>
+      ))}
+    </>
   );
 };
 

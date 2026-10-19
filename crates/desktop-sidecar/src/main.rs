@@ -63,6 +63,37 @@ fn enqueue_change(
             return Ok(());
         }
     }
+    if kind == "memo.setTheme" {
+        // A note carries at most one theme, so repeated changes coalesce into
+        // the newest payload instead of piling up outbox rows.
+        let existing: Option<i64> = database
+            .query_row(
+                "SELECT id FROM _edgeever_sidecar_outbox WHERE kind = 'memo.setTheme' AND entity_id = ?1 AND status IN ('pending', 'error', 'conflict') ORDER BY id LIMIT 1",
+                [entity_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(outbox_id) = existing {
+            database
+                .execute(
+                    "UPDATE _edgeever_sidecar_outbox
+                 SET payload_json = ?1,
+                     status = 'pending',
+                     last_error = NULL,
+                     last_error_code = NULL,
+                     retryable = 1,
+                     next_attempt_at = NULL,
+                     version = version + 1,
+                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE id = ?2",
+                    rusqlite::params![payload.to_string(), outbox_id],
+                )
+                .map(|_| ())
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
     database.execute(
         "INSERT INTO _edgeever_sidecar_outbox (kind, entity_id, payload_json) VALUES (?1, ?2, ?3)",
         rusqlite::params![kind, entity_id, payload.to_string()],

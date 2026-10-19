@@ -16,18 +16,22 @@ import {
 const KEYMAP_MODIFIERS = new Set(["Mod", "Alt", "Shift", "Ctrl"]);
 
 const isValidKeymapName = (name) => {
-  const parts = name.split("-");
+  // Mirror prosemirror-keymap's parser: split on "-" unless it ends the string,
+  // so a literal "-" key ("Mod--") stays a valid single-character base key.
+  const parts = name.split(/-(?!$)/);
   if (parts.length < 2) return false;
   return parts.slice(0, -1).every((part) => KEYMAP_MODIFIERS.has(part));
 };
 
 describe("editor shortcut keys", () => {
   test("provides a Yuque-style default for every action", () => {
-    expect(EDITOR_SHORTCUT_IDS.length).toBe(19);
+    expect(EDITOR_SHORTCUT_IDS.length).toBe(21);
     expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS["heading-1"]).toEqual({ key: "1", ctrlOrMeta: true, shift: false, alt: true });
     expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS.paragraph).toEqual({ key: "0", ctrlOrMeta: true, shift: false, alt: true });
     expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS.bulletList).toEqual({ key: "8", ctrlOrMeta: true, shift: true, alt: false });
     expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS.orderedList).toEqual({ key: "7", ctrlOrMeta: true, shift: true, alt: false });
+    expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS["font-size-increase"]).toEqual({ key: "=", ctrlOrMeta: true, shift: false, alt: false });
+    expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS["font-size-decrease"]).toEqual({ key: "-", ctrlOrMeta: true, shift: false, alt: false });
     expect(DEFAULT_EDITOR_SHORTCUT_SETTINGS.clearFormatting).toEqual({ key: "\\", ctrlOrMeta: true, shift: false, alt: false });
   });
 
@@ -69,6 +73,8 @@ describe("editor shortcut keys", () => {
     expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS.paragraph)).toBe("Mod-Alt-0");
     expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS.bold)).toBe("Mod-b");
     expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS.bulletList)).toBe("Mod-Shift-8");
+    expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS["font-size-increase"])).toBe("Mod-=");
+    expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS["font-size-decrease"])).toBe("Mod--");
     expect(editorShortcutBindingToKeymapName(DEFAULT_EDITOR_SHORTCUT_SETTINGS.clearFormatting)).toBe("Mod-\\");
     expect(editorShortcutBindingToKeymapName({ key: "space", ctrlOrMeta: true, shift: false, alt: false })).toBe("Mod-Space");
     expect(editorShortcutBindingToKeymapName({ key: "", ctrlOrMeta: true, shift: false, alt: false })).toBeNull();

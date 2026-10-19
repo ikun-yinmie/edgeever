@@ -26,6 +26,8 @@ type EditorPhonePreviewProps = {
   scrollContainer?: HTMLDivElement | null;
   onScrollerChange?: (element: HTMLDivElement | null) => void;
   className?: string;
+  /** Overrides the device editor theme (used for article-bound themes). */
+  editorTheme?: string;
 };
 
 const BLOCK_SELECTOR =
@@ -62,9 +64,10 @@ const alignElement = (scroller: HTMLElement, target: HTMLElement, viewportTop: n
   scroller.scrollTop += delta;
 };
 
-export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerChange, className }: EditorPhonePreviewProps) => {
+export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerChange, className, editorTheme: editorThemeOverride }: EditorPhonePreviewProps) => {
   const { t } = useTranslation();
-  const { editorTheme } = useEditorTheme();
+  const { editorTheme: deviceEditorTheme } = useEditorTheme();
+  const editorTheme = editorThemeOverride ?? deviceEditorTheme;
   const { mermaidTheme } = useMermaidTheme();
   const previewSyncGeneration = useRef(0);
   const [markup, setMarkup] = useState({ html: "", style: "" });

@@ -19,6 +19,7 @@ const {
   applyLocalTagRename,
   applyLocalMemoMove,
   applyLocalMemoPin,
+  applyLocalMemoTheme,
   applyLocalMemoDeleteBatch,
   applyLocalEmptyTrash,
   updateLocalNotebook,
@@ -259,6 +260,52 @@ describe("local mirror", () => {
     }
   });
 
+  test("keeps a queued theme while a stale remote snapshot arrives", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await seedNotebook(scope, "nb-inbox");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Themed offline" });
+    await putLocalMemo(scope, { ...memo, theme: "letter" });
+    await localDb.syncQueue.put({
+      id: `action:${scope}:memo.setTheme:${memo.id}`,
+      kind: "memo.setTheme",
+      scope,
+      memoId: memo.id,
+      status: "pending",
+      payload: { memoId: memo.id, theme: "letter" },
+      attemptCount: 0,
+      lastError: null,
+      nextAttemptAt: null,
+      claimId: null,
+      createdAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+    await localDb.syncMeta.bulkPut([
+      { scope, key: "cursor", value: "1", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { scope, key: "identity", value: "same-workspace", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    const originalSyncChanges = api.syncChanges;
+    api.syncChanges = async () => ({
+      changes: [{
+        entityType: "memo",
+        operation: "upsert",
+        entityId: memo.id,
+        memo: { ...memo, theme: null, revision: 9, title: "Themed offline" },
+        notebook: null,
+      }],
+      cursor: 2,
+      hasMore: false,
+      serverCursor: 2,
+      syncIdentity: "same-workspace",
+    });
+
+    try {
+      expect(await syncLocalMirror(scope)).toEqual({ bootstrapped: false, changed: 1 });
+      expect((await getLocalMemo(scope, memo.id))?.theme).toBe("letter");
+    } finally {
+      api.syncChanges = originalSyncChanges;
+    }
+  });
+
   test("keeps a queued delete across a bootstrap rebuild", async () => {
     const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
     await seedNotebook(scope, "nb-inbox");
@@ -412,6 +459,15 @@ describe("local mirror", () => {
     expect((await getLocalMemo(scope, first.id))?.tags).toEqual(["new"]);
     expect((await getLocalMemo(scope, first.id))?.notebookId).toBe("archive");
     expect((await getLocalMemo(scope, first.id))?.isPinned).toBe(true);
+  });
+
+  test("applies a memo theme to the local mirror immediately", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    const themed = await applyLocalMemoTheme(scope, memo.id, "letter");
+    expect(themed?.theme).toBe("letter");
+    expect((await getLocalMemo(scope, memo.id))?.theme).toBe("letter");
+    expect((await applyLocalMemoTheme(scope, memo.id, null))?.theme).toBeNull();
   });
 
   test("deletes and empties trash locally without waiting for the API", async () => {

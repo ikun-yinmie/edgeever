@@ -441,6 +441,22 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
     return null;
   }
 
+  if (item.kind === "memo.setTheme") {
+    const memoId = String(payload.memoId ?? item.entityId);
+    let data: { memo: MemoDetail } | null = null;
+    try {
+      data = await api.updateMemo(memoId, { theme: typeof payload.theme === "string" ? payload.theme : null });
+    } catch (error) {
+      // The note may be already gone (removed on another device, or its create
+      // never reached the server); there is nothing left to theme.
+      if (!(error instanceof ApiRequestError) || error.status !== 404) {
+        throw error;
+      }
+    }
+    await acknowledge(item, data?.memo);
+    return null;
+  }
+
   if (item.kind === "memo.merge") {
     const data = await api.mergeMemos({
       memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [],

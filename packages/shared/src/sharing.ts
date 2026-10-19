@@ -13,6 +13,8 @@ export type MemoShare = {
 
 export type PublicMemoShare = {
   title: string | null;
+  /** Per-note editor theme; `null`/missing renders with the viewer's default. */
+  theme?: string | null;
   contentJson: TiptapDoc;
   contentMarkdown: string;
   tags: string[];

@@ -2192,6 +2192,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         notebookId?: string;
         title?: string;
         isPinned?: boolean;
+        theme?: string | null;
         contentJson?: TiptapDoc;
         contentMarkdown?: string;
         tags?: string[];

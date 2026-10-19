@@ -88,7 +88,7 @@ import {
   type NoteLinkSuggestionLabels,
 } from "./editor/NoteLinkSuggestion";
 import { WeChatIcon } from "./WeChatIcon";
-import { isNamedEditorTheme, useEditorTheme, useMarkdownTheme } from "./ThemeProvider";
+import { isNamedEditorTheme, resolveMemoEditorTheme, useEditorTheme, useMarkdownTheme } from "./ThemeProvider";
 const MarkdownSourceEditor = lazy(() =>
   import("./editor/MarkdownSourceEditor").then((module) => ({
     default: module.MarkdownSourceEditor,
@@ -441,6 +441,8 @@ const RichEditorPane = ({
 }: RichEditorPaneProps) => {
   const { t, i18n } = useTranslation();
   const { customEditorTheme, editorTheme } = useEditorTheme();
+  const memoEditorTheme = resolveMemoEditorTheme(memo?.theme ?? null);
+  const resolvedEditorTheme = memoEditorTheme ?? editorTheme;
   const { markdownTheme } = useMarkdownTheme();
   const queryClient = useQueryClient();
   const resourceInsertionLimit = useMemo(createFileBatchQueue, []);
@@ -3022,6 +3024,22 @@ const RichEditorPane = ({
     },
   });
 
+  const handleMemoThemeChange = useCallback(
+    (theme: string | null) => {
+      const currentMemo = memoRef.current;
+      if (!currentMemo) return;
+      void repository.setMemoTheme(currentMemo.id, theme)
+        .then(async ({ memo: updatedMemo }) => {
+          memoRef.current = updatedMemo;
+          await onSaved(updatedMemo);
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to save the note theme", error);
+        });
+    },
+    [onSaved, repository]
+  );
+
   const pluginEditorMemoId = memo?.id ?? null;
   useEffect(() => {
     if (!editor || !pluginEditorMemoId || effectiveReadOnly || hydratedEditorMemoId !== pluginEditorMemoId) {
@@ -4308,6 +4326,8 @@ const RichEditorPane = ({
             externalLinkActive={externalLinkActive}
             onPickNoteLink={() => setNoteLinkPickerOpen(true)}
             onPickMathFormula={() => openMathFormula()}
+            memoTheme={effectiveReadOnly ? undefined : memoEditorTheme}
+            onMemoThemeChange={effectiveReadOnly ? undefined : handleMemoThemeChange}
           />
         )}
         <EditorSaveRecoveryBanner
@@ -4325,15 +4345,15 @@ const RichEditorPane = ({
 
       <div
         ref={setEditorScrollContainerRef}
-        data-editor-theme={isNamedEditorTheme(editorTheme) ? editorTheme : "custom"}
-        data-paper-theme={isPaperEditorTheme(editorTheme) ? "true" : undefined}
-        data-theme-bg-image={!isNamedEditorTheme(editorTheme) && customEditorTheme.backgroundImage ? "true" : undefined}
+        data-editor-theme={isNamedEditorTheme(resolvedEditorTheme) ? resolvedEditorTheme : "custom"}
+        data-paper-theme={isPaperEditorTheme(resolvedEditorTheme) ? "true" : undefined}
+        data-theme-bg-image={!isNamedEditorTheme(resolvedEditorTheme) && customEditorTheme.backgroundImage ? "true" : undefined}
         data-publish-surface={isMobileViewport ? "phone" : "desktop"}
         style={{
-          ...(isPaperEditorTheme(editorTheme)
+          ...(isPaperEditorTheme(resolvedEditorTheme)
             ? publishEditorCssVars(
-                editorTheme,
-                resolvePaperEditorTheme(editorTheme)?.palette ?? "emerald",
+                resolvedEditorTheme,
+                resolvePaperEditorTheme(resolvedEditorTheme)?.palette ?? "emerald",
                 isMobileViewport ? "phone" : "desktop",
               )
             : {
@@ -4342,7 +4362,7 @@ const RichEditorPane = ({
                 "--editor-paragraph-spacing": `${MEMO_CONTENT_STYLE.body.paragraphSpacing}px`,
               }),
           "--memo-content-divider-spacing": `${MEMO_CONTENT_STYLE.divider.marginVertical}px`,
-          ...(!isNamedEditorTheme(editorTheme)
+          ...(!isNamedEditorTheme(resolvedEditorTheme)
             ? {
                 "--editor-theme-light-bg": customEditorTheme.light.background,
                 "--editor-theme-light-text": customEditorTheme.light.text,
@@ -4362,7 +4382,7 @@ const RichEditorPane = ({
                 "--editor-theme-dark-border": customEditorTheme.dark.border,
               }
             : {}),
-          ...(!isNamedEditorTheme(editorTheme) && customEditorTheme.backgroundImage
+          ...(!isNamedEditorTheme(resolvedEditorTheme) && customEditorTheme.backgroundImage
             ? buildBackgroundImageVars(customEditorTheme.backgroundImage)
             : {}),
         } as CSSProperties}
@@ -4376,7 +4396,7 @@ const RichEditorPane = ({
               : "overflow-y-auto lg:[scrollbar-gutter:stable_both-edges]"
         )}
       >
-        {!isNamedEditorTheme(editorTheme) && customEditorTheme.customCss && (
+        {!isNamedEditorTheme(resolvedEditorTheme) && customEditorTheme.customCss && (
             <style
               data-theme-custom-css
               data-original-css={customEditorTheme.customCss}
@@ -4513,6 +4533,7 @@ const RichEditorPane = ({
               title={getEditableMemoTitle(memo?.title)}
               scrollContainer={editorScrollContainer}
               onScrollerChange={setPhonePreviewScroller}
+              editorTheme={resolvedEditorTheme}
             />
           )}
           {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (

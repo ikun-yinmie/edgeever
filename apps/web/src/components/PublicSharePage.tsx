@@ -4,7 +4,7 @@ import Image from "@tiptap/extension-image";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clock3, FileText, LoaderCircle, LockKeyhole, UserRound } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { ApiRequestError, api } from "@/lib/api";
@@ -23,6 +23,8 @@ import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
 import { ImageViewer, type ImageViewerSlide } from "@/components/ImageViewer";
+import { resolveMemoEditorTheme } from "@/components/ThemeProvider";
+import { isPaperEditorTheme, publishEditorCssVars, resolvePaperEditorTheme } from "@/lib/publish-layout";
 
 const ReadOnlyX6Diagram = lazy(() => import("@/components/ReadOnlyX6Diagram"));
 
@@ -274,6 +276,8 @@ export const PublicSharePage = () => {
     );
   }
 
+  const shareEditorTheme = resolveMemoEditorTheme(share.theme ?? null);
+
   return (
     <main className="edgeever-public-share min-h-[100dvh] bg-slate-50 px-4 py-6 sm:px-8 sm:py-10">
       <article className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-sm">
@@ -299,7 +303,20 @@ export const PublicSharePage = () => {
             </div>
           ) : null}
         </header>
-        <div className="edgeever-editor px-1 py-4 sm:px-4 sm:py-7" data-editor-theme="default">
+        <div
+          className="edgeever-editor px-1 py-4 sm:px-4 sm:py-7"
+          data-editor-theme={shareEditorTheme ?? "default"}
+          data-paper-theme={isPaperEditorTheme(shareEditorTheme) ? "true" : undefined}
+          style={
+            isPaperEditorTheme(shareEditorTheme)
+              ? publishEditorCssVars(
+                  shareEditorTheme,
+                  resolvePaperEditorTheme(shareEditorTheme)?.palette ?? "emerald",
+                  "desktop",
+                ) as CSSProperties
+              : undefined
+          }
+        >
           <SharedDocument
             locale={(i18n.resolvedLanguage || i18n.language || "zh-CN").startsWith("en") ? "en-US" : "zh-CN"}
             share={share}

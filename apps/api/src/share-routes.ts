@@ -43,6 +43,7 @@ type MemoShareRow = {
 type PublicMemoShareRow = {
   workspace_id: string;
   title: string | null;
+  theme: string | null;
   content_json: string;
   content_markdown: string;
   tags_json: string;
@@ -150,7 +151,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
     if (!token) return shareMissing(c, "Shared note not found");
 
     const row = await c.env.storage.db.prepare(
-      `SELECT ms.workspace_id, m.title, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
+      `SELECT ms.workspace_id, m.title, m.theme, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
               ms.display_policy_json,
               COALESCE(
                 NULLIF(TRIM(sharer.display_name), ''), NULLIF(TRIM(sharer.username), ''),
@@ -195,6 +196,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
 
     const share: PublicMemoShare = {
       title: row.title,
+      theme: row.theme ?? null,
       contentJson,
       contentMarkdown: row.content_markdown,
       tags: parseJsonArray(row.tags_json),

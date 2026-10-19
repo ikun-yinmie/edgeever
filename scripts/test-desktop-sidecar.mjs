@@ -314,6 +314,21 @@ assert.ok((await request("tag.list")).tags.some((tag) => tag.name === "renamed-b
 assert.equal((await request("memo.moveBatch", { memoIds: [batchFirst.id, batchSecond.id], notebookId: batchNotebook.id })).moved, 2);
 assert.equal((await request("memo.pinBatch", { memoIds: [batchFirst.id, batchSecond.id], isPinned: true })).updated, 2);
 assert.equal((await request("memo.list", { notebookId: batchNotebook.id, filter: "pinned", limit: 20 })).totalCount, 2);
+assert.equal((await request("memo.setTheme", { memoId: batchFirst.id, theme: "letter" })).memo.theme, "letter");
+assert.equal((await request("memo.get", { memoId: batchFirst.id })).memo.theme, "letter");
+assert.equal(
+  (await request("memo.list", { notebookId: batchNotebook.id, filter: "pinned", limit: 20 })).memos.find((memo) => memo.id === batchFirst.id)?.theme,
+  "letter",
+  "memo summaries should carry the article theme",
+);
+const queuedTheme = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.find((item) => item.kind === "memo.setTheme" && item.entityId === batchFirst.id);
+assert.ok(queuedTheme, "a theme change should be queued for sync");
+assert.equal(queuedTheme.payload.theme, "letter");
+assert.equal((await request("memo.setTheme", { memoId: batchFirst.id, theme: null })).memo.theme, null, "clearing the theme should fall back to the device default");
+const clearedTheme = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.kind === "memo.setTheme" && item.entityId === batchFirst.id);
+assert.equal(clearedTheme.length, 1, "repeat theme changes should coalesce into one queued item");
+assert.equal(clearedTheme[0].payload.theme, null);
+for (const item of clearedTheme) await request("sync.outbox.discard", { id: item.id });
 assert.equal((await request("memo.deleteBatch", { memoIds: [batchFirst.id, batchSecond.id] })).deleted, 2);
 assert.equal((await request("memo.list", { trash: true, notebookId: batchNotebook.id, limit: 20 })).totalCount, 2);
 await request("memo.restore", { memoId: batchFirst.id });
@@ -557,6 +572,33 @@ await request("notebook.delete", { notebookId: moveRaceNotebook.id });
 const moveRaceNotebookCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === moveRaceNotebook.id);
 for (const item of moveRaceNotebookCleanup) await request("sync.outbox.discard", { id: item.id });
 
+// A theme change queued while the create is in flight must wait for the
+// acknowledgement and then follow the durable id instead of the temporary one.
+const themeRaceNote = await request("memo.create", { notebookId: inbox.id, title: "Theme race", contentMarkdown: "themed before create ack", tags: [] });
+const themeRaceCreate = (await request("sync.outbox.list", { limit: 200 })).items.find((item) => item.kind === "memo.create" && item.entityId === themeRaceNote.memo.id);
+assert.ok(themeRaceCreate, "theme race fixture should queue a create");
+await request("memo.setTheme", { memoId: themeRaceNote.memo.id, theme: "letter" });
+assert.ok(
+  !(await request("sync.outbox.list", { limit: 200 })).items.some((item) => item.kind === "memo.setTheme"),
+  "a theme change carrying a temporary id must wait for the create acknowledgement",
+);
+const remoteThemeRace = {
+  ...themeRaceNote.memo,
+  id: "memo_remote_theme_race",
+  revision: 1,
+  updatedAt: "2026-09-06T03:00:00.000Z",
+};
+await request("sync.outbox.ack", { id: themeRaceCreate.id, version: themeRaceCreate.version, remoteMemo: remoteThemeRace });
+const releasedTheme = (await request("sync.outbox.list", { limit: 200 })).items.find((item) => item.kind === "memo.setTheme");
+assert.ok(releasedTheme, "acknowledging the create should release the dependent theme change");
+assert.equal(releasedTheme.entityId, "memo_remote_theme_race");
+assert.equal(releasedTheme.payload.memoId, "memo_remote_theme_race");
+assert.equal((await request("memo.get", { memoId: "memo_remote_theme_race" })).memo.theme, "letter", "the cached remote snapshot should keep the pending theme");
+await request("sync.outbox.discard", { id: releasedTheme.id });
+await request("memo.delete", { memoId: "memo_remote_theme_race", permanent: true });
+const themeRaceCleanup = (await request("sync.outbox.list", { limit: 200, includeConflicts: true })).items.filter((item) => item.entityId === "memo_remote_theme_race");
+for (const item of themeRaceCleanup) await request("sync.outbox.discard", { id: item.id });
+
 // Remote snapshots must not overwrite a pending local delete; server-side
 // deletions still apply.
 await applyRemoteMemo(remoteMemo("memo_e2e_pull_guard"));
@@ -579,4 +621,4 @@ assert.equal(
 
 child.stdin.end();
 await new Promise((resolve) => child.once("close", resolve));
-console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.apply.pending-delete-guard", "sync.outbox", "sync.outbox.claim", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard", "sync.outbox.cancel-unsynced-create", "sync.outbox.deferred-delete-remap", "sync.outbox.deferred-move-remap"] }));
+console.log(JSON.stringify({ ok: true, checked: ["memo.create", "memo.list.search", "memo.list.tag", "memo.list.subtree", "memo.update", "memo.update.coalesce", "memo.revisions", "memo.restoreRevision", "memo.revision.cache", "tag.rename", "memo.moveBatch", "memo.pinBatch", "memo.deleteBatch", "memo.restore", "memo.emptyTrash", "memo.setTheme", "memo.merge", "template.cache", "template.create.payload", "template.delete", "storage.backup", "storage.backups", "storage.restore", "sync.apply.merge-page-order", "sync.apply.deleted-notebook", "sync.apply.renamed-inbox", "sync.apply.pending-delete-guard", "sync.outbox", "sync.outbox.claim", "sync.outbox.retry", "sync.outbox.recoverMemoUpdate", "sync.outbox.discard", "sync.outbox.cancel-unsynced-create", "sync.outbox.deferred-delete-remap", "sync.outbox.deferred-move-remap", "sync.outbox.deferred-theme-remap", "sync.outbox.pending-theme-guard"] }));

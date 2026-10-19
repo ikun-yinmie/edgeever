@@ -17,6 +17,7 @@ export type MemoSummaryRow = {
   content_text?: string | null;
   content_markdown?: string | null;
   tags_json: string;
+  theme?: string | null;
   is_pinned: number;
   is_archived: number;
   is_deleted: number;
@@ -71,6 +72,7 @@ export const mapMemoSummary = (row: MemoSummaryRow): MemoSummary => ({
     createExcerpt(docToText(markdownToDoc(row.content_markdown ?? ""))),
   ...getDiagramSummary(row.content_markdown),
   tags: parseJsonArray(row.tags_json),
+  theme: row.theme ?? null,
   isPinned: Boolean(row.is_pinned),
   isArchived: Boolean(row.is_archived),
   isDeleted: Boolean(row.is_deleted),
@@ -268,7 +270,7 @@ export const listMemos = async (
              FROM raw_matches
              GROUP BY memo_id
            )
-           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
                   m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
                   mc.content_text, mc.content_markdown
            FROM search_matches s
@@ -314,7 +316,7 @@ export const listMemos = async (
     const searchCursorBinds = [...cursorBinds, likeQuery, likeQuery, likeQuery];
     const [rows, totalRow] = await Promise.all([
       database.prepare(
-        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
                 m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
                 mc.content_text, mc.content_markdown
          FROM memos m
@@ -335,7 +337,7 @@ export const listMemos = async (
 
   const [rows, totalRow] = await Promise.all([
     database.prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
               mc.content_text, mc.content_markdown
        FROM memos m

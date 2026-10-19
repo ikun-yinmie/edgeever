@@ -46,6 +46,7 @@ export const DESKTOP_RPC_METHODS = [
   "memo.deleteBatch",
   "memo.emptyTrash",
   "memo.pinBatch",
+  "memo.setTheme",
   "memo.merge",
   "memo.list",
   "memo.get",
@@ -116,6 +117,7 @@ export type DesktopRpcResponses = {
   "memo.deleteBatch": { ok: true; deleted: number };
   "memo.emptyTrash": { ok: true; deleted: number };
   "memo.pinBatch": { ok: true; updated: number };
+  "memo.setTheme": { memo: MemoDetail };
   "memo.merge": { memo: MemoDetail };
   "memo.list": { memos: MemoSummary[]; totalCount: number; nextCursor: string | null };
   "memo.get": {
@@ -175,6 +177,7 @@ export type DesktopRpcParams = {
   "memo.deleteBatch": { memoIds: string[]; permanent?: boolean };
   "memo.emptyTrash": Record<string, never>;
   "memo.pinBatch": { memoIds: string[]; isPinned: boolean };
+  "memo.setTheme": { memoId: string; theme: string | null };
   "memo.merge": { memoIds: string[]; notebookId?: string; title?: string };
   "memo.list": DesktopMemoListParams;
   "memo.get": { memoId: string; includeDeleted?: boolean };
@@ -229,7 +232,7 @@ export type DesktopRpcContractIsComplete =
 
 export type DesktopOutboxItem = {
   id: number;
-  kind: "memo.create" | "memo.update" | "memo.delete" | "memo.restore" | "memo.move" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "notebook.restore" | "template.create" | "template.update" | "template.delete" | "tag.rename" | "tag.delete";
+  kind: "memo.create" | "memo.update" | "memo.delete" | "memo.restore" | "memo.move" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.setTheme" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "notebook.restore" | "template.create" | "template.update" | "template.delete" | "tag.rename" | "tag.delete";
   entityId: string;
   payload: Record<string, unknown>;
   attemptCount: number;
