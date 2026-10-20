@@ -546,8 +546,16 @@ export const getLocalMemoRevision = async (scope: string, memoId: string, revisi
   return result;
 };
 
-export const putLocalMemoRevisions = async (scope: string, revisions: MemoRevision[]) => {
-  await localDb.revisions.bulkPut(revisions.map((revision): LocalRevision => ({ ...revision, scope })));
+export const putLocalMemoRevisions = async (scope: string, memoId: string, revisions: MemoRevision[]) => {
+  const keepIds = new Set(revisions.filter((revision) => revision.memoId === memoId).map((revision) => revision.id));
+  await localDb.transaction("rw", localDb.revisions, async () => {
+    const existing = await localDb.revisions.where("scope").equals(scope).toArray();
+    const staleKeys = existing
+      .filter((revision) => revision.memoId === memoId && !keepIds.has(revision.id))
+      .map((revision): [string, string] => [scope, revision.id]);
+    if (staleKeys.length > 0) await localDb.revisions.bulkDelete(staleKeys);
+    await localDb.revisions.bulkPut(revisions.map((revision): LocalRevision => ({ ...revision, scope })));
+  });
 };
 
 const getResourceSummary = (resources: ResourceListItem[]) => ({

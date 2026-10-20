@@ -56,7 +56,7 @@ export const RevisionHistoryModal = ({
 }) => {
   const { client } = useSession();
   const queryClient = useQueryClient();
-  const localePreference = useMobileLocale().preference;
+  const { preference: localePreference, translate } = useMobileLocale();
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
 
   const revisionsQuery = useQuery({
@@ -178,7 +178,7 @@ export const RevisionHistoryModal = ({
                 >
                   <Text style={[styles.revisionPillTitle, selectedRevision?.id === revision.id && styles.revisionPillTitleActive]}>{`版本 ${revision.revision}`}</Text>
                   <Text style={[styles.revisionPillMeta, selectedRevision?.id === revision.id && styles.revisionPillTitleActive]}>
-                    {formatDate(revision.createdAt, localePreference)} · {formatRevisionActor(revision.createdBy)}
+                    {formatDate(revision.createdAt, localePreference)} · {formatRevisionActor(revision, translate)}
                   </Text>
                 </Pressable>
               ))}

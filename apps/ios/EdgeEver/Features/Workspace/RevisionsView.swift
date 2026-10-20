@@ -228,7 +228,7 @@ struct RevisionsView: View {
                 Text(env.preferences.t("版本 \(rev.revision)", en: "Version \(rev.revision)"))
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(active ? .white : AppTheme.title)
-                Text("\(MemoPreviewDate.format(rev.createdAt, locale: env.preferences.resolvedLocale, isEnglish: env.preferences.isEnglish, language: env.preferences.uiLanguage)) · \(Self.formatActor(rev.createdBy))")
+                Text("\(MemoPreviewDate.format(rev.createdAt, locale: env.preferences.resolvedLocale, isEnglish: env.preferences.isEnglish, language: env.preferences.uiLanguage)) · \(formatActor(rev))")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(active ? Color.white.opacity(0.9) : AppTheme.secondary)
                     .lineLimit(1)
@@ -291,10 +291,22 @@ struct RevisionsView: View {
     }
 
     /// Android `formatRevisionActor`.
-    static func formatActor(_ actor: String) -> String {
-        if actor.hasPrefix("user:") { return "user" }
-        if actor.hasPrefix("agent:") { return "agent" }
-        return actor.isEmpty ? "system" : actor
+    private func formatActor(_ rev: MemoRevision) -> String {
+        let type = rev.createdByType
+            ?? (rev.createdBy.hasPrefix("agent:") ? "agent" : rev.createdBy == "system" ? "system" : "user")
+        if type == "agent" {
+            let label = env.preferences.t("AI 助手", en: "AI assistant")
+            if let name = rev.createdByName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                return "\(label) · \(name)"
+            }
+            return label
+        }
+        if type == "system" { return env.preferences.t("系统", en: "System") }
+        if let name = rev.createdByName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        if !rev.createdBy.isEmpty && !rev.createdBy.contains(":") { return rev.createdBy }
+        return env.preferences.t("用户", en: "User")
     }
 
     private func load() async {

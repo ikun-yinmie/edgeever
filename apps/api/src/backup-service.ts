@@ -14,6 +14,7 @@ import { audit } from "./audit";
 import { createId } from "./entity-utils";
 import { sha256 } from "./hash-utils";
 import { upsertMemoSearchDocumentStatement } from "./memo-search-index";
+import { trimMemoRevisionsStatement } from "./memo-revision-service";
 import type { DatabaseAdapter } from "./storage-contract";
 
 const parseBackupDoc = (value: unknown): TiptapDoc => {
@@ -220,6 +221,8 @@ export const restoreJsonMemos = async (
       });
       await db.batch(statements);
     }
+
+    await db.batch([trimMemoRevisionsStatement(db, memo.id)]);
   }
 
   await audit(db, "user", null, "backup.restore", "backup", createId("restore"), {

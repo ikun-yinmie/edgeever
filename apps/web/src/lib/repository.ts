@@ -626,13 +626,16 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
 
   async listMemoRevisions(memoId) {
     const local = await listLocalMemoRevisions(scope, memoId);
-    if (local.revisions.length > 0 || isOffline()) {
-      if (!isOffline()) void api.listMemoRevisions(memoId).then((remote) => putLocalMemoRevisions(scope, remote.revisions)).catch(() => {});
-      return local;
+    if (isOffline()) return local;
+
+    try {
+      const remote = await api.listMemoRevisions(memoId);
+      await putLocalMemoRevisions(scope, memoId, remote.revisions);
+      return remote;
+    } catch (error) {
+      if (local.revisions.length > 0) return local;
+      throw error;
     }
-    const remote = await api.listMemoRevisions(memoId);
-    await putLocalMemoRevisions(scope, remote.revisions);
-    return remote;
   },
   async restoreMemoRevision(memoId, revisionId) {
     const [memo, revision] = await Promise.all([getLocalMemo(scope, memoId), getLocalMemoRevision(scope, memoId, revisionId)]);

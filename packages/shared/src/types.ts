@@ -139,6 +139,8 @@ export type MemoRevision = {
   contentText: string;
   contentHash: string;
   createdBy: string;
+  createdByType?: "user" | "agent" | "system";
+  createdByName?: string | null;
   createdAt: string;
 };
 

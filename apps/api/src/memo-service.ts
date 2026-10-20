@@ -38,6 +38,7 @@ import {
 import {
   createMemoRevisionStatement as createMemoRevisionStatementService,
   shouldSnapshotMemoRevision as shouldSnapshotMemoRevisionService,
+  trimMemoRevisionsStatement as trimMemoRevisionsStatementService,
 } from "./memo-revision-service";
 import { getNotebook } from "./notebook-service";
 import { deleteStoredObjects } from "./object-storage";
@@ -1380,7 +1381,10 @@ export const updateMemoRecord = async (
 
   const nextRevision = current.revision + 1;
   const revisionStatements = (await shouldSnapshotMemoRevisionService(db, current, title, JSON.stringify(tags), contentHash, updatedAt))
-    ? [createMemoRevisionStatementService(db, current, actorLabel, updatedAt)]
+    ? [
+        createMemoRevisionStatementService(db, current, actorLabel, updatedAt),
+        trimMemoRevisionsStatementService(db, id),
+      ]
     : [];
   const editSessionStatements = editSession
     ? [

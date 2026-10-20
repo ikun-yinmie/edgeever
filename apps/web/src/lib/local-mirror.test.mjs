@@ -593,9 +593,14 @@ describe("local mirror", () => {
       createdBy: "user-1",
       createdAt: "2026-01-01T00:00:00.000Z",
     };
-    await putLocalMemoRevisions(scope, [revision]);
+    await putLocalMemoRevisions(scope, memo.id, [revision]);
     expect((await listLocalMemoRevisions(scope, memo.id)).revisions[0]?.id).toBe(revision.id);
     expect((await getLocalMemoRevision(scope, memo.id, revision.id))?.contentMarkdown).toBe("old body");
+
+    const newer = { ...revision, id: "revision-local-2", revision: 2 };
+    await putLocalMemoRevisions(scope, memo.id, [newer]);
+    expect((await listLocalMemoRevisions(scope, memo.id)).revisions.map((item) => item.id)).toEqual([newer.id]);
+    expect(await getLocalMemoRevision(scope, memo.id, revision.id)).toBeNull();
   });
 
   test("caches resource metadata without storing resource bytes", async () => {

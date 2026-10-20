@@ -1,25 +1,35 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock3, History, RotateCcw, UserRound } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Bot, Clock3, History, RotateCcw, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn, formatDateTime } from "@/lib/utils";
 import { getMemoTitle } from "@/lib/app-helpers";
 import { AppConfirmDialog } from "./ConfirmDialogs";
-import { buildRevisionDiffRows, type MemoDetail } from "@edgeever/shared";
+import { buildRevisionDiffRows, MEMO_REVISION_RETENTION_LIMIT, type MemoDetail, type MemoRevision } from "@edgeever/shared";
 import type { EdgeEverRepository } from "@/lib/repository";
 
-const formatRevisionActor = (actor: string) => {
-  if (actor.startsWith("user:")) {
-    return "user";
-  }
+type RevisionActorType = NonNullable<MemoRevision["createdByType"]>;
 
-  if (actor.startsWith("agent:")) {
-    return "agent";
-  }
+const getRevisionActorType = (revision: MemoRevision): RevisionActorType => {
+  if (revision.createdByType) return revision.createdByType;
+  if (revision.createdBy.startsWith("agent:")) return "agent";
+  if (revision.createdBy === "system") return "system";
+  return "user";
+};
 
-  return actor || "system";
+const formatRevisionActor = (revision: MemoRevision, t: TFunction) => {
+  const type = getRevisionActorType(revision);
+  if (type === "agent") {
+    return revision.createdByName
+      ? t("revisions.actorAgentWithName", { name: revision.createdByName })
+      : t("revisions.actorAgent");
+  }
+  if (type === "system") return t("revisions.actorSystem");
+  if (revision.createdByName) return revision.createdByName;
+  return revision.createdBy.includes(":") ? t("revisions.actorUser") : revision.createdBy || t("revisions.actorUser");
 };
 
 export const RevisionHistoryDialog = ({
@@ -162,11 +172,20 @@ export const RevisionHistoryDialog = ({
                         <span className="truncate">{formatDateTime(revision.createdAt)}</span>
                       </span>
                       <span className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
-                        <UserRound className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span className="truncate">{formatRevisionActor(revision.createdBy)}</span>
+                        {getRevisionActorType(revision) === "agent" ? (
+                          <Bot className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        ) : (
+                          <UserRound className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        )}
+                        <span className="truncate">{formatRevisionActor(revision, t)}</span>
                       </span>
                     </button>
                   ))}
+                </div>
+              )}
+              {revisions.length > 0 && (
+                <div className="mt-3 px-1 text-[11px] text-slate-400/90">
+                  {t("revisions.retentionNote", { count: MEMO_REVISION_RETENTION_LIMIT })}
                 </div>
               )}
             </aside>

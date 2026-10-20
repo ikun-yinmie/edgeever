@@ -1,3 +1,5 @@
+export const MEMO_REVISION_RETENTION_LIMIT = 100;
+
 export type RevisionDiffRow = {
   lineNumber: number | null;
   text: string;

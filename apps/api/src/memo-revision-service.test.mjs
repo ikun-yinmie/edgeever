@@ -4,6 +4,7 @@ import {
   mapMemoRevision,
   restoreMemoRevision,
   shouldSnapshotMemoRevision,
+  trimMemoRevisionsStatement,
 } from "./memo-revision-service.ts";
 
 const current = {
@@ -61,8 +62,49 @@ describe("memo revision service", () => {
       contentText: "Previous body",
       contentHash: "previous-hash",
       createdBy: "Owner",
+      createdByType: "user",
+      createdByName: "Owner",
       createdAt: "2026-08-29T00:00:00.000Z",
     });
+  });
+
+  test("maps prefixed actors to a resolved display name and type", () => {
+    expect(mapMemoRevision({
+      ...revision,
+      created_by: "user:usr_1",
+      actor_name: "Ada Lovelace",
+    })).toMatchObject({
+      createdByType: "user",
+      createdByName: "Ada Lovelace",
+    });
+
+    expect(mapMemoRevision({
+      ...revision,
+      created_by: "agent:tok_1",
+      actor_name: "Claude Desktop",
+    })).toMatchObject({
+      createdByType: "agent",
+      createdByName: "Claude Desktop",
+    });
+
+    expect(mapMemoRevision({
+      ...revision,
+      created_by: "user:deleted",
+      actor_name: null,
+    })).toMatchObject({
+      createdByType: "user",
+      createdByName: null,
+    });
+  });
+
+  test("trims revisions beyond the per-memo retention limit", () => {
+    const statement = createStatement("DELETE FROM memo_revisions");
+    const database = { prepare: () => statement };
+
+    trimMemoRevisionsStatement(database, "memo_1");
+
+    expect(statement.sql).toContain("DELETE FROM memo_revisions");
+    expect(statement.bindings).toEqual(["memo_1", "memo_1", 100]);
   });
 
   test("does not query revision history when the memo is unchanged", async () => {
@@ -138,8 +180,9 @@ describe("memo revision service", () => {
     );
 
     expect(result).toBe(restoredMemo);
-    expect(batch).toHaveLength(5);
+    expect(batch).toHaveLength(6);
     expect(prepared.some(({ sql }) => sql.includes("INSERT INTO memo_revisions"))).toBe(true);
+    expect(prepared.some(({ sql }) => sql.includes("DELETE FROM memo_revisions"))).toBe(true);
     expect(prepared.some(({ sql }) => sql.includes("UPDATE memo_contents"))).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import {
   DeleteMemosSchema,
   MemoCreateSchema,
   MergeMemosSchema,
+  MEMO_REVISION_RETENTION_LIMIT,
   MemoUpdateSchema,
   MoveMemosSchema,
   type MemoDetail,
@@ -317,7 +318,11 @@ export const registerMemoRoutes = (
         context.env.storage.db,
         scope.access.workspaceId,
         context.req.param("id"),
-        dependencies.clampNumber(Number(context.req.query("limit") ?? 50), 1, 100),
+        dependencies.clampNumber(
+          Number(context.req.query("limit") ?? MEMO_REVISION_RETENTION_LIMIT),
+          1,
+          MEMO_REVISION_RETENTION_LIMIT,
+        ),
       );
       return context.json({ revisions });
     } catch (error) {

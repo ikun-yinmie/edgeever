@@ -311,6 +311,8 @@ struct MemoRevision: Codable, Equatable, Sendable, Identifiable {
     var contentText: String
     var contentHash: String
     var createdBy: String
+    var createdByType: String?
+    var createdByName: String?
     var createdAt: String
 }
 

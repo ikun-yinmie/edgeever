@@ -1,4 +1,4 @@
-import { DEFAULT_MEMO_TITLE, type MemoSummary, type Notebook } from "@edgeever/shared";
+import { DEFAULT_MEMO_TITLE, type MemoRevision, type MemoSummary, type Notebook } from "@edgeever/shared";
 import { resolveSupportedLocale } from "@edgeever/shared/i18n/locales";
 import type { MobileLocalePreference } from "../lib/preferences";
 
@@ -208,14 +208,19 @@ export const getTextSearchMatches = (text: string, query: string) => {
   return matches;
 };
 
-export const formatRevisionActor = (actor: string) => {
-  if (actor.startsWith("user:")) {
-    return "user";
+export const formatRevisionActor = (
+  revision: Pick<MemoRevision, "createdBy" | "createdByType" | "createdByName">,
+  translate: (value: string) => string = (value) => value,
+) => {
+  const type = revision.createdByType
+    ?? (revision.createdBy.startsWith("agent:") ? "agent" : revision.createdBy === "system" ? "system" : "user");
+
+  if (type === "agent") {
+    const label = translate("AI 助手");
+    return revision.createdByName ? `${label} · ${revision.createdByName}` : label;
   }
 
-  if (actor.startsWith("agent:")) {
-    return "agent";
-  }
-
-  return actor || "system";
+  if (type === "system") return translate("系统");
+  if (revision.createdByName) return revision.createdByName;
+  return revision.createdBy.includes(":") ? translate("用户") : revision.createdBy || translate("用户");
 };
