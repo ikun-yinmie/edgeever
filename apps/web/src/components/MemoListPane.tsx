@@ -30,6 +30,7 @@ import {
   LayoutList,
   List,
   FileText as FileIcon,
+  AppWindow,
   Star,
   RotateCcw,
   RefreshCw,
@@ -387,6 +388,8 @@ export const MemoListPane = ({
   onSortModeChange,
   onLoadMoreMemos,
   onOpenMemo,
+  onOpenMemoInCurrentTab,
+  onOpenMemoInNewWindow,
   onPrefetchMemo,
   onDeleteMemo,
   onRestoreMemo,
@@ -466,6 +469,8 @@ export const MemoListPane = ({
   onSortModeChange: (sortMode: MemoSortMode) => void;
   onLoadMoreMemos: () => void;
   onOpenMemo: (memoId: string) => void;
+  onOpenMemoInCurrentTab: (memoId: string) => void;
+  onOpenMemoInNewWindow: (memoId: string) => void;
   onPrefetchMemo?: (memoId: string) => void;
   onDeleteMemo: (memoId: string) => void;
   onRestoreMemo: (memoId: string) => void;
@@ -1571,17 +1576,49 @@ export const MemoListPane = ({
               className="max-h-[calc(100dvh-1.5rem)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
               data-memo-actions-menu
             >
-              <DropdownMenuItem
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                onClick={() => {
-                  const { memo } = memoContextMenu;
-                  setMemoContextMenu(null);
-                  onOpenMemo(memo.id);
-                }}
-              >
-                <FileIcon className="h-4 w-4" />
-                {t("memoList.openMemo")}
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                >
+                  <FileIcon className="h-4 w-4" />
+                  <span className="min-w-0 flex-1 truncate">{t("memoList.openMemo")}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-52">
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={() => {
+                      const { memo } = memoContextMenu;
+                      setMemoContextMenu(null);
+                      onOpenMemo(memo.id);
+                    }}
+                  >
+                    <FilePlus2 className="h-4 w-4" />
+                    {t("memoList.openMemoInNewTab")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={() => {
+                      const { memo } = memoContextMenu;
+                      setMemoContextMenu(null);
+                      onOpenMemoInNewWindow(memo.id);
+                    }}
+                  >
+                    <AppWindow className="h-4 w-4" />
+                    {t("memoList.openMemoInNewWindow")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={() => {
+                      const { memo } = memoContextMenu;
+                      setMemoContextMenu(null);
+                      onOpenMemoInCurrentTab(memo.id);
+                    }}
+                  >
+                    <FileIcon className="h-4 w-4" />
+                    {t("memoList.openMemoInCurrentTab")}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                 onClick={() => {

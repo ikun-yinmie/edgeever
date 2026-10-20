@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { isNativeDesktopRuntime } from "./runtime.ts";
+import { isDesktopRenderer, isNativeDesktopRuntime } from "./runtime.ts";
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 
@@ -9,6 +9,7 @@ afterEach(() => {
   } else {
     delete globalThis.window;
   }
+  delete globalThis.__EDGEEVER_DESKTOP_BUILD__;
 });
 
 describe("native desktop runtime detection", () => {
@@ -38,5 +39,19 @@ describe("native desktop runtime detection", () => {
     delete globalThis.window;
 
     expect(isNativeDesktopRuntime()).toBe(false);
+  });
+});
+
+describe("desktop renderer detection", () => {
+  test("matches the router split used by the app entry", () => {
+    globalThis.window = {};
+    expect(isDesktopRenderer()).toBe(false);
+
+    globalThis.window = { edgeeverDesktop: { isAvailable: true } };
+    expect(isDesktopRenderer()).toBe(true);
+
+    globalThis.window = {};
+    globalThis.__EDGEEVER_DESKTOP_BUILD__ = true;
+    expect(isDesktopRenderer()).toBe(true);
   });
 });

@@ -11,6 +11,19 @@ describe("memo context menu", () => {
     expect(source).not.toContain("contextMoveOpen");
   });
 
+  test("offers new-tab, new-window, and current-tab open targets in a submenu", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('onOpenMemoInCurrentTab: (memoId: string) => void;');
+    expect(source).toContain('onOpenMemoInNewWindow: (memoId: string) => void;');
+    expect(source).toContain('t("memoList.openMemoInNewTab")');
+    expect(source).toContain('t("memoList.openMemoInNewWindow")');
+    expect(source).toContain('t("memoList.openMemoInCurrentTab")');
+    expect(source).toContain("onOpenMemo(memo.id);");
+    expect(source).toContain("onOpenMemoInNewWindow(memo.id);");
+    expect(source).toContain("onOpenMemoInCurrentTab(memo.id);");
+  });
+
   test("opens the card menu without a modal scroll lock so the list does not hitch", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
 

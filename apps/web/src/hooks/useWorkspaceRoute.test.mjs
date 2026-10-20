@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveWorkspaceRoute } from "./useWorkspaceRoute.ts";
+import { buildOpenMemoWindowUrl, resolveWorkspaceRoute } from "./useWorkspaceRoute.ts";
 
 describe("workspace route resolution", () => {
   test("recognizes the workspace destinations", () => {
@@ -27,5 +27,26 @@ describe("workspace route resolution", () => {
 
   test("extracts a standalone mobile editor return id", () => {
     expect(resolveWorkspaceRoute("/", "?mobileEditorReturn=memo-42").mobileEditorReturnMemoId).toBe("memo-42");
+  });
+
+  test("extracts a note that a new window should open", () => {
+    expect(resolveWorkspaceRoute("/", "?openMemo=memo-42").openMemoId).toBe("memo-42");
+    expect(resolveWorkspaceRoute("/", "").openMemoId).toBeNull();
+  });
+});
+
+describe("new window deep links", () => {
+  test("adds the openMemo query for browser-routed windows", () => {
+    expect(buildOpenMemoWindowUrl("https://app.example/settings?tab=x#frag", "memo-1"))
+      .toBe("https://app.example/settings?openMemo=memo-1");
+  });
+
+  test("nests the openMemo query inside the hash for desktop hash routing", () => {
+    expect(buildOpenMemoWindowUrl("edgeever-app://app/index.html#/settings", "memo-1", { hashRouter: true }))
+      .toBe("edgeever-app://app/index.html#/settings?openMemo=memo-1");
+    expect(buildOpenMemoWindowUrl("edgeever-app://app/index.html", "memo-1", { hashRouter: true }))
+      .toBe("edgeever-app://app/index.html#/?openMemo=memo-1");
+    expect(buildOpenMemoWindowUrl("edgeever-app://app/index.html#/?view=trash", "memo-1", { hashRouter: true }))
+      .toBe("edgeever-app://app/index.html#/?view=trash&openMemo=memo-1");
   });
 });

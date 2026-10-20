@@ -1603,6 +1603,9 @@ export const enUS = {
     importScreenshotFailed: "Couldn't save the screenshot as a note. Check the connection and try again.",
     loadingMore: "Loading more notes",
     openMemo: "Open note",
+    openMemoInNewTab: "Open in new tab",
+    openMemoInNewWindow: "Open in new window",
+    openMemoInCurrentTab: "Open in current tab",
     unpin: "Unpin",
     pinMemo: "Pin note",
     restoreMemo: "Restore note",
@@ -2218,6 +2221,11 @@ export const enUS = {
   memoTabs: {
     label: "Open notes",
     close: "Close tab",
+    closeCurrent: "Close current tab",
+    closeOthers: "Close other tabs",
+    closeAll: "Close all tabs",
+    openInNewWindow: "Open current tab in new window",
+    more: "More tabs",
   },
   mobileNotebookPicker: {
     title: "Switch notebook",

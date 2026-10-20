@@ -43,7 +43,7 @@ import {
   storageLocationConfigPath,
   validateStorageTarget,
 } from "./storage-location.mjs";
-import { isAllowedPrintPreviewUrl } from "./window-open-policy.mjs";
+import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
 import { writeRichClipboard } from "./clipboard-write.mjs";
@@ -1366,6 +1366,48 @@ const scheduleSidecarRestart = () => {
   }, delayMs);
 };
 
+const installWindowOpenPolicy = (contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("edgeever-resource://") || url.startsWith("edgeever-staged://")) return { action: "allow" };
+    const currentUrl = contents.getURL() || mainWindow?.webContents.getURL() || "";
+    if (isAllowedPrintPreviewUrl(url, currentUrl)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        },
+      };
+    }
+    if (isInternalAppWindowUrl(url, currentUrl)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            preload: join(currentDirectory, "../preload/index.cjs"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        },
+      };
+    }
+    if (url.startsWith("https://") || url.startsWith("http://")) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  contents.on("will-navigate", (event, url) => {
+    if (url.startsWith(webUrl) || url.startsWith(`${DESKTOP_APP_ORIGIN}/`) || url.startsWith("edgeever-resource://") || url.startsWith("edgeever-staged://")) return;
+    event.preventDefault();
+    if (url.startsWith("https://") || url.startsWith("http://")) void shell.openExternal(url);
+  });
+  contents.on("did-create-window", (childWindow) => {
+    installWindowOpenPolicy(childWindow.webContents);
+  });
+};
+
 const createWindow = async () => {
   const state = await readWindowState();
   mainWindow = new BrowserWindow({
@@ -1463,28 +1505,7 @@ const createWindow = async () => {
     });
     throw error;
   }
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("edgeever-resource://") || url.startsWith("edgeever-staged://")) return { action: "allow" };
-    if (isAllowedPrintPreviewUrl(url, mainWindow.webContents.getURL())) {
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: {
-          webPreferences: {
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: true,
-          },
-        },
-      };
-    }
-    if (url.startsWith("https://") || url.startsWith("http://")) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith(webUrl) || url.startsWith(`${DESKTOP_APP_ORIGIN}/`) || url.startsWith("edgeever-resource://") || url.startsWith("edgeever-staged://")) return;
-    event.preventDefault();
-    if (url.startsWith("https://") || url.startsWith("http://")) void shell.openExternal(url);
-  });
+  installWindowOpenPolicy(mainWindow.webContents);
   buildApplicationMenu();
 };
 

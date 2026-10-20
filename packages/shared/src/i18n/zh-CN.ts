@@ -1603,6 +1603,9 @@ export const zhCN = {
     importScreenshotFailed: "无法将截图保存为笔记。请检查网络后重试。",
     loadingMore: "正在加载更多笔记",
     openMemo: "打开笔记",
+    openMemoInNewTab: "新建页签打开",
+    openMemoInNewWindow: "新建窗口打开",
+    openMemoInCurrentTab: "当前页签打开",
     unpin: "取消置顶",
     pinMemo: "置顶笔记",
     restoreMemo: "恢复笔记",
@@ -2216,6 +2219,11 @@ export const zhCN = {
   memoTabs: {
     label: "打开的笔记",
     close: "关闭标签",
+    closeCurrent: "关闭当前页签",
+    closeOthers: "关闭其他页签",
+    closeAll: "关闭全部页签",
+    openInNewWindow: "在新窗口打开当前页签",
+    more: "更多页签",
   },
   mobileNotebookPicker: {
     title: "切换笔记本",

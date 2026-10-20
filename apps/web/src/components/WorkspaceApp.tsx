@@ -128,7 +128,9 @@ import {
 import { useWorkspaceSyncLifecycle } from "@/hooks/useWorkspaceSyncLifecycle";
 import { paneEnterMotion } from "@/lib/motion";
 import { WorkspaceMotionProvider } from "./WorkspaceMotionProvider";
-import { useWorkspaceRoute } from "@/hooks/useWorkspaceRoute";
+import { buildOpenMemoWindowUrl, useWorkspaceRoute } from "@/hooks/useWorkspaceRoute";
+import { isDesktopRenderer } from "@/lib/runtime";
+import { closeOtherMemoTabs, reorderMemoTabs, replaceActiveMemoTab } from "@/lib/memo-tabs";
 import { useWorkspacePreferences } from "@/hooks/useWorkspacePreferences";
 import { useWorkspaceSelection } from "@/hooks/useWorkspaceSelection";
 import { useWorkspaceQueuedSync } from "@/hooks/useWorkspaceQueuedSync";
@@ -268,6 +270,7 @@ export const WorkspaceApp = ({
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
   const pendingQuickSwitcherMemoIdRef = useRef<string | null>(workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  const consumedOpenMemoParamRef = useRef<string | null>(null);
   // Group-shared memos live in the author's workspace, so they never appear in
   // the personal list. The selection-normalising effect below would otherwise
   // instantly clear such an external selection; this ref holds it open.
@@ -1258,6 +1261,31 @@ export const WorkspaceApp = ({
   }, [memoView, rendererRecoveryMode, rightView, selectedMemoId]);
 
   useEffect(() => {
+    const memoId = route.openMemoId;
+    if (!memoId || consumedOpenMemoParamRef.current === memoId) {
+      return;
+    }
+
+    consumedOpenMemoParamRef.current = memoId;
+    pendingQuickSwitcherMemoIdRef.current = memoId;
+    setMemoView("notebook");
+    setRightView("editor");
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setSelectedMemoId(memoId);
+    setActivePane("editor");
+    navigateWorkspaceHome({ replace: true });
+  }, [
+    clearPendingCreatedMemo,
+    navigateWorkspaceHome,
+    route.openMemoId,
+    setActivePane,
+    setMemoView,
+    setRightView,
+    setSelectedMemoId,
+  ]);
+
+  useEffect(() => {
     if (!rendererRecoveryMode || !selectedMemoId) return;
     clearRendererRecoveryRequired();
     setRendererRecoveryMode(false);
@@ -1862,6 +1890,68 @@ export const WorkspaceApp = ({
     },
     [openMemoTabs, selectedMemoId, setSelectedMemoId]
   );
+
+  const openMemoInNewTab = useCallback(
+    (memoId: string) => {
+      if (shouldNavigateHomeWhenOpeningMemo(memoView)) {
+        navigateWorkspaceHome();
+      }
+      setRightView("editor");
+      clearPendingCreatedMemo();
+      setCreatedMemoEditId(null);
+      setSelectedMemoId(memoId);
+      setActivePane("editor");
+    },
+    [
+      clearPendingCreatedMemo,
+      memoView,
+      navigateWorkspaceHome,
+      setActivePane,
+      setRightView,
+      setSelectedMemoId,
+    ]
+  );
+
+  const openMemoInCurrentTab = useCallback(
+    (memoId: string) => {
+      if (openMemoTabs.includes(memoId)) {
+        handleSelectMemoTab(memoId);
+        return;
+      }
+
+      setOpenMemoTabs((current) => replaceActiveMemoTab(current, selectedMemoId, memoId));
+      openMemoInNewTab(memoId);
+    },
+    [handleSelectMemoTab, openMemoInNewTab, openMemoTabs, selectedMemoId]
+  );
+
+  const openMemoInNewWindow = useCallback((memoId: string) => {
+    const url = buildOpenMemoWindowUrl(window.location.href, memoId, {
+      hashRouter: isDesktopRenderer(),
+    });
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const closeOtherMemoTabsAndSelect = useCallback(
+    (memoId: string) => {
+      setOpenMemoTabs((current) => closeOtherMemoTabs(current, memoId));
+      if (memoId !== selectedMemoId) {
+        handleSelectMemoTab(memoId);
+      }
+    },
+    [handleSelectMemoTab, selectedMemoId]
+  );
+
+  const closeAllMemoTabs = useCallback(() => {
+    setOpenMemoTabs([]);
+    pendingQuickSwitcherMemoIdRef.current = null;
+    suppressAutoOpenRef.current = true;
+    setSelectedMemoId(null);
+  }, [setSelectedMemoId]);
+
+  const reorderOpenMemoTabs = useCallback((sourceMemoId: string, targetMemoId: string) => {
+    setOpenMemoTabs((current) => reorderMemoTabs(current, sourceMemoId, targetMemoId));
+  }, []);
 
   useEffect(() => {
     const nextTargetId = resolveSelectionMoveTargetNotebookId(
@@ -3431,16 +3521,9 @@ export const WorkspaceApp = ({
               }}
               onBackFromTrash={handleSelectAllMemos}
               onClearTag={handleSelectAllMemos}
-              onOpenMemo={(memoId) => {
-                if (shouldNavigateHomeWhenOpeningMemo(memoView)) {
-                  navigateWorkspaceHome();
-                }
-                setRightView("editor");
-                clearPendingCreatedMemo();
-                setCreatedMemoEditId(null);
-                setSelectedMemoId(memoId);
-                setActivePane("editor");
-              }}
+              onOpenMemo={openMemoInNewTab}
+              onOpenMemoInCurrentTab={openMemoInCurrentTab}
+              onOpenMemoInNewWindow={openMemoInNewWindow}
               onPrefetchMemo={prefetchMemoDetail}
               onToggleMemo={(memoId, rangeMemoIds) => {
                 setMemoSelectionMode(true);
@@ -3518,6 +3601,10 @@ export const WorkspaceApp = ({
                 activeMemoId={selectedMemoId}
                 onSelect={handleSelectMemoTab}
                 onClose={closeMemoTab}
+                onCloseOthers={closeOtherMemoTabsAndSelect}
+                onCloseAll={closeAllMemoTabs}
+                onOpenInNewWindow={openMemoInNewWindow}
+                onReorder={reorderOpenMemoTabs}
               />
             )}
             <div className="min-h-0 min-w-0 flex-1">

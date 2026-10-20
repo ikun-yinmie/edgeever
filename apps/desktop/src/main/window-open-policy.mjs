@@ -1,6 +1,29 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+export const isInternalAppWindowUrl = (targetUrl, appUrl) => {
+  try {
+    const target = new URL(targetUrl);
+    const currentApp = new URL(appUrl);
+
+    if (currentApp.protocol === "file:") {
+      return target.protocol === "file:" && target.pathname === currentApp.pathname;
+    }
+
+    if (target.protocol !== currentApp.protocol || target.hostname !== currentApp.hostname || target.port !== currentApp.port) {
+      return false;
+    }
+
+    if (currentApp.protocol === "http:" || currentApp.protocol === "https:") {
+      return true;
+    }
+
+    return target.pathname === currentApp.pathname || target.pathname === "/";
+  } catch {
+    return false;
+  }
+};
+
 export const isAllowedPrintPreviewUrl = (targetUrl, appUrl) => {
   try {
     const target = new URL(targetUrl);

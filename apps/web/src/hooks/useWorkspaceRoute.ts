@@ -8,6 +8,7 @@ export const WORKSPACE_TEMPLATES_PATH = "/templates";
 export const WORKSPACE_AI_PROMPTS_PATH = "/ai-prompts";
 export const WORKSPACE_EXECUTION_CENTER_PATH = "/execution-center";
 export const WORKSPACE_TRASH_SEARCH = "?view=trash";
+export const WORKSPACE_OPEN_MEMO_PARAM = "openMemo";
 
 export type WorkspaceRouteState = {
   pathname: string;
@@ -19,6 +20,7 @@ export type WorkspaceRouteState = {
   isExecutionCenter: boolean;
   isTrash: boolean;
   mobileEditorReturnMemoId: string | null;
+  openMemoId: string | null;
 };
 
 export const resolveWorkspaceRoute = (pathname: string, search: string): WorkspaceRouteState => ({
@@ -31,7 +33,30 @@ export const resolveWorkspaceRoute = (pathname: string, search: string): Workspa
   isExecutionCenter: pathname === WORKSPACE_EXECUTION_CENTER_PATH,
   isTrash: pathname === "/" && search === WORKSPACE_TRASH_SEARCH,
   mobileEditorReturnMemoId: new URLSearchParams(search).get(MOBILE_EDITOR_RETURN_PARAM),
+  openMemoId: new URLSearchParams(search).get(WORKSPACE_OPEN_MEMO_PARAM),
 });
+
+export const buildOpenMemoWindowUrl = (
+  href: string,
+  memoId: string,
+  { hashRouter = false }: { hashRouter?: boolean } = {},
+) => {
+  const url = new URL(href);
+  url.search = "";
+
+  if (hashRouter) {
+    const hashPath = url.hash.startsWith("#") ? url.hash.slice(1) : "/";
+    const [rawPath = "/", rawSearch = ""] = hashPath.split("?");
+    const params = new URLSearchParams(rawSearch);
+    params.set(WORKSPACE_OPEN_MEMO_PARAM, memoId);
+    url.hash = `${rawPath || "/"}?${params.toString()}`;
+    return url.toString();
+  }
+
+  url.hash = "";
+  url.searchParams.set(WORKSPACE_OPEN_MEMO_PARAM, memoId);
+  return url.toString();
+};
 
 export const useWorkspaceRoute = () => {
   const location = useLocation();

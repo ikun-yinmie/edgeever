@@ -1603,6 +1603,9 @@ export const ja = {
     importScreenshotFailed: "スクリーンショットをノートとして保存できませんでした。接続を確認して再試行してください。",
     loadingMore: "さらにノートを読み込み中",
     openMemo: "ノートを開く",
+    openMemoInNewTab: "新しいタブで開く",
+    openMemoInNewWindow: "新しいウィンドウで開く",
+    openMemoInCurrentTab: "現在のタブで開く",
     unpin: "ピン留めを外す",
     pinMemo: "ノートをピン留め",
     restoreMemo: "ノートを復元",
@@ -2218,6 +2221,11 @@ export const ja = {
   memoTabs: {
     label: "開いているノート",
     close: "タブを閉じる",
+    closeCurrent: "現在のタブを閉じる",
+    closeOthers: "他のタブを閉じる",
+    closeAll: "すべてのタブを閉じる",
+    openInNewWindow: "現在のタブを新しいウィンドウで開く",
+    more: "その他のタブ",
   },
   mobileNotebookPicker: {
     title: "ノートブックを切り替え",

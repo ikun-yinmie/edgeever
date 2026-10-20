@@ -23,9 +23,39 @@ describe("memo tabs bar", () => {
     expect(source).not.toContain("title=");
   });
 
-  test("scrolls the active tab into view and truncates long titles", () => {
-    expect(source).toContain('scrollIntoView({ block: "nearest", inline: "nearest" })');
+  test("offers close, close-others, close-all, and new-window actions on right click", () => {
+    expect(source).toContain("<ContextMenu");
+    expect(source).toContain("onSelect={() => onCloseOthers(tab.id)}");
+    expect(source).toContain("onSelect={onCloseAll}");
+    expect(source).toContain("onSelect={() => onOpenInNewWindow(tab.id)}");
+    expect(source).toContain('t("memoTabs.closeCurrent")');
+    expect(source).toContain('t("memoTabs.closeOthers")');
+    expect(source).toContain('t("memoTabs.closeAll")');
+    expect(source).toContain('t("memoTabs.openInNewWindow")');
+  });
+
+  test("reorders visible tabs with native drag and drop", () => {
+    expect(source).toContain("draggable");
+    expect(source).toContain("onDragStart={(event) => handleDragStart(event, tab.id)}");
+    expect(source).toContain("onDrop={(event) => handleDrop(event, tab.id)}");
+    expect(source).toContain("onReorder(sourceMemoId, memoId)");
+    expect(source).toContain("dataTransfer.effectAllowed");
+  });
+
+  test("keeps one row and replaces scrolling with an overflow dropdown", () => {
+    expect(source).not.toContain("overflow-x-auto");
+    expect(source).not.toContain("scrollIntoView");
+    expect(source).toContain("resolveMemoTabOverflow");
+    expect(source).toContain("hiddenTabs");
+    expect(source).toContain("max-h-72");
+    expect(source).toContain("overflow-y-auto");
+    expect(source).toContain("data-overflow-memo-tab-id={tab.id}");
+    expect(source).toContain('t("memoTabs.more")');
+  });
+
+  test("truncates long titles at the fixed tab width", () => {
     expect(source).toContain("truncate");
     expect(source).toContain("max-w-[220px]");
+    expect(source).toContain("min-w-[96px]");
   });
 });

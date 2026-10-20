@@ -41,4 +41,39 @@ describe("workspace memo tabs", () => {
     expect(source).toContain('t("common.untitledMemo")');
     expect(source).toContain('if (rightView !== "editor" || memoView === "trash") {');
   });
+
+  test("opens list notes in a new tab by default", () => {
+    expect(source).toContain("onOpenMemo={openMemoInNewTab}");
+    expect(source).toContain("const openMemoInNewTab = useCallback(");
+  });
+
+  test("replaces the active tab when opening in the current tab", () => {
+    expect(source).toContain("const openMemoInCurrentTab = useCallback(");
+    expect(source).toContain("replaceActiveMemoTab(current, selectedMemoId, memoId)");
+    expect(source).toContain("onOpenMemoInCurrentTab={openMemoInCurrentTab}");
+  });
+
+  test("supports close-others, close-all, and drag reordering from the tab bar", () => {
+    expect(source).toContain("closeOtherMemoTabs(current, memoId)");
+    expect(source).toContain("const closeAllMemoTabs = useCallback(");
+    expect(source).toContain("reorderMemoTabs(current, sourceMemoId, targetMemoId)");
+    expect(source).toContain("onCloseOthers={closeOtherMemoTabsAndSelect}");
+    expect(source).toContain("onCloseAll={closeAllMemoTabs}");
+    expect(source).toContain("onReorder={reorderOpenMemoTabs}");
+  });
+
+  test("opens the active note in a new window through the openMemo deep link", () => {
+    expect(source).toContain("buildOpenMemoWindowUrl(window.location.href, memoId");
+    expect(source).toContain("hashRouter: isDesktopRenderer()");
+    expect(source).toContain('window.open(url, "_blank", "noopener,noreferrer")');
+    expect(source).toContain("onOpenMemoInNewWindow={openMemoInNewWindow}");
+    expect(source).toContain("onOpenInNewWindow={openMemoInNewWindow}");
+  });
+
+  test("consumes an openMemo deep link once and clears it from the URL", () => {
+    expect(source).toContain("consumedOpenMemoParamRef");
+    expect(source).toContain("if (!memoId || consumedOpenMemoParamRef.current === memoId) {");
+    expect(source).toContain('pendingQuickSwitcherMemoIdRef.current = memoId;');
+    expect(source).toContain("navigateWorkspaceHome({ replace: true });");
+  });
 });
