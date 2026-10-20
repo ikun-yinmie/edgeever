@@ -5,6 +5,7 @@ import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { createEdgeEverDetailsExtensions } from "./details";
+import { createHeadingCollapseExtension, type HeadingCollapseOptions } from "./heading-collapse";
 import { VideoEmbed } from "./video-embed";
 import { FileAttachment } from "./file-attachment";
 import { ImageGallery } from "./image-gallery";
@@ -26,6 +27,7 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
   table?: Parameters<typeof TableKit.configure>[0];
   /** Replace the EdgeEver codeBlock codec (meta attrs + markdown round-trip). */
   codeBlock?: AnyExtension | false;
+  headingCollapse?: HeadingCollapseOptions | false;
   markdown?: boolean;
 };
 
@@ -61,6 +63,7 @@ export const createEdgeEverDocumentExtensions = (
     ...withOptional(options.codeBlock, createEdgeEverCodeBlock()),
     MergeDivider,
     ...createEdgeEverDetailsExtensions(),
+    ...(options.headingCollapse === false ? [] : [createHeadingCollapseExtension(options.headingCollapse)]),
     ...withOptional(options.pluginEmbed, PluginEmbed),
     VideoEmbed,
     ...options.mathematics,

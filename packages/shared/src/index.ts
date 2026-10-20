@@ -37,6 +37,7 @@ export { createEdgeEverCodeBlock } from "./code-block-meta";
 export * from "./sync";
 export * from "./desktop-rpc";
 export * from "./details";
+export * from "./heading-collapse";
 export * from "./deployment-metadata";
 export * from "./diagram";
 export * from "./diagram-palette";
