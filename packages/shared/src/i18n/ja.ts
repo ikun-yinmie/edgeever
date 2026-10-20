@@ -2229,6 +2229,8 @@ export const ja = {
     closeAll: "すべてのタブを閉じる",
     openInNewWindow: "現在のタブを新しいウィンドウで開く",
     more: "その他のタブ",
+    searchPlaceholder: "タブを検索",
+    noSearchResults: "一致するタブはありません",
   },
   mobileNotebookPicker: {
     title: "ノートブックを切り替え",

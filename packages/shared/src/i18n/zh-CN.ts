@@ -2227,6 +2227,8 @@ export const zhCN = {
     closeAll: "关闭全部页签",
     openInNewWindow: "在新窗口打开当前页签",
     more: "更多页签",
+    searchPlaceholder: "搜索页签",
+    noSearchResults: "没有匹配的页签",
   },
   mobileNotebookPicker: {
     title: "切换笔记本",

@@ -1,6 +1,14 @@
-import { useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { AppWindow, Check, ChevronDown, CircleX, SquareX, X } from "lucide-react";
+import { AppWindow, Check, ChevronDown, CircleX, Search, SquareX, X } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -55,6 +63,9 @@ export const MemoTabsBar = ({
   const [tabWidths, setTabWidths] = useState<Record<string, number>>({});
   const [draggingMemoId, setDraggingMemoId] = useState<string | null>(null);
   const [dragOverMemoId, setDragOverMemoId] = useState<string | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [overflowQuery, setOverflowQuery] = useState("");
+  const overflowSearchRef = useRef<HTMLInputElement | null>(null);
 
   const tabsKey = useMemo(
     () => tabs.map((tab) => `${tab.id}\u0000${tab.title}`).join("\u0001"),
@@ -114,6 +125,14 @@ export const MemoTabsBar = ({
     };
   }, [tabsKey]);
 
+  useEffect(() => {
+    if (!overflowOpen) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => overflowSearchRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [overflowOpen]);
+
   const activeIndex = tabs.findIndex((tab) => tab.id === activeMemoId);
   const { start, count } = resolveMemoTabOverflow({
     tabWidths: tabs.map((tab) => tabWidths[tab.id] ?? 0),
@@ -124,6 +143,13 @@ export const MemoTabsBar = ({
   });
   const visibleTabs = tabs.slice(start, start + count);
   const hiddenTabs = tabs.filter((_, index) => index < start || index >= start + count);
+  const overflowTabs = useMemo(() => {
+    const query = overflowQuery.trim().toLocaleLowerCase();
+    if (!query) {
+      return tabs;
+    }
+    return tabs.filter((tab) => tab.title.toLocaleLowerCase().includes(query));
+  }, [overflowQuery, tabs]);
 
   if (tabs.length === 0) {
     return null;
@@ -152,6 +178,29 @@ export const MemoTabsBar = ({
     }
     setDraggingMemoId(null);
     setDragOverMemoId(null);
+  };
+
+  const handleOverflowSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const content = overflowSearchRef.current?.closest('[role="menu"]');
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      const items = content?.querySelectorAll<HTMLElement>("[data-overflow-memo-tab-id]");
+      if (items?.length) {
+        items[event.key === "ArrowDown" ? 0 : items.length - 1]?.focus();
+      }
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      const firstItem = content?.querySelector<HTMLElement>("[data-overflow-memo-tab-id]");
+      firstItem?.click();
+      return;
+    }
+    if (event.key !== "Escape") {
+      event.stopPropagation();
+    }
   };
 
   return (
@@ -281,7 +330,15 @@ export const MemoTabsBar = ({
       })}
 
       {hiddenTabs.length > 0 && (
-        <DropdownMenu>
+        <DropdownMenu
+          open={overflowOpen}
+          onOpenChange={(open) => {
+            setOverflowOpen(open);
+            if (!open) {
+              setOverflowQuery("");
+            }
+          }}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
@@ -296,24 +353,59 @@ export const MemoTabsBar = ({
             </TooltipTrigger>
             <TooltipContent side="bottom">{t("memoTabs.more")}</TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="end" className="w-64">
-            <div className="max-h-72 overflow-y-auto">
-              {hiddenTabs.map((tab) => (
-                <DropdownMenuItem
-                  key={tab.id}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                  data-overflow-memo-tab-id={tab.id}
-                  onSelect={() => onSelect(tab.id)}
-                >
-                  <Check
-                    className={cn(
-                      "h-4 w-4 shrink-0",
-                      tab.id === activeMemoId ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <span className="truncate">{tab.title}</span>
-                </DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-72 p-0">
+            <div className="border-b border-slate-100 p-1.5">
+              <div className="flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2">
+                <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                <input
+                  ref={overflowSearchRef}
+                  className="h-full w-full bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-400"
+                  type="text"
+                  value={overflowQuery}
+                  onChange={(event) => setOverflowQuery(event.target.value)}
+                  onKeyDown={handleOverflowSearchKeyDown}
+                  placeholder={t("memoTabs.searchPlaceholder")}
+                  aria-label={t("memoTabs.searchPlaceholder")}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-1">
+              {overflowTabs.map((tab) => (
+                <div key={tab.id} className="group relative">
+                  <DropdownMenuItem
+                    className="flex cursor-pointer items-center gap-2 pr-9 text-sm"
+                    data-overflow-memo-tab-id={tab.id}
+                    onSelect={() => onSelect(tab.id)}
+                  >
+                    <Check
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        tab.id === activeMemoId ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+                  </DropdownMenuItem>
+                  <button
+                    className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                    type="button"
+                    aria-label={t("memoTabs.close")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onClose(tab.id);
+                      overflowSearchRef.current?.focus();
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
+              {overflowTabs.length === 0 && (
+                <div className="px-2 py-6 text-center text-sm text-slate-500">
+                  {t("memoTabs.noSearchResults")}
+                </div>
+              )}
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -53,6 +53,20 @@ describe("memo tabs bar", () => {
     expect(source).toContain('t("memoTabs.more")');
   });
 
+  test("filters the overflow dropdown with a focused search field", () => {
+    expect(source).toContain('t("memoTabs.searchPlaceholder")');
+    expect(source).toContain('t("memoTabs.noSearchResults")');
+    expect(source).toContain("overflowQuery.trim().toLocaleLowerCase()");
+    expect(source).toContain("overflowSearchRef.current?.focus()");
+    expect(source).toContain("overflowTabs.map((tab) =>");
+  });
+
+  test("closes a tab directly from the overflow dropdown", () => {
+    expect(source).toContain('data-overflow-memo-tab-id={tab.id}');
+    expect(source).toContain("onClose(tab.id)");
+    expect(source).toContain('aria-label={t("memoTabs.close")}');
+  });
+
   test("truncates long titles at the fixed tab width", () => {
     expect(source).toContain("truncate");
     expect(source).toContain("max-w-[220px]");

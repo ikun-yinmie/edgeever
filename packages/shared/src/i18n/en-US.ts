@@ -2229,6 +2229,8 @@ export const enUS = {
     closeAll: "Close all tabs",
     openInNewWindow: "Open current tab in new window",
     more: "More tabs",
+    searchPlaceholder: "Search tabs",
+    noSearchResults: "No matching tabs",
   },
   mobileNotebookPicker: {
     title: "Switch notebook",
