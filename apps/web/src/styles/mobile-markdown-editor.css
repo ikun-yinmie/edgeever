@@ -610,6 +610,44 @@ html.dark .edgeever-mobile-tiptap-content a:hover {
   padding-left: 24px;
 }
 
+.edgeever-mobile-tiptap-content .edgeever-task-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.edgeever-mobile-tiptap-content .edgeever-task-toggle:active {
+  background: #f1f5f9;
+}
+
+.edgeever-mobile-tiptap-content .edgeever-task-toggle svg {
+  transition: transform 150ms ease;
+  transform: rotate(90deg);
+}
+
+.edgeever-mobile-tiptap-content ul[data-type="taskList"] li[data-collapsed="true"] > .edgeever-task-toggle svg {
+  transform: rotate(0deg);
+}
+
+.edgeever-mobile-tiptap-content .edgeever-task-toggle.is-placeholder,
+.edgeever-mobile-tiptap-content[contenteditable="false"] .edgeever-task-toggle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.edgeever-mobile-tiptap-content[contenteditable="true"] ul[data-type="taskList"] li[data-collapsed="true"] > div > :not(:first-child) {
+  display: none;
+}
+
 .edgeever-mobile-tiptap-content .ee-inline-field-source {
   font-size: 0;
   color: transparent;

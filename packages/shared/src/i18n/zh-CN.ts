@@ -1742,6 +1742,7 @@ export const zhCN = {
     imageZoomOut: "缩小图片",
     closeImagePreview: "关闭图片查看器",
     resourceActions: {
+      copy: "复制图片",
       download: "下载",
       saveAs: "导出",
       rename: "重命名",
@@ -2093,6 +2094,8 @@ export const zhCN = {
     inlineCode: "行内代码",
     bulletList: "无序列表",
     taskList: "任务清单",
+    taskCollapse: "收起子项",
+    taskExpand: "展开子项",
     orderedList: "有序列表",
     increaseListIndent: "增加列表层级（Tab）",
     decreaseListIndent: "减少列表层级（Shift + Tab）",

@@ -1461,6 +1461,51 @@ textarea {
   padding-left: 1.5rem;
 }
 
+.ProseMirror .edgeever-task-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(var(--slate-400-rgb));
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.ProseMirror .edgeever-task-toggle:hover {
+  background: rgb(var(--slate-100-rgb, 241 245 249));
+  color: rgb(var(--slate-600-rgb, 71 85 105));
+}
+
+.ProseMirror .edgeever-task-toggle:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: 1px;
+}
+
+.ProseMirror .edgeever-task-toggle svg {
+  transition: transform 150ms ease;
+  transform: rotate(90deg);
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-collapsed="true"] > .edgeever-task-toggle svg {
+  transform: rotate(0deg);
+}
+
+.ProseMirror .edgeever-task-toggle.is-placeholder,
+.ProseMirror[contenteditable="false"] .edgeever-task-toggle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ProseMirror[contenteditable="true"] ul[data-type="taskList"] li[data-collapsed="true"] > div > :not(:first-child) {
+  display: none;
+}
+
 .ProseMirror .ee-inline-field-source {
   font-size: 0;
   color: transparent;

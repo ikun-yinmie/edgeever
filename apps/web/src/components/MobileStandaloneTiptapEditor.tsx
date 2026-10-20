@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
+import { CollapsibleTaskItem } from "@/components/editor/CollapsibleTaskItem";
 import Image from "@tiptap/extension-image";
 import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -203,6 +204,7 @@ export const MobileStandaloneTiptapEditor = ({
           allowBase64: false,
           inline: false,
         }),
+        taskItem: CollapsibleTaskItem.configure({ nested: true }),
         pdf: PdfAttachment,
         file: FileAttachment,
         table: { table: { renderWrapper: true } },

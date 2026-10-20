@@ -1742,6 +1742,7 @@ export const enUS = {
     imageZoomOut: "Zoom out image",
     closeImagePreview: "Close image viewer",
     resourceActions: {
+      copy: "Copy image",
       download: "Download",
       saveAs: "Export",
       rename: "Rename",
@@ -2095,6 +2096,8 @@ export const enUS = {
     inlineCode: "Inline code",
     bulletList: "Bulleted list",
     taskList: "Task list",
+    taskCollapse: "Collapse subtasks",
+    taskExpand: "Expand subtasks",
     orderedList: "Numbered list",
     increaseListIndent: "Increase list level (Tab)",
     decreaseListIndent: "Decrease list level (Shift + Tab)",

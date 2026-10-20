@@ -18,6 +18,7 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
   mathematics: AnyExtension[];
   starterKit?: Parameters<typeof StarterKit.configure>[0];
   image?: AnyExtension | false;
+  taskItem?: AnyExtension | false;
   gallery?: AnyExtension | false;
   pdf?: AnyExtension | false;
   file?: AnyExtension | false;
@@ -51,7 +52,7 @@ export const createEdgeEverDocumentExtensions = (
     StarterKit.configure(starterKitConfig),
     EdgeEverTextStyle,
     TaskList,
-    TaskItem.configure({ nested: true }),
+    ...withOptional(options.taskItem, TaskItem.configure({ nested: true })),
     options.table === undefined ? TableKit : TableKit.configure(options.table),
     ...withOptional(options.image, Image),
     ...withOptional(options.gallery, ImageGallery),

@@ -148,7 +148,7 @@ import { getMemoUpdateQueueId, isMemoUpdateAlreadyApplied, queueMemoUpdate } fro
 import {
   getMemoSaveConflictInfoFromQueueItem,
 } from "@/lib/memo-save-conflict";
-import { copyTextToClipboard } from "@/lib/clipboard";
+import { copyImageBlobToClipboard, copyTextToClipboard } from "@/lib/clipboard";
 import { isLocalMemoId, remapLocalDraftMemoId } from "@/lib/local-mirror";
 import { shouldAcceptRemoteMemoDetail } from "@/lib/memo-detail-freshness";
 import type { EdgeEverRepository } from "@/lib/repository";
@@ -228,6 +228,7 @@ import { EditableImageGallery } from "./editor/ImageGallery";
 import { ImageViewer } from "./editor/ImageViewer";
 import { PdfAttachment } from "./editor/PdfAttachment";
 import { FileAttachment } from "./editor/FileAttachment";
+import { CollapsibleTaskItem } from "./editor/CollapsibleTaskItem";
 import { createInlineFieldExtension } from "./editor/InlineField";
 import { createPluginEmbedExtension } from "./editor/PluginEmbed";
 import { useEditorDocumentActions } from "./editor/useEditorDocumentActions";
@@ -529,6 +530,8 @@ const RichEditorPane = ({
     typeof window === "undefined" ? false : window.matchMedia(PHONE_PREVIEW_STAGE_QUERY).matches
   );
   const [memoIdCopyNotice, setMemoIdCopyNotice] = useState<{ status: "copied" | "error"; id: string } | null>(null);
+  const [resourceCopyNotice, setResourceCopyNotice] = useState<"copied" | "error" | null>(null);
+  const resourceCopyNoticeTimerRef = useRef<number | null>(null);
   const handledSaveAndSyncTokenRef = useRef(saveAndSyncToken);
   const handledReadingProtectionToggleTokenRef = useRef(readingProtectionToggleToken);
   const handledEditorModeToggleTokenRef = useRef(editorModeToggleToken);
@@ -1218,6 +1221,7 @@ const RichEditorPane = ({
           ...(collabBinding ? { history: false } : {}),
         },
         image: false,
+        taskItem: CollapsibleTaskItem.configure({ nested: true }),
         gallery: EditableImageGallery,
         pdf: PdfAttachment,
         file: FileAttachment,
@@ -1862,6 +1866,9 @@ const RichEditorPane = ({
   useEffect(() => () => {
     if (resourceMenuHideTimerRef.current !== null) {
       window.clearTimeout(resourceMenuHideTimerRef.current);
+    }
+    if (resourceCopyNoticeTimerRef.current !== null) {
+      window.clearTimeout(resourceCopyNoticeTimerRef.current);
     }
   }, []);
 
@@ -3237,6 +3244,34 @@ const RichEditorPane = ({
     downloadResourceDirectly(target);
   }, [clearResourceActionError, downloadResourceDirectly, hideResourceMenu]);
 
+  const showResourceCopyNotice = useCallback((status: "copied" | "error") => {
+    setResourceCopyNotice(status);
+    if (resourceCopyNoticeTimerRef.current !== null) {
+      window.clearTimeout(resourceCopyNoticeTimerRef.current);
+    }
+    resourceCopyNoticeTimerRef.current = window.setTimeout(() => {
+      resourceCopyNoticeTimerRef.current = null;
+      setResourceCopyNotice(null);
+    }, status === "copied" ? 2200 : 3200);
+  }, []);
+
+  const handleResourceCopyImage = useCallback(async (target: ResourceMenuTarget) => {
+    if (target.kind !== "image") return;
+    hideResourceMenu();
+    clearResourceActionError();
+    try {
+      const directUrl = /^(?:edgeever-resource:|edgeever-staged:|blob:|data:)/.test(target.url);
+      const response = directUrl ? await fetch(target.url) : await api.getResourceResponse(target.url);
+      if (!response.ok) throw new Error(response.statusText || getResourceActionFailure(target));
+      const copied = await copyImageBlobToClipboard(await response.blob());
+      if (!copied) throw new Error(t("editor.imageShare.copyFailed"));
+      showResourceCopyNotice("copied");
+    } catch (error) {
+      console.warn("Failed to copy image to clipboard:", error);
+      showResourceCopyNotice("error");
+    }
+  }, [clearResourceActionError, getResourceActionFailure, hideResourceMenu, showResourceCopyNotice, t]);
+
   const handleResourceSaveAs = useCallback(async (target: ResourceMenuTarget) => {
     hideResourceMenu();
     clearResourceActionError();
@@ -3758,6 +3793,7 @@ const RichEditorPane = ({
   };
 
   const resourceMenuLabels = {
+    copy: t("editor.resourceActions.copy"),
     download: t("editor.resourceActions.download"),
     saveAs: t("editor.resourceActions.saveAs"),
     rename: t("editor.resourceActions.rename"),
@@ -4584,6 +4620,8 @@ const RichEditorPane = ({
             ))
           )}
           labels={resourceMenuLabels}
+          showCopy={resourceMenuTarget.kind === "image"}
+          onCopy={() => void handleResourceCopyImage(resourceMenuTarget)}
           onDownload={() => void handleResourceDownload(resourceMenuTarget)}
           onSaveAs={() => void handleResourceSaveAs(resourceMenuTarget)}
           onRename={() => openResourceDialog("rename", resourceMenuTarget)}
@@ -4608,6 +4646,12 @@ const RichEditorPane = ({
       {memoIdCopyNotice && (
         <ClipboardCopyNotice status={memoIdCopyNotice.status}>
           {t(memoIdCopyNotice.status === "copied" ? "editor.noteIdCopied" : "editor.noteIdCopyFailed", { id: memoIdCopyNotice.id })}
+        </ClipboardCopyNotice>
+      )}
+
+      {resourceCopyNotice && (
+        <ClipboardCopyNotice status={resourceCopyNotice}>
+          {t(resourceCopyNotice === "copied" ? "editor.imageShare.copied" : "editor.imageShare.copyFailed")}
         </ClipboardCopyNotice>
       )}
 

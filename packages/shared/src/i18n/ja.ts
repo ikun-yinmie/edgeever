@@ -1742,6 +1742,7 @@ export const ja = {
     imageZoomOut: "画像を縮小",
     closeImagePreview: "画像ビューアを閉じる",
     resourceActions: {
+      copy: "画像をコピー",
       download: "ダウンロード",
       saveAs: "エクスポート",
       rename: "名前を変更",
@@ -2095,6 +2096,8 @@ export const ja = {
     inlineCode: "インラインコード",
     bulletList: "箇条書き",
     taskList: "タスクリスト",
+    taskCollapse: "サブタスクを折りたたむ",
+    taskExpand: "サブタスクを展開",
     orderedList: "番号付きリスト",
     increaseListIndent: "リスト階層を上げる（Tab）",
     decreaseListIndent: "リスト階層を下げる（Shift + Tab）",

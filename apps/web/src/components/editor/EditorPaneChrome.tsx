@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { autoUpdate, useFloating } from "@floating-ui/react-dom";
-import { FileDown, Pencil, Save, Trash2, X } from "lucide-react";
+import { Copy, FileDown, Pencil, Save, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,6 +64,7 @@ export const NoteLinkInteractionHint = ({
 );
 
 type ResourceActionLabels = {
+  copy: string;
   download: string;
   saveAs: string;
   rename: string;
@@ -75,7 +76,9 @@ export const ResourceActionMenu = ({
   target,
   canRename,
   canDelete,
+  showCopy = false,
   labels,
+  onCopy,
   onDownload,
   onSaveAs,
   onRename,
@@ -86,7 +89,9 @@ export const ResourceActionMenu = ({
   target: ResourceMenuTarget;
   canRename: boolean;
   canDelete: boolean;
+  showCopy?: boolean;
   labels: ResourceActionLabels;
+  onCopy: () => void;
   onDownload: () => void;
   onSaveAs: () => void;
   onRename: () => void;
@@ -128,6 +133,14 @@ export const ResourceActionMenu = ({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onMouseLeave();
       }}
     >
+      {showCopy ? (
+        <IconTooltip label={labels.copy}>
+          <Button type="button" size="sm" variant="ghost" aria-label={labels.copy} onClick={onCopy}>
+            <Copy className="h-3.5 w-3.5" />
+            {labels.copy}
+          </Button>
+        </IconTooltip>
+      ) : null}
       <IconTooltip label={labels.download}>
         <Button type="button" size="sm" variant="ghost" aria-label={labels.download} onClick={onDownload}>
           <FileDown className="h-3.5 w-3.5" />
