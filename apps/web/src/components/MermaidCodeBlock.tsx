@@ -112,13 +112,14 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
     [lineCount],
   );
   const canEdit = editor.isEditable;
-  // Read mode keeps the header view-only: collapse, line numbers and
+  // Read mode keeps the header view-only: collapse, width, line numbers and
   // wrapping toggle per viewer without ever editing the document.
   const [viewCollapsed, setViewCollapsed] = useState(isCollapsed);
+  const [viewWide, setViewWide] = useState(isWide);
   const [viewLineNumbers, setViewLineNumbers] = useState(showLineNumbers);
   const [viewWrap, setViewWrap] = useState(wrapLines);
   const collapsed = canEdit ? isCollapsed : viewCollapsed;
-  const wide = isWide;
+  const wide = canEdit ? isWide : viewWide;
   const lineNumbersVisible = canEdit ? showLineNumbers : viewLineNumbers;
   const wrapLinesVisible = canEdit ? wrapLines : viewWrap;
   const [svg, setSvg] = useState("");
@@ -141,8 +142,12 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   }, [syncToast]);
 
   const handleCopy = async () => {
-    const copied = await copyTextToClipboard(node.textContent);
-    setCopyState(copied ? "copied" : "error");
+    try {
+      const copied = await copyTextToClipboard(node.textContent);
+      setCopyState(copied ? "copied" : "error");
+    } catch {
+      setCopyState("error");
+    }
   };
 
   useEffect(() => {
@@ -280,29 +285,31 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
                 {t(collapsed ? "editorToolbar.codeExpand" : "editorToolbar.codeCollapse")}
               </TooltipContent>
             </Tooltip>
-            {canEdit && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="edgeever-code-tool-button"
-                    aria-label={t("editorToolbar.codeToggleWidth")}
-                    aria-pressed={wide}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="edgeever-code-tool-button edgeever-code-width-toggle"
+                  aria-label={t("editorToolbar.codeToggleWidth")}
+                  aria-pressed={wide}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (canEdit) {
                       updateAttributes({ meta: { ...meta, width: wide ? "normal" : "wide" } });
-                    }}
-                    onMouseDown={(event) => event.preventDefault()}
-                  >
-                    {wide ? <ChevronsLeft aria-hidden="true" /> : <ChevronsRight aria-hidden="true" />}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {t("editorToolbar.codeToggleWidth")}
-                </TooltipContent>
-              </Tooltip>
-            )}
+                    } else {
+                      setViewWide((value) => !value);
+                    }
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  {wide ? <ChevronsLeft aria-hidden="true" /> : <ChevronsRight aria-hidden="true" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t("editorToolbar.codeToggleWidth")}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

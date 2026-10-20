@@ -46,7 +46,7 @@ import {
 import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
-import { writeRichClipboard } from "./clipboard-write.mjs";
+import { writePlainTextClipboard, writeRichClipboard } from "./clipboard-write.mjs";
 import { captureScreenToNote, createScreenshotCaptureGuard, screenshotImportIpcPayload, writeScreenshotTempPath } from "./screenshot-capture.mjs";
 import { LocalDataResetError, scheduleMacLocalDataReset } from "./local-data-reset.mjs";
 import { buildDesktopDiagnosticIssueUrl, normalizeDesktopDiagnostic } from "./desktop-diagnostics.mjs";
@@ -1685,11 +1685,7 @@ const startApplication = async () => {
   ipcMain.on("desktop:proxy-settings-sync", (event) => { event.returnValue = proxySettings; });
   ipcMain.on("desktop:session-token-sync", (event) => { event.returnValue = desktopSessionToken; });
   ipcMain.on("desktop:recovered-after-abnormal-exit-sync", (event) => { event.returnValue = recoveredAfterAbnormalExit; });
-  ipcMain.handle("desktop:copy-text", (_event, value) => {
-    if (typeof value !== "string") throw new Error("Clipboard value must be a string");
-    clipboard.writeText(value);
-    return clipboard.readText() === value;
-  });
+  ipcMain.handle("desktop:copy-text", (_event, value) => writePlainTextClipboard(clipboard, value));
   ipcMain.handle("desktop:copy-html", (_event, input) => writeRichClipboard(clipboard, input));
   ipcMain.handle("desktop:set-session-token", async (_event, value) => {
     await saveDesktopSessionToken(value);

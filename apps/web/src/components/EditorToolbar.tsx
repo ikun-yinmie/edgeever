@@ -55,7 +55,7 @@ import {
   useMarkdownTheme,
 } from "@/components/ThemeProvider";
 
-export const MEMO_THEME_FOLLOW_DEVICE = "__device_default__";
+const NATIVE_EDITOR_THEME = "default";
 
 const EditorToolbarButton = ({
   active = false,
@@ -182,7 +182,7 @@ export const EditorToolbar = ({
   onPickNoteLink?: () => void;
   onPickMathFormula?: () => void;
   externalLinkActive?: boolean;
-  /** Built-in editor theme bound to this note, or null to follow the device default. */
+  /** Built-in editor theme bound to this note; null means the native theme. */
   memoTheme?: string | null;
   /** When provided, the theme picker edits this note's theme instead of the device preference. */
   onMemoThemeChange?: (theme: string | null) => void;
@@ -192,13 +192,13 @@ export const EditorToolbar = ({
   const { editorTheme, setEditorTheme, customEditorThemes } = useEditorTheme();
   const namedEditorThemes = EDITOR_THEME_NAMES.filter((theme) => theme !== "custom");
   const memoThemeMode = typeof onMemoThemeChange === "function";
-  const themeSelectValue = memoThemeMode ? (memoTheme ?? MEMO_THEME_FOLLOW_DEVICE) : editorTheme;
+  const themeSelectValue = memoThemeMode ? (memoTheme ?? NATIVE_EDITOR_THEME) : editorTheme;
   const handleThemeSelect = (value: string) => {
     if (!memoThemeMode) {
       setEditorTheme(value);
       return;
     }
-    onMemoThemeChange(value === MEMO_THEME_FOLLOW_DEVICE ? null : value);
+    onMemoThemeChange(value);
   };
   const controlsRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(readEditorToolbarExpandedPreference);
@@ -436,34 +436,19 @@ export const EditorToolbar = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="min-w-[10rem] bg-card border border-slate-200 rounded-md py-1 shadow-md">
-              {memoThemeMode ? (
-                <>
-                  <SelectItem value={MEMO_THEME_FOLLOW_DEVICE}>
-                    {t("settings.editorThemes.followDevice")}
-                  </SelectItem>
-                  {namedEditorThemes.map((theme) => (
-                    <SelectItem key={theme} value={theme}>
-                      {t(`settings.editorThemes.${theme}`)}
-                    </SelectItem>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {namedEditorThemes.map((theme) => (
-                    <SelectItem key={theme} value={theme}>
-                      {t(`settings.editorThemes.${theme}`)}
-                    </SelectItem>
-                  ))}
-                  {customEditorThemes.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.id}>
-                      {localizeStoredCustomThemeName(theme.name, {
-                        defaultName: t("settings.customEditorTheme.defaultName"),
-                        newName: (index) => t("settings.customEditorTheme.newName", { n: index }),
-                      })}
-                    </SelectItem>
-                  ))}
-                </>
-              )}
+              {namedEditorThemes.map((theme) => (
+                <SelectItem key={theme} value={theme}>
+                  {t(`settings.editorThemes.${theme}`)}
+                </SelectItem>
+              ))}
+              {!memoThemeMode && customEditorThemes.map((theme) => (
+                <SelectItem key={theme.id} value={theme.id}>
+                  {localizeStoredCustomThemeName(theme.name, {
+                    defaultName: t("settings.customEditorTheme.defaultName"),
+                    newName: (index) => t("settings.customEditorTheme.newName", { n: index }),
+                  })}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <MemoEditorToolbarDivider className="hidden sm:block" />

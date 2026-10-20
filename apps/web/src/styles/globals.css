@@ -1705,6 +1705,7 @@ textarea {
 
 .ProseMirror .edgeever-code-header-actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 0.2rem;
   margin-left: auto;
@@ -1712,6 +1713,7 @@ textarea {
 
 .ProseMirror .edgeever-code-tool-button {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   width: 1.55rem;
@@ -1753,12 +1755,44 @@ textarea {
   color: hsl(var(--muted-foreground));
 }
 
-/* Wide code blocks bleed past the reading column for long lines. */
+/* Wide code blocks grow into the editor gutter, never past the editor pane.
+ * Centering with a transform on an oversized block clips the left edge beyond
+ * the scroll range, so the width is capped by the pane's own horizontal
+ * padding instead of the reading column. */
 .ProseMirror .edgeever-code-block-wide,
 .ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-wide {
-  width: min(140%, 1100px);
+  width: min(calc(100% + 2rem), 1100px);
   margin-left: 50%;
   transform: translateX(-50%);
+}
+
+@media (min-width: 640px) {
+  .ProseMirror .edgeever-code-block-wide,
+  .ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-wide {
+    width: min(calc(100% + 3.5rem), 1100px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .ProseMirror .edgeever-code-block-wide,
+  .ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-wide {
+    width: min(calc(100% + 5rem), 1100px);
+  }
+}
+
+/* Phones keep code blocks at the reading width: full-bleed blocks are hard to
+ * control on touch screens and the width toggle is hidden there. */
+@media (max-width: 639px) {
+  .ProseMirror .edgeever-code-block-wide,
+  .ProseMirror .edgeever-mermaid-code-block.edgeever-code-block-wide {
+    width: auto;
+    margin-left: 0;
+    transform: none;
+  }
+
+  .ProseMirror .edgeever-code-width-toggle {
+    display: none;
+  }
 }
 
 .ProseMirror .edgeever-code-block-collapsed .edgeever-code-source {

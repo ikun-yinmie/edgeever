@@ -698,7 +698,6 @@ export const zhCN = {
       start: "靠左显示",
     },
     editorThemes: {
-      followDevice: "跟随设备默认",
       default: "原生主题",
       letter: "日暖素笺",
       guide: "青页讲义",

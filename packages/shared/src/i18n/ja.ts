@@ -698,7 +698,6 @@ export const ja = {
       start: "左揃え",
     },
     editorThemes: {
-      followDevice: "デバイスの既定に従う",
       default: "標準テーマ",
       letter: "あたたかな紙",
       guide: "講義ノート",

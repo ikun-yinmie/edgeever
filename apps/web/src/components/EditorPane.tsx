@@ -441,9 +441,9 @@ const RichEditorPane = ({
   onSaveSharedCopy,
 }: RichEditorPaneProps) => {
   const { t, i18n } = useTranslation();
-  const { customEditorTheme, editorTheme } = useEditorTheme();
+  const { customEditorTheme } = useEditorTheme();
   const memoEditorTheme = resolveMemoEditorTheme(memo?.theme ?? null);
-  const resolvedEditorTheme = memoEditorTheme ?? editorTheme;
+  const resolvedEditorTheme = memoEditorTheme ?? "default";
   const { markdownTheme } = useMarkdownTheme();
   const queryClient = useQueryClient();
   const resourceInsertionLimit = useMemo(createFileBatchQueue, []);

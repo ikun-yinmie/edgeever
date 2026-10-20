@@ -25,8 +25,8 @@ export type MemoSummary = {
   diagramPreview?: DiagramSummaryPreview;
   tags: string[];
   /**
-   * Per-note editor theme. `null`/missing keeps the note on each device's
-   * default theme; a named theme id is shared with everyone who can read it.
+   * Per-note editor theme. `null`/missing keeps the note on the native theme;
+   * a named theme id is shared with everyone who can read it.
    */
   theme?: string | null;
   isPinned: boolean;

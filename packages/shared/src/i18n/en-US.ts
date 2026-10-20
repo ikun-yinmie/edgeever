@@ -698,7 +698,6 @@ export const enUS = {
       start: "Align left",
     },
     editorThemes: {
-      followDevice: "Follow device default",
       default: "Native theme",
       letter: "Warm Page",
       guide: "Lesson Page",

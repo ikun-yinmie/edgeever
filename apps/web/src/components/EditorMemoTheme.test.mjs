@@ -18,21 +18,19 @@ describe("article theme binding", () => {
     expect(themeProviderSource).toContain("isNamedEditorTheme(theme) ? theme : null");
   });
 
-  test("the toolbar edits the article theme instead of the device preference", () => {
-    expect(toolbarSource).toContain('export const MEMO_THEME_FOLLOW_DEVICE = "__device_default__";');
+  test("the toolbar edits the article theme with the native theme as its default", () => {
+    expect(toolbarSource).not.toContain("MEMO_THEME_FOLLOW_DEVICE");
+    expect(toolbarSource).not.toContain("followDevice");
     expect(toolbarSource).toContain("const memoThemeMode = typeof onMemoThemeChange === \"function\";");
-    expect(toolbarSource).toContain("const themeSelectValue = memoThemeMode ? (memoTheme ?? MEMO_THEME_FOLLOW_DEVICE) : editorTheme;");
-    expect(toolbarSource).toContain("onMemoThemeChange(value === MEMO_THEME_FOLLOW_DEVICE ? null : value);");
-    expect(toolbarSource).toContain("t(\"settings.editorThemes.followDevice\")");
-    const followIndex = toolbarSource.indexOf("<SelectItem value={MEMO_THEME_FOLLOW_DEVICE}>");
-    const namedIndex = toolbarSource.indexOf("{namedEditorThemes.map((theme) => (", followIndex);
-    expect(followIndex).toBeGreaterThan(-1);
-    expect(namedIndex).toBeGreaterThan(followIndex);
+    expect(toolbarSource).toContain('const themeSelectValue = memoThemeMode ? (memoTheme ?? NATIVE_EDITOR_THEME) : editorTheme;');
+    expect(toolbarSource).toContain("onMemoThemeChange(value);");
+    expect(toolbarSource).toContain('const NATIVE_EDITOR_THEME = "default";');
   });
 
-  test("the editor resolves the article theme before falling back to the device one", () => {
+  test("the editor resolves the article theme with the native theme as its fallback", () => {
     expect(editorPaneSource).toContain("const memoEditorTheme = resolveMemoEditorTheme(memo?.theme ?? null);");
-    expect(editorPaneSource).toContain("const resolvedEditorTheme = memoEditorTheme ?? editorTheme;");
+    expect(editorPaneSource).toContain('const resolvedEditorTheme = memoEditorTheme ?? "default";');
+    expect(editorPaneSource).not.toContain("memoEditorTheme ?? editorTheme");
     expect(editorPaneSource).toContain("repository.setMemoTheme(currentMemo.id, theme)");
     expect(editorPaneSource).toContain("data-editor-theme={isNamedEditorTheme(resolvedEditorTheme) ? resolvedEditorTheme : \"custom\"}");
     expect(editorPaneSource).toContain("memoTheme={effectiveReadOnly ? undefined : memoEditorTheme}");
@@ -51,13 +49,9 @@ describe("article theme binding", () => {
     expect(publicShareSource).toContain("data-paper-theme={isPaperEditorTheme(shareEditorTheme) ? \"true\" : undefined}");
   });
 
-  test("ships the follow-device label in every locale", () => {
-    for (const [source, label] of [
-      [zhSource, "跟随设备默认"],
-      [enSource, "Follow device default"],
-      [jaSource, "デバイスの既定に従う"],
-    ]) {
-      expect(source).toContain(`followDevice: "${label}"`);
+  test("no longer ships the follow-device label in any locale", () => {
+    for (const source of [zhSource, enSource, jaSource]) {
+      expect(source).not.toContain("followDevice:");
     }
   });
 });

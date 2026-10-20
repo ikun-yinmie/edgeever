@@ -5,20 +5,24 @@ const codeBlock = readFileSync(new URL("./MermaidCodeBlock.tsx", import.meta.url
 const styles = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
 
 describe("MermaidCodeBlock read mode", () => {
-  test("keeps collapse, line numbers and wrapping available without editing", () => {
+  test("keeps collapse, width, line numbers and wrapping available without editing", () => {
     expect(codeBlock).toContain("setViewCollapsed((value) => !value)");
+    expect(codeBlock).toContain("setViewWide((value) => !value)");
     expect(codeBlock).toContain("setViewLineNumbers((value) => !value)");
     expect(codeBlock).toContain("setViewWrap((value) => !value)");
     expect(codeBlock).toContain("const collapsed = canEdit ? isCollapsed : viewCollapsed;");
+    expect(codeBlock).toContain("const wide = canEdit ? isWide : viewWide;");
     expect(codeBlock).toContain("const lineNumbersVisible = canEdit ? showLineNumbers : viewLineNumbers;");
     expect(codeBlock).toContain("const wrapLinesVisible = canEdit ? wrapLines : viewWrap;");
   });
 
-  test("keeps the width toggle out of read mode", () => {
-    expect(codeBlock).not.toContain("setViewWide");
-    expect(codeBlock).toContain("const wide = isWide;");
-    expect(codeBlock).toMatch(
-      /\{canEdit && \(\s*<Tooltip>\s*<TooltipTrigger asChild>\s*<button\s+type="button"\s+className="edgeever-code-tool-button"\s+aria-label=\{t\("editorToolbar\.codeToggleWidth"\)\}/,
+  test("shows the width toggle in every mode and hides it on phones", () => {
+    expect(codeBlock).toContain("edgeever-code-tool-button edgeever-code-width-toggle");
+    expect(styles).toMatch(
+      /@media \(max-width: 639px\) \{[\s\S]*?\.ProseMirror \.edgeever-code-width-toggle \{\s*display: none;/,
+    );
+    expect(styles).toMatch(
+      /@media \(max-width: 639px\) \{[\s\S]*?\.edgeever-code-block-wide[\s\S]*?width: auto;\s*margin-left: 0;\s*transform: none;/,
     );
   });
 
@@ -42,13 +46,8 @@ describe("MermaidCodeBlock read mode", () => {
     expect(styles).toMatch(/\.edgeever-code-block-collapsed \.edgeever-code-source \{\s*display: none;/);
   });
 
-  test("keeps the width toggle and document-wide sync actions behind the edit gate", () => {
-    expect(codeBlock.split("{canEdit && (").length - 1).toBe(2);
-    const widthButtonIndex = codeBlock.indexOf('aria-label={t("editorToolbar.codeToggleWidth")}');
-    expect(widthButtonIndex).toBeGreaterThan(-1);
-    expect(codeBlock.lastIndexOf("{canEdit && (", widthButtonIndex)).toBeGreaterThan(
-      codeBlock.indexOf("edgeever-code-header-actions"),
-    );
+  test("keeps only the document-wide sync actions behind the edit gate", () => {
+    expect(codeBlock.split("{canEdit && (").length - 1).toBe(1);
     expect(codeBlock.indexOf("{canEdit && (")).toBeLessThan(codeBlock.indexOf("codeSyncStyleAll"));
   });
 });

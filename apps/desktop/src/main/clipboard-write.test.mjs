@@ -1,5 +1,32 @@
 import { describe, expect, test } from "bun:test";
-import { writeRichClipboard } from "./clipboard-write.mjs";
+import { writePlainTextClipboard, writeRichClipboard } from "./clipboard-write.mjs";
+
+describe("writePlainTextClipboard", () => {
+  test("writes plain text and accepts platform newline normalization", () => {
+    const writes = [];
+    const clipboard = {
+      writeText: (value) => writes.push(value),
+      readText: () => "line one\r\nline two",
+    };
+
+    expect(writePlainTextClipboard(clipboard, "line one\nline two")).toBe(true);
+    expect(writes).toEqual(["line one\nline two"]);
+  });
+
+  test("reports a mismatch when the clipboard content differs", () => {
+    const clipboard = {
+      writeText: () => {},
+      readText: () => "something else",
+    };
+
+    expect(writePlainTextClipboard(clipboard, "expected")).toBe(false);
+  });
+
+  test("rejects malformed renderer input", () => {
+    const clipboard = { writeText: () => {}, readText: () => "" };
+    expect(() => writePlainTextClipboard(clipboard, 42)).toThrow("Clipboard value must be a string");
+  });
+});
 
 describe("writeRichClipboard", () => {
   test("writes and verifies both rich HTML and plain text", () => {

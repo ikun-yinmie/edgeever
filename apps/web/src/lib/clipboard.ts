@@ -1,9 +1,12 @@
 export const copyTextToClipboard = async (text: string) => {
   if (typeof window !== "undefined" && window.edgeeverDesktop?.isAvailable) {
     try {
-      return await window.edgeeverDesktop.copyText(text);
+      if (await window.edgeeverDesktop.copyText(text)) {
+        return true;
+      }
     } catch {
-      return false;
+      // Fall through to the browser clipboard when the native bridge cannot
+      // verify the write (for example after platform newline normalization).
     }
   }
 
@@ -28,9 +31,12 @@ export const copyTextToClipboard = async (text: string) => {
   textarea.style.top = "0";
   document.body.appendChild(textarea);
   textarea.select();
+  textarea.setSelectionRange(0, text.length);
 
   try {
     return document.execCommand("copy");
+  } catch {
+    return false;
   } finally {
     document.body.removeChild(textarea);
   }

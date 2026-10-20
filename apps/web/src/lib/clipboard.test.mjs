@@ -40,13 +40,34 @@ describe("copyTextToClipboard", () => {
     expect(calls).toEqual(["https://example.com/share/token"]);
   });
 
-  test("does not report success when native clipboard verification fails", async () => {
+  test("falls back to the browser clipboard when native verification fails", async () => {
+    const calls = [];
     globalThis.window = {
       edgeeverDesktop: {
         isAvailable: true,
         copyText: async () => false,
       },
     };
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { clipboard: { writeText: async (value) => calls.push(value) } },
+    });
+
+    await expect(copyTextToClipboard("new value")).resolves.toBe(true);
+    expect(calls).toEqual(["new value"]);
+  });
+
+  test("reports failure when every clipboard path is unavailable", async () => {
+    globalThis.window = {
+      edgeeverDesktop: {
+        isAvailable: true,
+        copyText: async () => false,
+      },
+    };
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {},
+    });
 
     await expect(copyTextToClipboard("new value")).resolves.toBe(false);
   });
