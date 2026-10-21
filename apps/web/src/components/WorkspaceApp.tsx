@@ -1947,7 +1947,27 @@ export const WorkspaceApp = ({
     pendingQuickSwitcherMemoIdRef.current = null;
     suppressAutoOpenRef.current = true;
     setSelectedMemoId(null);
-  }, [setSelectedMemoId]);
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setSelectedTag(null);
+    setRightView("recent");
+    setMobileBottomNavActive("home");
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setActivePane("editor");
+  }, [
+    clearMemoSelection,
+    clearPendingCreatedMemo,
+    navigateWorkspaceHome,
+    route.pathname,
+    setActivePane,
+    setMemoView,
+    setRightView,
+    setSelectedMemoId,
+    setSelectedTag,
+  ]);
 
   const reorderOpenMemoTabs = useCallback((sourceMemoId: string, targetMemoId: string) => {
     setOpenMemoTabs((current) => reorderMemoTabs(current, sourceMemoId, targetMemoId));

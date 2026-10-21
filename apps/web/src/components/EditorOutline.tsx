@@ -3,7 +3,14 @@ import type { Editor } from "@tiptap/react";
 import { ChevronDown, ChevronRight, ListTree } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { buildOutlineTree, type OutlineItem, type OutlineTreeItem } from "@/lib/editor-outline";
+import {
+  buildOutlineTree,
+  getOutlineDisplaySegments,
+  trimOutlineSegments,
+  type OutlineItem,
+  type OutlineTextSegment,
+  type OutlineTreeItem,
+} from "@/lib/editor-outline";
 import { cn } from "@/lib/utils";
 import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 
@@ -30,11 +37,6 @@ const getPreviewHeadingElements = (container: HTMLDivElement | null) => {
   );
 };
 
-const stripLeadingEmoji = (str: string): string => {
-  const leadingEmojiRegex = /^(?:(?:[\u0030-\u0039#*]\uFE0F?\u20E3|\p{Extended_Pictographic}|[\u2460-\u24FF\u2600-\u27BF\u2B00-\u2BFF])[\uFE00-\uFE0F\u200D]*\s*)+/u;
-  return str.replace(leadingEmojiRegex, "").trim() || str;
-};
-
 const getOutlineItems = (editor: Editor): OutlineItem[] => {
   const items: OutlineItem[] = [];
 
@@ -43,12 +45,29 @@ const getOutlineItems = (editor: Editor): OutlineItem[] => {
       return;
     }
 
-    const text = node.textContent.trim();
+    const rawSegments: OutlineTextSegment[] = [];
+    node.forEach((child) => {
+      if (!child.isText || !child.text) {
+        return;
+      }
+
+      const strike = child.marks.some((mark) => mark.type.name === "strike");
+      const previous = rawSegments[rawSegments.length - 1];
+      if (previous && previous.strike === strike) {
+        previous.text += child.text;
+      } else {
+        rawSegments.push({ text: child.text, strike });
+      }
+    });
+
+    const segments = trimOutlineSegments(rawSegments);
+    const text = segments.map((segment) => segment.text).join("");
     if (text) {
       items.push({
         level: Number(node.attrs.level) || 1,
         pos,
         text,
+        segments,
       });
     }
   });
@@ -56,10 +75,24 @@ const getOutlineItems = (editor: Editor): OutlineItem[] => {
   return items;
 };
 
+const sameOutlineSegments = (left: OutlineTextSegment[] | undefined, right: OutlineTextSegment[] | undefined) => {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.length === right.length && left.every((segment, index) => {
+    const other = right[index];
+    return other?.text === segment.text && other.strike === segment.strike;
+  });
+};
+
 const sameOutlineItems = (left: OutlineItem[], right: OutlineItem[]) =>
   left.length === right.length && left.every((item, index) => {
     const other = right[index];
-    return other?.level === item.level && other.pos === item.pos && other.text === item.text;
+    return other?.level === item.level
+      && other.pos === item.pos
+      && other.text === item.text
+      && sameOutlineSegments(other.segments, item.segments);
   });
 
 export const EditorOutline = ({ editor, scrollContainer, previewContainer = null, collapsed, shortcutLabel, onCollapsedChange }: EditorOutlineProps) => {
@@ -238,7 +271,7 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
         const isActive = activePos === item.pos;
         const hasChildren = item.children.length > 0;
         const itemCollapsed = collapsedPositions.has(item.pos);
-        const displayText = stripLeadingEmoji(item.text);
+        const displaySegments = getOutlineDisplaySegments(item);
         const toggleLabel = t(itemCollapsed ? "editor.expandOutlineHeading" : "editor.collapseOutlineHeading", { name: item.text });
 
         return (
@@ -285,7 +318,14 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
                 onClick={() => jumpToHeading(item)}
                 aria-current={isActive ? "location" : undefined}
               >
-                {displayText}
+                {displaySegments.map((segment, segmentIndex) => (
+                  <span
+                    key={`${segmentIndex}-${segment.strike ? "strike" : "plain"}`}
+                    className={segment.strike ? "line-through" : undefined}
+                  >
+                    {segment.text}
+                  </span>
+                ))}
               </button>
             </div>
 

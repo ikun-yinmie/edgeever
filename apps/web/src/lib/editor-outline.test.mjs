@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildOutlineTree } from "./editor-outline";
+import {
+  buildOutlineTree,
+  getOutlineDisplaySegments,
+  trimOutlineSegments,
+} from "./editor-outline";
 
 const heading = (level, pos, text) => ({ level, pos, text });
 
@@ -28,5 +32,38 @@ describe("editor outline hierarchy", () => {
 
     expect(tree.map((item) => item.text)).toEqual(["Standalone", "Next section"]);
     expect(tree[0]?.children.map((item) => item.text)).toEqual(["Detail", "Sibling detail"]);
+  });
+});
+
+describe("editor outline text segments", () => {
+  test("trims heading segments without losing strikethrough marks", () => {
+    const segments = trimOutlineSegments([
+      { text: "  ", strike: false },
+      { text: "Old", strike: true },
+      { text: " title ", strike: false },
+    ]);
+
+    expect(segments).toEqual([
+      { text: "Old", strike: true },
+      { text: " title", strike: false },
+    ]);
+  });
+
+  test("keeps partial strikethrough when leading emoji are hidden", () => {
+    const segments = getOutlineDisplaySegments({
+      level: 1,
+      pos: 0,
+      text: "🚀 Old title",
+      segments: [
+        { text: "🚀 ", strike: false },
+        { text: "Old", strike: true },
+        { text: " title", strike: false },
+      ],
+    });
+
+    expect(segments).toEqual([
+      { text: "Old", strike: true },
+      { text: " title", strike: false },
+    ]);
   });
 });

@@ -62,6 +62,16 @@ describe("workspace memo tabs", () => {
     expect(source).toContain("onReorder={reorderOpenMemoTabs}");
   });
 
+  test("returns to the recent notes page after closing all tabs", () => {
+    const closeAllBlock = source.slice(
+      source.indexOf("const closeAllMemoTabs = useCallback("),
+      source.indexOf("const reorderOpenMemoTabs")
+    );
+    expect(closeAllBlock).toContain('setRightView("recent");');
+    expect(closeAllBlock).toContain("navigateWorkspaceHome();");
+    expect(closeAllBlock).toContain('skipNextHomeRouteSyncRef.current = route.pathname !== "/";');
+  });
+
   test("opens the active note in a new window through the openMemo deep link", () => {
     expect(source).toContain("buildOpenMemoWindowUrl(window.location.href, memoId");
     expect(source).toContain("hashRouter: isDesktopRenderer()");

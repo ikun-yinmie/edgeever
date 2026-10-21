@@ -13,6 +13,12 @@ describe("editor outline floating toggle", () => {
     expect(outlineSource).toContain('collapsed ? "absolute right-0 top-0 h-8 w-8 justify-center"');
   });
 
+  test("renders strikethrough runs from heading marks in the outline", () => {
+    expect(outlineSource).toContain("getOutlineDisplaySegments");
+    expect(outlineSource).toContain('mark.type.name === "strike"');
+    expect(outlineSource).toContain('segment.strike ? "line-through" : undefined');
+  });
+
   test("matches and scrolls the phone preview scroller when the preview stage is visible", () => {
     expect(outlineSource).toContain("previewContainer?: HTMLDivElement | null");
     expect(outlineSource).toContain("getPreviewHeadingElements");
