@@ -64,6 +64,12 @@ import {
 } from "./editor/editor-mode-content";
 import { useEditorMarkdownMode } from "./editor/useEditorMarkdownMode";
 import {
+  captureEditorScrollMemory,
+  readEditorScrollMemory,
+  restoreEditorScrollMemory,
+  writeEditorScrollMemory,
+} from "./editor/editor-scroll-memory";
+import {
   ImageUploadPlaceholderExtension,
   addImageUploadPlaceholder,
   createImageUploadPlaceholder,
@@ -654,6 +660,8 @@ const RichEditorPane = ({
   const openAiAssistantRef = useRef<() => void>(() => undefined);
   const aiSpaceShortcutEnabledRef = useRef(readAiSpaceShortcutPreference());
   const editorScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const persistEditorScrollRef = useRef<() => void>(() => undefined);
+  const initialScrollRestoreDoneRef = useRef(false);
   const mobileTextAreaRef = useRef<MobilePlainTextElement | null>(null);
   const mobileDraftTimerRef = useRef<number | null>(null);
   const mobileSaveTimerRef = useRef<number | null>(null);
@@ -1427,6 +1435,77 @@ const RichEditorPane = ({
     hydratingRef,
   });
   const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode && !collabRealtimeBound && !memo?.snapshot;
+
+  useEffect(() => {
+    const container = editorScrollContainer;
+    if (!container) return;
+
+    let timer: number | null = null;
+    let pendingMemoId: string | null = null;
+
+    const save = () => {
+      timer = null;
+      const memoId = pendingMemoId ?? memoRef.current?.id ?? null;
+      pendingMemoId = null;
+      if (!memoId || hydratedMemoIdRef.current !== memoId || memoRef.current?.id !== memoId) return;
+      const entry = captureEditorScrollMemory(container);
+      if (entry) writeEditorScrollMemory(memoId, entry);
+    };
+
+    const handleScroll = () => {
+      pendingMemoId = memoRef.current?.id ?? null;
+      if (timer !== null) return;
+      timer = window.setTimeout(save, 200);
+    };
+
+    persistEditorScrollRef.current = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      pendingMemoId = memoRef.current?.id ?? null;
+      save();
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      save();
+      persistEditorScrollRef.current = () => undefined;
+    };
+  }, [editorScrollContainer]);
+
+  useEffect(() => {
+    const currentMemoId = memo?.id ?? null;
+    const container = editorScrollContainer;
+    if (
+      initialScrollRestoreDoneRef.current
+      || !currentMemoId
+      || !container
+      || hydratedEditorMemoId !== currentMemoId
+    ) {
+      return;
+    }
+
+    initialScrollRestoreDoneRef.current = true;
+    if (useMarkdownSourceEditor || useMobilePlainTextEditor) return;
+
+    const entry = readEditorScrollMemory(currentMemoId);
+    if (!entry) return;
+
+    const firstFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (!container.isConnected) return;
+        restoreEditorScrollMemory(container, entry);
+      });
+    });
+
+    return () => window.cancelAnimationFrame(firstFrame);
+  }, [editorScrollContainer, hydratedEditorMemoId, memo?.id, useMarkdownSourceEditor, useMobilePlainTextEditor]);
 
   useEffect(() => {
     const syncPreference = (event?: Event) => {
@@ -2843,6 +2922,7 @@ const RichEditorPane = ({
 
   useEffect(() => {
     const persistBeforeSuspend = () => {
+      persistEditorScrollRef.current();
       if (hasUnsavedChangesRef.current) {
         void persistCurrentDraft(title, tagsText, getMobilePlainTextValue());
       }
@@ -2856,6 +2936,7 @@ const RichEditorPane = ({
     window.addEventListener("pagehide", persistBeforeSuspend);
     document.addEventListener("visibilitychange", persistWhenHidden);
     const stopHibernatePrepare = window.edgeeverDesktop?.onHibernatePrepare?.(async () => {
+      persistEditorScrollRef.current();
       await persistCurrentDraft(title, tagsText, getMobilePlainTextValue());
     });
 

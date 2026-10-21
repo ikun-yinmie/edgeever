@@ -4,6 +4,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
+import { BlockTypeSelection } from "./block-type-selection";
 import { createEdgeEverDetailsExtensions } from "./details";
 import { createHeadingCollapseExtension, type HeadingCollapseOptions } from "./heading-collapse";
 import { VideoEmbed } from "./video-embed";
@@ -67,6 +68,7 @@ export const createEdgeEverDocumentExtensions = (
     ...withOptional(options.pluginEmbed, PluginEmbed),
     VideoEmbed,
     ...options.mathematics,
+    BlockTypeSelection,
     ...(options.markdown
       ? [Markdown.configure({ markedOptions: { gfm: true } })]
       : []),

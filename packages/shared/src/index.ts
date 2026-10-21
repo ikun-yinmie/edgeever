@@ -1,4 +1,5 @@
 export * from "./content";
+export * from "./block-type-selection";
 export * from "./document-extensions";
 export * from "./companion";
 export * from "./public-demo";
