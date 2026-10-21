@@ -33,6 +33,14 @@ describe("memo context menu", () => {
     expect(source).toContain("event.key.length === 1");
   });
 
+  test("reveals the local desktop storage from the memo context menu", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("canRevealLocalStorage()");
+    expect(source).toContain("revealLocalStorage()");
+    expect(source).toContain('t("common.showInFileManager")');
+  });
+
   test("opens the card menu without a modal scroll lock so the list does not hitch", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
 

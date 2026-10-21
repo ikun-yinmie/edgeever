@@ -85,6 +85,7 @@ interface EdgeEverDesktopBridge {
     | { ok: false; errorCode: DesktopStorageLocationErrorCode }
   >;
   openStorageLocation(): Promise<{ ok: boolean }>;
+  revealStorageLocation?(): Promise<{ ok: boolean }>;
   recordRendererError(details: DesktopRendererErrorDetails): Promise<{ recorded: true }>;
   openRendererIssue(details: DesktopRendererErrorDetails): Promise<{ opened: true }>;
   rendererBootstrapReady(): void;

@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { AppWindow, Check, ChevronDown, CircleX, Search, SquareX, X } from "lucide-react";
+import { AppWindow, Check, ChevronDown, CircleX, FolderOpen, Search, SquareX, X } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { canRevealLocalStorage, revealLocalStorage } from "@/lib/desktop-storage";
 import {
   MEMO_TAB_GAP_PX,
   MEMO_TAB_MORE_BUTTON_WIDTH_PX,
@@ -324,6 +325,15 @@ export const MemoTabsBar = ({
                 <AppWindow className="h-4 w-4" />
                 {t("memoTabs.openInNewWindow")}
               </ContextMenuItem>
+              {canRevealLocalStorage() && (
+                <ContextMenuItem
+                  className="flex h-9 cursor-pointer items-center gap-2 px-3 text-sm text-slate-700"
+                  onSelect={() => void revealLocalStorage().catch(() => {})}
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  {t("common.showInFileManager")}
+                </ContextMenuItem>
+              )}
             </ContextMenuContent>
           </ContextMenu>
         );

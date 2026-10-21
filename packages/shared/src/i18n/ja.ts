@@ -207,6 +207,7 @@ export const ja = {
     githubRepository: "オープンソース",
     githubRepositoryOpenSource: "オープンソースリポジトリ",
     githubRepositoryFork: "カスタムフォーク",
+    showInFileManager: "ファイルマネージャーで表示",
   },
   dialogs: {
     memoDelete: {

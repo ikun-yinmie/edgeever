@@ -51,6 +51,7 @@ import {
   Printer,
   Pencil,
   Copy,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -83,6 +84,7 @@ import { contentEnterMotion, paneEnterMotion } from "@/lib/motion";
 import type { SyncQueueSummary } from "@/lib/sync-queue";
 import { isLocalMemoId } from "@/lib/local-mirror";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { canRevealLocalStorage, revealLocalStorage } from "@/lib/desktop-storage";
 import {
   getMemoFilterOptions,
   getMemoSortOptions,
@@ -896,7 +898,7 @@ export const MemoListPane = ({
     // Keep enough room for the full action list. Radix can still adjust the
     // final position, but this prevents the initial placement from starting
     // below the viewport on short or zoomed desktop viewports.
-    const menuHeight = view === "trash" ? 216 : 356;
+    const menuHeight = view === "trash" ? 252 : 392;
     const x = Math.min(clientX, Math.max(12, window.innerWidth - menuWidth - 12));
     const y = Math.min(clientY, Math.max(12, window.innerHeight - menuHeight - 12));
 
@@ -939,6 +941,11 @@ export const MemoListPane = ({
 
     const rect = target.getBoundingClientRect();
     openMemoContextMenuAt(memo, rect.left + Math.min(rect.width, 224), rect.top + Math.min(rect.height, 96));
+  };
+
+  const handleRevealLocalStorage = () => {
+    setMemoContextMenu(null);
+    void revealLocalStorage().catch(() => {});
   };
 
   const focusSearchInput = () => {
@@ -1635,6 +1642,15 @@ export const MemoListPane = ({
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {canRevealLocalStorage() && (
+                <DropdownMenuItem
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onClick={handleRevealLocalStorage}
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  {t("common.showInFileManager")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                 onClick={() => {

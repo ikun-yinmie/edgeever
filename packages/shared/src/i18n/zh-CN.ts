@@ -207,6 +207,7 @@ export const zhCN = {
     githubRepository: "开源",
     githubRepositoryOpenSource: "开源仓库",
     githubRepositoryFork: "二开仓库",
+    showInFileManager: "在文件管理器中显示",
   },
   dialogs: {
     memoDelete: {

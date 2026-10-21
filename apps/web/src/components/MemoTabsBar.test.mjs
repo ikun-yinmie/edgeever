@@ -34,6 +34,12 @@ describe("memo tabs bar", () => {
     expect(source).toContain('t("memoTabs.openInNewWindow")');
   });
 
+  test("reveals the local desktop storage from the tab context menu", () => {
+    expect(source).toContain("canRevealLocalStorage()");
+    expect(source).toContain("revealLocalStorage()");
+    expect(source).toContain('t("common.showInFileManager")');
+  });
+
   test("reorders visible tabs with native drag and drop", () => {
     expect(source).toContain("draggable");
     expect(source).toContain("onDragStart={(event) => handleDragStart(event, tab.id)}");

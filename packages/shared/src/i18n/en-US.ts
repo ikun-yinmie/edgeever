@@ -207,6 +207,7 @@ export const enUS = {
     githubRepository: "Open source",
     githubRepositoryOpenSource: "Open-source repo",
     githubRepositoryFork: "Customized fork",
+    showInFileManager: "Show in file manager",
   },
   dialogs: {
     memoDelete: {

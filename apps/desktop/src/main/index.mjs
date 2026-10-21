@@ -41,6 +41,7 @@ import {
   serializeStorageLocationConfig,
   sidecarStorageUsage,
   storageLocationConfigPath,
+  storageRevealTarget,
   validateStorageTarget,
 } from "./storage-location.mjs";
 import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
@@ -1653,6 +1654,18 @@ const startApplication = async () => {
     await mkdir(root, { recursive: true });
     const error = await shell.openPath(root);
     return { ok: !error };
+  });
+  ipcMain.handle("desktop:reveal-storage-location", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Storage location access must come from the main window");
+    const directory = sidecarDataDirectory(activeAccountId);
+    await mkdir(directory, { recursive: true });
+    const target = storageRevealTarget(directory);
+    if (target === directory) {
+      const error = await shell.openPath(directory);
+      return { ok: !error };
+    }
+    shell.showItemInFolder(target);
+    return { ok: true };
   });
   ipcMain.handle("desktop:set-account-scope", async (_event, accountId) => {
     if (storageMigrationInProgress) throw new Error("EdgeEver is moving local data to another folder");

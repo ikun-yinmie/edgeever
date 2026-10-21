@@ -14,6 +14,7 @@ import {
   serializeStorageLocationConfig,
   sidecarStorageUsage,
   storageLocationConfigPath,
+  storageRevealTarget,
   validateStorageTarget,
 } from "./storage-location.mjs";
 
@@ -79,6 +80,8 @@ describe("storage directory inspection", () => {
       expect(rootUsage).toEqual({ bytes: 10, files: 2 });
       const missing = await directoryUsage(join(root, "missing"));
       expect(missing).toEqual({ bytes: 0, files: 0 });
+      expect(storageRevealTarget(root)).toBe(root);
+      expect(storageRevealTarget(join(root, "accounts", "scope"))).toBe(join(root, "accounts", "scope", "edgeever.sqlite"));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -144,13 +147,15 @@ describe("desktop storage location wiring", () => {
   });
 
   test("exposes storage location IPC through the preload bridge", () => {
-    for (const method of ["storageLocation", "chooseStorageLocation", "setStorageLocation", "resetStorageLocation", "openStorageLocation"]) {
+    for (const method of ["storageLocation", "chooseStorageLocation", "setStorageLocation", "resetStorageLocation", "openStorageLocation", "revealStorageLocation"]) {
       expect(preloadSource).toContain(`${method}:`);
     }
     expect(mainSource).toContain('ipcMain.handle("desktop:set-storage-location"');
     expect(mainSource).toContain('ipcMain.handle("desktop:reset-storage-location"');
     expect(mainSource).toContain('ipcMain.handle("desktop:choose-storage-location"');
     expect(mainSource).toContain('ipcMain.handle("desktop:storage-location"');
+    expect(mainSource).toContain('ipcMain.handle("desktop:reveal-storage-location"');
+    expect(mainSource).toContain("shell.showItemInFolder(target)");
     expect(cardSource).toContain("chooseStorageLocation");
     expect(cardSource).toContain('t("storageLocation.title")');
   });

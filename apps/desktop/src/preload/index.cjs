@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
   setStorageLocation: (value) => ipcRenderer.invoke("desktop:set-storage-location", value),
   resetStorageLocation: () => ipcRenderer.invoke("desktop:reset-storage-location"),
   openStorageLocation: () => ipcRenderer.invoke("desktop:open-storage-location"),
+  revealStorageLocation: () => ipcRenderer.invoke("desktop:reveal-storage-location"),
   recordRendererError: (details) => ipcRenderer.invoke("desktop:record-renderer-error", details),
   openRendererIssue: (details) => ipcRenderer.invoke("desktop:open-renderer-issue", details),
   rendererBootstrapReady: () => ipcRenderer.send("desktop:renderer-bootstrap-ready"),

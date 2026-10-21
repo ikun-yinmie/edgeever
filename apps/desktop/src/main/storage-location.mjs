@@ -66,6 +66,11 @@ export const validateStorageTarget = ({ target, currentRoot, protectedRoots = []
 export const hasSidecarData = (directory) =>
   existsSync(join(directory, "accounts")) || existsSync(join(directory, "edgeever.sqlite"));
 
+export const storageRevealTarget = (directory) => {
+  const databasePath = join(directory, "edgeever.sqlite");
+  return existsSync(databasePath) ? databasePath : directory;
+};
+
 // Rename keeps the move atomic on the same volume; copying covers removable or
 // network targets where rename fails with EXDEV.
 export const movePath = async (source, destination) => {
