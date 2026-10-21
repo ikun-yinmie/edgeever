@@ -1545,6 +1545,8 @@ export const ja = {
     selectedListAll: "現在の一覧をすべて選択",
     noSelectableInList: "現在の一覧に選択できるノートはありません",
     chooseNotebook: "ノートブックを選択",
+    searchNotebook: "ノートブックを検索",
+    noNotebookFound: "ノートブックが見つかりません",
     move: "移動",
     mergeMemos: "ノートを結合",
     permanentDelete: "完全に削除",

@@ -517,6 +517,8 @@ export const MemoListPane = ({
 }) => {
   const { t } = useTranslation();
   const [memoContextMenu, setMemoContextMenu] = useState<MemoContextMenuState | null>(null);
+  const [moveNotebookQuery, setMoveNotebookQuery] = useState("");
+  const [moveSubmenuOpen, setMoveSubmenuOpen] = useState(false);
   const [listDensity, setListDensity] = useState<MemoListDensity>(() => readMemoListDensityPreference());
   const [lastSelectedMemoId, setLastSelectedMemoId] = useState<string | null>(null);
   const [moveTargetNotebookId, setMoveTargetNotebookId] = useState("");
@@ -528,10 +530,18 @@ export const MemoListPane = ({
   const mobileFilterOptions = useMemo(() => filterOptions.filter((option: any) => option.value !== "all"), [filterOptions]);
   const visibleMemoIds = useMemo(() => memos.map((memo) => memo.id), [memos]);
   const moveNotebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
+  const filteredMoveNotebookOptions = useMemo(() => {
+    const query = moveNotebookQuery.trim().toLocaleLowerCase();
+    if (!query) return moveNotebookOptions;
+    return moveNotebookOptions.filter((option) =>
+      [option.name, option.selectLabel, option.slug ?? ""].some((value) => value.toLocaleLowerCase().includes(query))
+    );
+  }, [moveNotebookOptions, moveNotebookQuery]);
   const selectedMemosInList = useMemo(() => memos.filter((memo) => selectedMemoIds.has(memo.id)), [memos, selectedMemoIds]);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const moveNotebookSearchRef = useRef<HTMLInputElement | null>(null);
   const listRootRef = useRef<HTMLDivElement | null>(null);
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [listScrollElement, setListScrollElement] = useState<HTMLDivElement | null>(null);
@@ -659,6 +669,12 @@ export const MemoListPane = ({
     setMemoIdCopyNotice({ status: copied ? "copied" : "error", id: memo.id });
     window.setTimeout(() => setMemoIdCopyNotice(null), copied ? 2200 : 3000);
   };
+
+  useEffect(() => {
+    if (!moveSubmenuOpen) return;
+    const timer = window.setTimeout(() => moveNotebookSearchRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [moveSubmenuOpen]);
 
   useEffect(() => {
     const nextTargetId = resolveSelectionMoveTargetNotebookId(
@@ -1680,7 +1696,13 @@ export const MemoListPane = ({
                 </>
               ) : (
                 <>
-                  <DropdownMenuSub>
+                  <DropdownMenuSub
+                    open={moveSubmenuOpen}
+                    onOpenChange={(open) => {
+                      setMoveSubmenuOpen(open);
+                      if (!open) setMoveNotebookQuery("");
+                    }}
+                  >
                     <DropdownMenuSubTrigger
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                       disabled={moveNotebookOptions.length === 0}
@@ -1689,25 +1711,45 @@ export const MemoListPane = ({
                       <span className="min-w-0 flex-1 truncate">{t("memoList.moveToNotebook")}</span>
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="max-h-64 w-56 overflow-y-auto">
-                      {moveNotebookOptions.map((option) => (
-                        <DropdownMenuItem
-                          key={option.id}
-                          className={cn(
-                            "flex h-9 items-center gap-2 px-3 text-sm",
-                            option.id === memoContextMenu.memo.notebookId ? "font-semibold text-slate-950" : "text-slate-700"
-                          )}
-                          style={{ paddingLeft: `${12 + option.depth * 14}px` }}
-                          disabled={option.id === memoContextMenu.memo.notebookId}
-                          onSelect={() => {
-                            const { memo } = memoContextMenu;
-                            setMemoContextMenu(null);
-                            onMoveMemo(memo.id, option.id);
-                          }}
-                        >
-                          <NotebookIcon className="h-4 w-4 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                        </DropdownMenuItem>
-                      ))}
+                      <div className="sticky top-0 z-10 border-b border-slate-100 bg-card p-2">
+                        <div className="flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2">
+                          <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          <input
+                            ref={moveNotebookSearchRef}
+                            aria-label={t("memoList.searchNotebook")}
+                            className="h-full w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                            placeholder={t("memoList.searchNotebook")}
+                            value={moveNotebookQuery}
+                            onChange={(event) => setMoveNotebookQuery(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key.length === 1) event.stopPropagation();
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {filteredMoveNotebookOptions.length === 0 ? (
+                        <div className="px-3 py-6 text-center text-xs text-slate-500">{t("memoList.noNotebookFound")}</div>
+                      ) : (
+                        filteredMoveNotebookOptions.map((option) => (
+                          <DropdownMenuItem
+                            key={option.id}
+                            className={cn(
+                              "flex h-9 items-center gap-2 px-3 text-sm",
+                              option.id === memoContextMenu.memo.notebookId ? "font-semibold text-slate-950" : "text-slate-700"
+                            )}
+                            style={{ paddingLeft: `${12 + option.depth * 14}px` }}
+                            disabled={option.id === memoContextMenu.memo.notebookId}
+                            onSelect={() => {
+                              const { memo } = memoContextMenu;
+                              setMemoContextMenu(null);
+                              onMoveMemo(memo.id, option.id);
+                            }}
+                          >
+                            <NotebookIcon className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                          </DropdownMenuItem>
+                        ))
+                      )}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                   <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />

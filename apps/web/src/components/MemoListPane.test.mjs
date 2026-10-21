@@ -24,6 +24,15 @@ describe("memo context menu", () => {
     expect(source).toContain("onOpenMemoInCurrentTab(memo.id);");
   });
 
+  test("filters notebook move targets with an inline search", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("filteredMoveNotebookOptions");
+    expect(source).toContain('t("memoList.searchNotebook")');
+    expect(source).toContain('t("memoList.noNotebookFound")');
+    expect(source).toContain("event.key.length === 1");
+  });
+
   test("opens the card menu without a modal scroll lock so the list does not hitch", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
 

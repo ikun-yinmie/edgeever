@@ -1545,6 +1545,8 @@ export const enUS = {
     selectedListAll: "Select current list",
     noSelectableInList: "No selectable notes in the current list",
     chooseNotebook: "Choose notebook",
+    searchNotebook: "Search notebooks",
+    noNotebookFound: "No notebooks found",
     move: "Move",
     mergeMemos: "Merge notes",
     permanentDelete: "Delete permanently",

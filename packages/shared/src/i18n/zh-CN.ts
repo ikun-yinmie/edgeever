@@ -1545,6 +1545,8 @@ export const zhCN = {
     selectedListAll: "全选当前列表",
     noSelectableInList: "当前列表没有可选择的笔记",
     chooseNotebook: "选择笔记本",
+    searchNotebook: "搜索笔记本",
+    noNotebookFound: "没有找到笔记本",
     move: "移动",
     mergeMemos: "合并笔记",
     permanentDelete: "永久删除",
