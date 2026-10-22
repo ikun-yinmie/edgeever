@@ -1,5 +1,5 @@
 import { markdownToDoc, type MemoDetail, type MemoRevision, type MemoSummary, type MemoTemplate, type Notebook, type Resource, type ResourceListItem, type ResourceStorageSummary, type TagSummary, type TiptapDoc } from "@edgeever/shared";
-import type { ShareDisplayPolicySummary } from "@edgeever/client";
+import type { ShareDisplayPolicySummary, SharedMemoAccess } from "@edgeever/client";
 import { api } from "@/lib/api";
 import {
   getLocalMemo,
@@ -80,7 +80,7 @@ export type EdgeEverRepository = {
   setMemoTheme(memoId: string, theme: string | null): Promise<{ memo: MemoDetail }>;
   mergeMemos(input: { memoIds: string[]; notebookId?: string; title?: string }): Promise<{ memo: MemoDetail }>;
   listMemos(params: LocalMemoListParams): Promise<LocalMemoListResponse>;
-  getMemo(memoId: string, includeDeleted?: boolean): Promise<{ memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null }>;
+  getMemo(memoId: string, includeDeleted?: boolean): Promise<{ memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null; access?: SharedMemoAccess }>;
   createMemo(input: { notebookId: string; title?: string; contentJson?: TiptapDoc; contentMarkdown?: string; tags?: string[] }): Promise<{ memo: MemoDetail }>;
   updateMemo(memo: MemoDetail, input: Omit<MemoUpdateSyncPayload, "memoId">): Promise<{ memo: MemoDetail; queued: true }>;
   /**

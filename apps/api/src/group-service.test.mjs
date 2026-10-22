@@ -185,6 +185,8 @@ describe("shared notebook access", () => {
       workspaceId: "ws_usr_owner",
       groupName: "家庭",
       editMode: "author",
+      authorUsername: "owner",
+      authorDisplayName: "owner",
     });
 
     const notebook = await resolveNotebookAccess(database, {

@@ -450,6 +450,8 @@ export type SharedMemoAccess = {
   canEdit: boolean;
   groupId: string | null;
   groupName: string | null;
+  authorUsername?: string | null;
+  authorDisplayName?: string | null;
 };
 
 export type MemoResponse = {

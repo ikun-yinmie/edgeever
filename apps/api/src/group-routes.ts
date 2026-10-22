@@ -379,6 +379,8 @@ export const registerGroupRoutes = (
         groupName: access.groupName,
         editMode: access.editMode,
         workspaceId: access.workspaceId,
+        authorUsername: access.authorUsername,
+        authorDisplayName: access.authorDisplayName,
       },
     });
   });

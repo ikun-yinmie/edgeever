@@ -249,6 +249,8 @@ describe("group share display policy over HTTP", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.access.shared).toBe(true);
+    expect(body.access.authorUsername).toBe("author");
+    expect(body.access.authorDisplayName).toBe("author");
     expect(body.displayPolicy).toEqual({ html: "hidden", markdown: "source" });
 
     const blocks = body.memo.contentJson.content;

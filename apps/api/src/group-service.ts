@@ -121,6 +121,8 @@ export type SharedAccess = {
   groupId: string | null;
   groupName: string | null;
   editMode: "author" | "group" | null;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
 };
 
 const parseEditorIds = (raw: string | null | undefined): string[] => {
@@ -148,6 +150,8 @@ const emptyAccess = (workspaceId: string): SharedAccess => ({
   groupId: null,
   groupName: null,
   editMode: null,
+  authorUsername: null,
+  authorDisplayName: null,
 });
 
 /** The shared notebook itself and every notebook nested underneath it. */
@@ -183,16 +187,22 @@ const loadNotebookAncestorIds = async (database: DatabaseAdapter, notebookId: st
 type ActiveShareRow = Pick<
   GroupShareRow,
   "id" | "group_id" | "target_type" | "target_id" | "edit_mode" | "editor_user_ids"
-> & { group_name: string };
+> & {
+  group_name: string;
+  author_username: string | null;
+  author_display_name: string | null;
+};
 
 const findSharesForActor = async (database: DatabaseAdapter, userId: string) => {
   const rows = await database
     .prepare(
       `SELECT s.id, s.group_id, s.target_type, s.target_id, s.edit_mode, s.editor_user_ids,
-              g.name AS group_name
+              g.name AS group_name,
+              u.username AS author_username, u.display_name AS author_display_name
        FROM group_shares s
        INNER JOIN groups g ON g.id = s.group_id
        INNER JOIN group_members gm ON gm.group_id = s.group_id AND gm.user_id = ?
+       LEFT JOIN users u ON u.id = s.created_by
        WHERE s.revoked_at IS NULL`,
     )
     .bind(userId)
@@ -237,6 +247,8 @@ export const resolveMemoAccess = async (
       groupId: null,
       groupName: null,
       editMode: null,
+      authorUsername: null,
+      authorDisplayName: null,
     };
   }
 
@@ -257,6 +269,8 @@ export const resolveMemoAccess = async (
     groupId: share.group_id,
     groupName: share.group_name,
     editMode: share.edit_mode,
+    authorUsername: share.author_username,
+    authorDisplayName: share.author_display_name,
   };
 };
 
@@ -287,6 +301,8 @@ export const resolveNotebookAccess = async (
     groupId: share.group_id,
     groupName: share.group_name,
     editMode: share.edit_mode,
+    authorUsername: share.author_username,
+    authorDisplayName: share.author_display_name,
   };
 };
 

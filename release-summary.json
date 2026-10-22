@@ -1,17 +1,17 @@
 {
-  "version": "1.93.0",
+  "version": "1.94.0",
   "changes": {
     "en-US": [
-      "Admins can now configure multiple reachable share servers and choose a default. The share dialog and My Shares build public links from the selected server.",
-      "Fixed the transparent or clipped background in the Move to notebook submenu on some devices."
+      "Group-shared notes now clearly show whether they are editable or read-only. Read-only shares open in preview so they cannot be edited accidentally.",
+      "Saving a shared note as your own now adds the sharer's name to the copy title and opens the copy in the target notebook."
     ],
     "zh-CN": [
-      "后台现在可以配置多个可访问的分享服务地址并指定默认项；分享笔记和「我的分享」会使用所选地址生成公开链接。",
-      "修复部分设备上「移动到笔记本」子菜单背景镂空或穿模的问题。"
+      "群组共享笔记现在会明确显示「可编辑」或「只读」；只读共享会以预览模式打开，避免误编辑。",
+      "将共享笔记保存为自己的笔记时，副本标题会加上分享人名字，并在保存后自动打开到目标笔记本。"
     ],
     "ja": [
-      "管理者は複数の共有サーバーアドレスを設定し、既定のアドレスを選択できるようになりました。共有ダイアログと「マイ共有」は選択したアドレスから公開リンクを生成します。",
-      "一部のデバイスで「ノートブックへ移動」サブメニューの背景が透ける、または欠ける問題を修正しました。"
+      "グループ共有ノートに編集可能・読み取り専用の状態を明示し、閲覧のみの共有はプレビューで開いて誤編集を防ぐようにしました。",
+      "共有ノートを自分のノートとして保存すると、コピーのタイトルに共有者の名前を追加し、保存先のノートブックで自動的に開くようにしました。"
     ]
   }
 }

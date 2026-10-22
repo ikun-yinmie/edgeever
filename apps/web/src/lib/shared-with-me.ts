@@ -65,6 +65,28 @@ export const groupSharedItems = (input: {
 export const countEditableShares = (shares: GroupShareSummary[]) =>
   shares.filter((share) => share.editMode === "group").length;
 
+/** A share the viewer may read but not write: the editor must stay in preview. */
+export const isSharedAccessReadOnly = (
+  access: { canEdit: boolean } | null | undefined,
+) => Boolean(access && !access.canEdit);
+
+/** Same-name notes from different members stay distinguishable in a notebook. */
+export const buildSharedCopyTitle = (
+  title: string | null | undefined,
+  authorName: string | null | undefined,
+  format: {
+    withAuthor: (title: string, author: string) => string;
+    withoutAuthor: (title: string) => string;
+  },
+) => {
+  const normalizedTitle = title?.trim();
+  if (!normalizedTitle) return "";
+  const normalizedAuthor = authorName?.trim();
+  return normalizedAuthor
+    ? format.withAuthor(normalizedTitle, normalizedAuthor)
+    : format.withoutAuthor(normalizedTitle);
+};
+
 /** Members that may write a shared item: none means the whole group. */
 export const editableMemberNames = (
   share: Pick<GroupShareSummary, "editMode" | "editorUserIds">,

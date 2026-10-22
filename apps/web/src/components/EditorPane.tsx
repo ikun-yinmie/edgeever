@@ -28,7 +28,7 @@ import {
   Share2,
   Copy,
   Lock,
-  LockOpen,
+  Eye,
   UsersRound,
   CloudOff,
 } from "lucide-react";
@@ -49,6 +49,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { isSharedAccessReadOnly } from "@/lib/shared-with-me";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorOutline } from "./EditorOutline";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
@@ -371,12 +373,13 @@ type RichEditorPaneProps = EditorPaneProps & {
 export const EditorPane = (props: EditorPaneProps) => {
   const { t } = useTranslation();
   const readOnly = props.isTrashView || Boolean(props.memo?.isDeleted);
+  const sharedReadOnly = isSharedAccessReadOnly(props.sharedAccess);
   const { editingActive, requestEdit } = useStandaloneMobileEditor({
     memoId: props.memo?.id ?? null,
     mobileDefaultEditMemoId: props.mobileDefaultEditMemoId,
     onBackToList: props.onBackToList,
     onDefaultEditConsumed: props.onMobileDefaultEditConsumed,
-    readOnly,
+    readOnly: readOnly || sharedReadOnly,
   });
 
   if (editingActive) {
@@ -580,7 +583,11 @@ const RichEditorPane = ({
   }, []);
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const readOnly = isTrashView || Boolean(memo?.isDeleted);
-  const shareMemoId = memo && !readOnly && !isLocalMemoId(memo.id) ? memo.id : null;
+  const isGroupSharedNote = Boolean(sharedAccess);
+  // Group members without write access must never enter edit mode: their
+  // saves would be rejected by the server and surface as sync failures.
+  const sharedReadOnly = isSharedAccessReadOnly(sharedAccess);
+  const shareMemoId = memo && !readOnly && !sharedReadOnly && !isLocalMemoId(memo.id) ? memo.id : null;
   const shareStatusQuery = useQuery({
     queryKey: memoShareQueryKey(shareMemoId ?? ""),
     queryFn: () => {
@@ -592,25 +599,36 @@ const RichEditorPane = ({
     staleTime: 30_000,
   });
   const isMemoShared = Boolean(shareStatusQuery.data?.share);
-  const isGroupSharedNote = Boolean(sharedAccess);
-  const mobileDefaultEditRequested = Boolean(memo?.id && memo.id === mobileDefaultEditMemoId && !readOnly);
-  const mobileEditingActive = isMobileEditing || mobileDefaultEditRequested;
+  const mobileDefaultEditRequested = Boolean(
+    memo?.id && memo.id === mobileDefaultEditMemoId && !readOnly && !sharedReadOnly,
+  );
+  const mobileEditingActive = (isMobileEditing || mobileDefaultEditRequested) && !sharedReadOnly;
 
   const effectiveReadOnly = readOnly
+    || sharedReadOnly
     || (isMobileViewport && !mobileEditingActive)
     || (!isMobileViewport && desktopReadingProtection)
     // Offline shared-note snapshots are readable but never writable: the live
     // note may have moved on, and there is no channel to merge into.
     || Boolean(memo?.snapshot);
+  const editModeLocked = readOnly || sharedReadOnly || Boolean(memo?.snapshot);
+  const previewModeActive = editModeLocked || desktopReadingProtection;
   const useMobilePlainTextEditor = isMobileViewport && mobileEditingActive && !readOnly && !memo?.snapshot;
 
+  const setDesktopPreviewMode = useCallback((preview: boolean) => {
+    if (!preview && editModeLocked) return;
+    setDesktopReadingProtection(preview);
+    writeNoteReadingProtection(memo?.id ?? null, preview, readDesktopReadingProtectionPreference());
+  }, [editModeLocked, memo?.id]);
+
   const toggleDesktopReadingProtection = useCallback(() => {
+    if (editModeLocked) return;
     setDesktopReadingProtection((protectedMode) => {
       const nextProtectedMode = !protectedMode;
       writeNoteReadingProtection(memo?.id ?? null, nextProtectedMode, readDesktopReadingProtectionPreference());
       return nextProtectedMode;
     });
-  }, [memo?.id]);
+  }, [editModeLocked, memo?.id]);
 
   // Follow the per-note reading-protection state when switching notes.
   useEffect(() => {
@@ -3219,9 +3237,9 @@ const RichEditorPane = ({
   useEffect(() => {
     if (handledReadingProtectionToggleTokenRef.current === readingProtectionToggleToken) return;
     handledReadingProtectionToggleTokenRef.current = readingProtectionToggleToken;
-    if (editorShortcutBlocked || isMobileViewport || readOnly || !memoRef.current) return;
+    if (editorShortcutBlocked || isMobileViewport || editModeLocked || !memoRef.current) return;
     toggleDesktopReadingProtection();
-  }, [editorShortcutBlocked, isMobileViewport, readOnly, readingProtectionToggleToken, toggleDesktopReadingProtection]);
+  }, [editModeLocked, editorShortcutBlocked, isMobileViewport, readingProtectionToggleToken, toggleDesktopReadingProtection]);
 
   useEffect(() => {
     if (handledEditorModeToggleTokenRef.current === editorModeToggleToken) {
@@ -3512,6 +3530,7 @@ const RichEditorPane = ({
     if (
       !memo ||
       memo.isDeleted ||
+      effectiveReadOnly ||
       useMobilePlainTextEditor ||
       !editor ||
       !hasUnsavedChanges ||
@@ -3527,7 +3546,7 @@ const RichEditorPane = ({
     }, EDITOR_LOCAL_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [dirtyVersion, editor, hasUnsavedChanges, memo, mutateSave, saveMutationPending, saveState, useMobilePlainTextEditor]);
+  }, [dirtyVersion, editor, effectiveReadOnly, hasUnsavedChanges, memo, mutateSave, saveMutationPending, saveState, useMobilePlainTextEditor]);
 
   const getLocalDraftMarkdown = useCallback(() => {
     if (useMobilePlainTextEditor) {
@@ -3986,6 +4005,40 @@ const RichEditorPane = ({
           />
 
           <div className="flex shrink-0 items-center gap-1">
+            {!isMobileViewport && !readOnly ? (
+              <IconTooltip label={sharedReadOnly ? t("editor.readOnlyPreviewLocked") : t("editor.noteModeAria")}>
+                <ToggleGroup
+                  aria-label={t("editor.noteModeAria")}
+                  className="hidden h-8 shrink-0 overflow-hidden rounded-md border border-border bg-card sm:flex"
+                  type="single"
+                  value={previewModeActive ? "preview" : "edit"}
+                  onValueChange={(value) => {
+                    if (value === "edit") setDesktopPreviewMode(false);
+                    else if (value === "preview") setDesktopPreviewMode(true);
+                  }}
+                >
+                  <ToggleGroupItem
+                    aria-label={t("editor.editMode")}
+                    className="gap-1 rounded-none border-0"
+                    disabled={editModeLocked}
+                    size="sm"
+                    value="edit"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>{t("editor.editMode")}</span>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    aria-label={t("editor.previewMode")}
+                    className="gap-1 rounded-none border-0 border-l border-border"
+                    size="sm"
+                    value="preview"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>{t("editor.previewMode")}</span>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </IconTooltip>
+            ) : null}
             {isMemoShared && (
               <button
                 className="inline-flex h-8 items-center gap-1.5 rounded-full bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
@@ -4327,14 +4380,30 @@ const RichEditorPane = ({
         ) : null}
         {isGroupSharedNote ? (
           <div
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900"
+            className={cn(
+              "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+              sharedReadOnly
+                ? "border-amber-200 bg-amber-50/70 text-amber-900"
+                : "border-emerald-200 bg-emerald-50/70 text-emerald-900",
+            )}
             role="status"
           >
-            <UsersRound className="h-4 w-4 shrink-0 text-emerald-600" />
+            <UsersRound className={cn("h-4 w-4 shrink-0", sharedReadOnly ? "text-amber-600" : "text-emerald-600")} />
             <span className="min-w-0 flex-1">
               {sharedAccess?.groupName
                 ? t("editor.groupSharedNote", { group: sharedAccess.groupName })
                 : t("editor.groupSharedNoteNoGroup")}
+            </span>
+            <span
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-[11px] font-medium",
+                sharedReadOnly
+                  ? "border-amber-200 text-amber-800"
+                  : "border-emerald-200 text-emerald-800",
+              )}
+            >
+              {sharedReadOnly ? <Lock className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+              {t(sharedReadOnly ? "editor.groupSharedReadOnly" : "editor.groupSharedEditable")}
             </span>
             <CollabPresenceBadge peerNames={collabPeerNames} />
             <Button
@@ -4392,27 +4461,6 @@ const RichEditorPane = ({
               persistCurrentDraft(title, nextTagsText, getMobilePlainTextValue());
               markDirty();
             }}
-            trailingActions={(
-              <>
-                {!readOnly && (
-                  <IconTooltip label={`${t(desktopReadingProtection ? "editor.disableReadingProtection" : "editor.enableReadingProtection")} (${formatShortcutBinding(shortcutSettings.toggleReadingProtection)})`}>
-                    <Button
-                      className={cn(
-                        "hidden shrink-0 sm:inline-flex",
-                        desktopReadingProtection && "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-200 hover:text-slate-900"
-                      )}
-                      size="icon"
-                      variant={desktopReadingProtection ? "soft" : "ghost"}
-                      aria-label={`${t(desktopReadingProtection ? "editor.disableReadingProtection" : "editor.enableReadingProtection")} (${formatShortcutBinding(shortcutSettings.toggleReadingProtection)})`}
-                      aria-pressed={desktopReadingProtection}
-                      onClick={toggleDesktopReadingProtection}
-                    >
-                      {desktopReadingProtection ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-                    </Button>
-                  </IconTooltip>
-                )}
-              </>
-            )}
           />
         </div>
         {noteSearchOpen ? (
@@ -4736,7 +4784,7 @@ const RichEditorPane = ({
         </ClipboardCopyNotice>
       )}
 
-      {isMobileViewport && !mobileEditingActive && !readOnly && (
+      {isMobileViewport && !mobileEditingActive && !readOnly && !sharedReadOnly && (
         <Button
           className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-30 h-12 w-12 rounded-full shadow-lg sm:hidden"
           size="icon"

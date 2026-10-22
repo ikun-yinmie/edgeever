@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildSharedCopyTitle,
   countEditableShares,
   describeEditPolicy,
   editableMemberNames,
   groupSharedItems,
+  isSharedAccessReadOnly,
 } from "./shared-with-me.ts";
 
 const group = (id, name, extra = {}) => ({
@@ -65,6 +67,25 @@ describe("shared with me grouping", () => {
       { editMode: "group", editorUserIds: [] },
       { editMode: "author", editorUserIds: [] },
     ])).toBe(1);
+  });
+
+  test("locks preview for shares without edit permission", () => {
+    expect(isSharedAccessReadOnly(null)).toBe(false);
+    expect(isSharedAccessReadOnly(undefined)).toBe(false);
+    expect(isSharedAccessReadOnly({ canEdit: true })).toBe(false);
+    expect(isSharedAccessReadOnly({ canEdit: false })).toBe(true);
+  });
+
+  test("names a saved copy after the person who shared it", () => {
+    const format = {
+      withAuthor: (title, author) => `${title}（${author}）`,
+      withoutAuthor: (title) => `${title}（副本）`,
+    };
+    expect(buildSharedCopyTitle("周报", "Alice", format)).toBe("周报（Alice）");
+    expect(buildSharedCopyTitle("  周报  ", "  Alice  ", format)).toBe("周报（Alice）");
+    expect(buildSharedCopyTitle("周报", null, format)).toBe("周报（副本）");
+    expect(buildSharedCopyTitle("", "Alice", format)).toBe("");
+    expect(buildSharedCopyTitle("   ", "Alice", format)).toBe("");
   });
 
   test("resolves the members that may write a shared item", () => {

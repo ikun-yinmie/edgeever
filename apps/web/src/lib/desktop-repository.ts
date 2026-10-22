@@ -16,7 +16,7 @@ import {
   stagedResourceIdFromUrl,
 } from "@/lib/staged-resource-repair";
 import type { ResourceListItem, ResourceStorageSummary } from "@edgeever/shared";
-import type { ShareDisplayPolicySummary } from "@edgeever/client";
+import type { ShareDisplayPolicySummary, SharedMemoAccess } from "@edgeever/client";
 import { notifySyncQueueDeferred } from "@/lib/sync-events";
 
 const resolveResourceUrls = <T extends { resources: Array<{ url: string }> }>(result: T): T => {
@@ -263,7 +263,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
   },
 
   getMemo: async (memoId, includeDeleted = false) => {
-    let result: { memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null };
+    let result: { memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null; access?: SharedMemoAccess };
     try {
       result = await request("memo.get", { memoId, includeDeleted });
     } catch (localError) {
@@ -287,9 +287,17 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
       // policy rides along so realtime collaboration can stay out of filtered
       // views (it would otherwise leak the raw shared document).
       const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw localError; });
-      return { memo: await repairDisplayedMemo(remote.memo), displayPolicy: remote.displayPolicy ?? null };
+      return {
+        memo: await repairDisplayedMemo(remote.memo),
+        displayPolicy: remote.displayPolicy ?? null,
+        access: remote.access,
+      };
     }
-    return { memo: await repairDisplayedMemo(result.memo), displayPolicy: result.displayPolicy ?? null };
+    return {
+      memo: await repairDisplayedMemo(result.memo),
+      displayPolicy: result.displayPolicy ?? null,
+      access: result.access,
+    };
   },
 
   createMemo: (input) => {

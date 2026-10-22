@@ -30,7 +30,12 @@ import { PluginPanelDialog } from "./plugins/PluginPanelDialog";
 import { shouldDiscardPluginNoteSearchRequest } from "./editor/note-search";
 import { api, getConfiguredDesktopApiBaseUrl, getOrCreateClientDeviceId } from "@/lib/api";
 import { lazyWithChunkRetry } from "@/lib/lazy-retry";
-import type { SharedPaneScope, SharedPaneTarget } from "@/lib/shared-with-me";
+import {
+  buildSharedCopyTitle,
+  isSharedAccessReadOnly,
+  type SharedPaneScope,
+  type SharedPaneTarget,
+} from "@/lib/shared-with-me";
 import { MarkdownExportMemoryLimitError, type MarkdownExportProgress } from "@/lib/markdown-export";
 import { exportSelectedMemosAsMarkdownZip } from "@/lib/selected-markdown-export";
 import { createPluginScheduleAdapter } from "@/lib/plugins/plugin-schedule-adapter";
@@ -1304,7 +1309,10 @@ export const WorkspaceApp = ({
     staleTime: 60_000,
     retry: false,
   });
-  const memoAccess = memoAccessQuery.data?.access ?? null;
+  // The memo response already carries the share access for group-shared
+  // notes, so the editor locks to preview from the first render instead of
+  // waiting for the separate access request.
+  const memoAccess = memoQuery.data?.access ?? memoAccessQuery.data?.access ?? null;
 
   // Realtime collaboration needs a runtime that serves collaboration sockets
   // (self-hosted Bun/Docker). The health endpoint answers without auth; when
@@ -1334,24 +1342,37 @@ export const WorkspaceApp = ({
     if (!targetNotebookId) {
       throw new Error("No notebook available for the copy");
     }
+    // A group can contain several notes with the same title. Keep the copy
+    // distinguishable by naming the person who shared it.
+    const authorName = memoAccess?.authorDisplayName?.trim()
+      || memoAccess?.authorUsername?.trim()
+      || null;
+    const copyTitle = buildSharedCopyTitle(memo.title, authorName, {
+      withAuthor: (title, author) => t("editor.saveSharedCopyTitleWithAuthor", { title, author }),
+      withoutAuthor: (title) => t("editor.saveSharedCopyTitle", { title }),
+    });
     const result = await repository.createMemo({
       notebookId: targetNotebookId,
-      title: memo.title ? t("editor.saveSharedCopyTitle", { title: memo.title }) : "",
+      title: copyTitle,
       contentMarkdown: memo.contentMarkdown,
       contentJson: memo.contentJson,
       tags: memo.tags,
     });
     await putLocalMemo(localDataScope, result.memo);
+    cacheMemoDetail(queryClient, result.memo, "notebook");
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["memos"] }),
       queryClient.invalidateQueries({ queryKey: ["notebooks"] }),
     ]);
     // Jump straight into the saved copy so the user continues editing their
-    // own note instead of the read-only shared original.
+    // own note instead of the shared original, and show the notebook that
+    // actually holds the new copy.
     externalSelectionRef.current = result.memo.id;
+    setMemoView("notebook");
+    setSelectedNotebookId(targetNotebookId);
     setSelectedMemoId(result.memo.id);
     return result.memo;
-  }, [localDataScope, memoView, notebooks, queryClient, repository, selectedNotebookId, t]);
+  }, [localDataScope, memoAccess, memoView, notebooks, queryClient, repository, selectedNotebookId, t]);
   const prefetchMemoDetail = useCallback((memoId: string) => {
     void queryClient.prefetchQuery({
       queryKey: memoDetailQueryKey(memoId, memoView),
@@ -3740,7 +3761,11 @@ export const WorkspaceApp = ({
                           memo={selectedMemo}
                           notebooks={notebooks}
                           repository={repository}
-                          readOnly={memoView === "trash" || selectedMemo.isDeleted}
+                          readOnly={
+                            memoView === "trash"
+                            || selectedMemo.isDeleted
+                            || isSharedAccessReadOnly(memoAccess)
+                          }
                           desktopFocusMode={desktopFocusModeActive}
                           onBackToList={() => {
                             clearPendingCreatedMemo();
