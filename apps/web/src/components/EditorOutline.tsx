@@ -16,10 +16,13 @@ import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 
 type EditorOutlineProps = {
   editor: Editor | null;
-  scrollContainer: HTMLDivElement | null;
+  scrollContainer?: HTMLDivElement | null;
   previewContainer?: HTMLDivElement | null;
   collapsed: boolean;
-  shortcutLabel: string;
+  shortcutLabel?: string;
+  /** Public share pages scroll with the window instead of an editor pane. */
+  trackWindowScroll?: boolean;
+  className?: string;
   onCollapsedChange: (collapsed: boolean) => void;
 };
 
@@ -95,7 +98,16 @@ const sameOutlineItems = (left: OutlineItem[], right: OutlineItem[]) =>
       && sameOutlineSegments(other.segments, item.segments);
   });
 
-export const EditorOutline = ({ editor, scrollContainer, previewContainer = null, collapsed, shortcutLabel, onCollapsedChange }: EditorOutlineProps) => {
+export const EditorOutline = ({
+  editor,
+  scrollContainer = null,
+  previewContainer = null,
+  collapsed,
+  shortcutLabel = "",
+  trackWindowScroll = false,
+  className,
+  onCollapsedChange,
+}: EditorOutlineProps) => {
   const { t } = useTranslation();
   const [items, setItems] = useState<OutlineItem[]>([]);
   const [activePos, setActivePos] = useState<number | null>(null);
@@ -169,7 +181,7 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
 
   useEffect(() => {
     const trackingContainer = previewContainer ?? scrollContainer;
-    if (!trackingContainer || items.length === 0) {
+    if (items.length === 0 || (!trackWindowScroll && !trackingContainer)) {
       return;
     }
 
@@ -179,7 +191,9 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
       }
 
       const offset = previewContainer ? PREVIEW_READ_LINE_OFFSET : EDITOR_READ_LINE_OFFSET;
-      const threshold = trackingContainer.getBoundingClientRect().top + offset;
+      const threshold = trackWindowScroll || !trackingContainer
+        ? offset
+        : trackingContainer.getBoundingClientRect().top + offset;
       let activeItem: OutlineItem | null = null;
 
       for (const item of items) {
@@ -195,10 +209,16 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
       }
     };
 
-    trackingContainer.addEventListener("scroll", updateFromScroll, { passive: true });
+    if (trackWindowScroll) {
+      window.addEventListener("scroll", updateFromScroll, { passive: true });
+      updateFromScroll();
+      return () => window.removeEventListener("scroll", updateFromScroll);
+    }
+
+    trackingContainer?.addEventListener("scroll", updateFromScroll, { passive: true });
     updateFromScroll();
-    return () => trackingContainer.removeEventListener("scroll", updateFromScroll);
-  }, [items, previewContainer, resolveHeadingElement, scrollContainer]);
+    return () => trackingContainer?.removeEventListener("scroll", updateFromScroll);
+  }, [items, previewContainer, resolveHeadingElement, scrollContainer, trackWindowScroll]);
 
   const jumpToHeading = (item: OutlineItem) => {
     // Keep the clicked heading active while smooth scrolling. Without this
@@ -344,7 +364,8 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
     return null;
   }
 
-  const outlineToggleLabel = `${t(collapsed ? "editor.showOutline" : "editor.hideOutline")} (${shortcutLabel})`;
+  const outlineToggleBaseLabel = t(collapsed ? "editor.showOutline" : "editor.hideOutline");
+  const outlineToggleLabel = shortcutLabel ? `${outlineToggleBaseLabel} (${shortcutLabel})` : outlineToggleBaseLabel;
 
   return (
     <TooltipProvider delayDuration={350} skipDelayDuration={100}>
@@ -353,7 +374,8 @@ export const EditorOutline = ({ editor, scrollContainer, previewContainer = null
           "select-none",
           collapsed
             ? "sticky top-6 z-20 h-8 w-0 shrink-0 self-start overflow-visible"
-            : "sticky top-6 h-fit max-h-[calc(100vh-8rem)] shrink-0 overflow-y-auto overflow-x-hidden py-2"
+            : "sticky top-6 h-fit max-h-[calc(100vh-8rem)] shrink-0 overflow-y-auto overflow-x-hidden py-2",
+          className
         )}
         style={{
           ...(!collapsed ? { width: EDITOR_OUTLINE_WIDTH } : {}),

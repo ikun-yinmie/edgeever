@@ -1,7 +1,7 @@
 import "katex/dist/katex.min.css";
 import { Node, mergeAttributes } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clock3, FileText, LoaderCircle, LockKeyhole, UserRound } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
@@ -22,6 +22,7 @@ import {
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
+import { EditorOutline } from "@/components/EditorOutline";
 import { ImageViewer, type ImageViewerSlide } from "@/components/ImageViewer";
 import { resolveMemoEditorTheme } from "@/components/ThemeProvider";
 import { isPaperEditorTheme, publishEditorCssVars, resolvePaperEditorTheme } from "@/lib/publish-layout";
@@ -78,7 +79,13 @@ const SharedThemeBlock = Node.create({
   },
 });
 
-const SharedRichText = ({ content }: { content: PublicMemoShare["contentJson"] }) => {
+const SharedRichText = ({
+  content,
+  onEditorReady,
+}: {
+  content: PublicMemoShare["contentJson"];
+  onEditorReady?: (editor: Editor | null) => void;
+}) => {
   const { t } = useTranslation();
   const [viewerImage, setViewerImage] = useState<ImageViewerSlide | null>(null);
   const editor = useEditor({
@@ -117,6 +124,11 @@ const SharedRichText = ({ content }: { content: PublicMemoShare["contentJson"] }
     },
   }, [content]);
 
+  useEffect(() => {
+    onEditorReady?.(editor ?? null);
+    return () => onEditorReady?.(null);
+  }, [editor, onEditorReady]);
+
   return (
     <>
       <EditorContent editor={editor} />
@@ -137,10 +149,12 @@ const SharedDocument = ({
   locale,
   share,
   token,
+  onEditorReady,
 }: {
   locale: "zh-CN" | "en-US" | "ja";
   share: PublicMemoShare;
   token: string;
+  onEditorReady?: (editor: Editor | null) => void;
 }) => {
   const body = useMemo(() => resolvePublicShareBody(share, token), [share, token]);
   if (body.type === "diagram") {
@@ -156,7 +170,7 @@ const SharedDocument = ({
       </Suspense>
     );
   }
-  return <SharedRichText content={body.content} />;
+  return <SharedRichText content={body.content} onEditorReady={onEditorReady} />;
 };
 
 const isSharePasswordError = (error: unknown, code: string) =>
@@ -215,6 +229,8 @@ const PublicSharePasswordForm = ({
 export const PublicSharePage = () => {
   const { t, i18n } = useTranslation();
   const { token = "" } = useParams();
+  const [shareEditor, setShareEditor] = useState<Editor | null>(null);
+  const [outlineCollapsed, setOutlineCollapsed] = useState(false);
   const shareQuery = useQuery({
     queryKey: ["public-share", token],
     queryFn: () => api.getPublicMemoShare(token),
@@ -280,50 +296,60 @@ export const PublicSharePage = () => {
 
   return (
     <main className="edgeever-public-share min-h-[100dvh] bg-slate-50 px-4 py-6 sm:px-8 sm:py-10">
-      <article className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-sm">
-        <header className="border-b border-slate-200 px-5 py-6 sm:px-10 sm:py-8">
-          <div className="mb-5 flex items-center justify-between gap-4 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
-              <UserRound className="h-4 w-4" />
-              {share.sharedByName ? `${share.sharedByName} · ${t("sharing.readOnly")}` : t("sharing.readOnly")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Clock3 className="h-4 w-4" />
-              {t("sharing.publicUpdated", {
-                time: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(share.updatedAt)),
-              })}
-            </span>
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            {share.title?.trim() || t("common.untitledMemo")}
-          </h1>
-          {share.tags.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {share.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">#{tag}</span>)}
+      <div className="mx-auto flex w-full max-w-[77rem] items-start justify-center gap-8">
+        <article className="min-w-0 max-w-4xl flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-sm">
+          <header className="border-b border-slate-200 px-5 py-6 sm:px-10 sm:py-8">
+            <div className="mb-5 flex items-center justify-between gap-4 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                <UserRound className="h-4 w-4" />
+                {share.sharedByName ? `${share.sharedByName} · ${t("sharing.readOnly")}` : t("sharing.readOnly")}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Clock3 className="h-4 w-4" />
+                {t("sharing.publicUpdated", {
+                  time: new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(share.updatedAt)),
+                })}
+              </span>
             </div>
-          ) : null}
-        </header>
-        <div
-          className="edgeever-editor px-1 py-4 sm:px-4 sm:py-7"
-          data-editor-theme={shareEditorTheme ?? "default"}
-          data-paper-theme={isPaperEditorTheme(shareEditorTheme) ? "true" : undefined}
-          style={
-            isPaperEditorTheme(shareEditorTheme)
-              ? publishEditorCssVars(
-                  shareEditorTheme,
-                  resolvePaperEditorTheme(shareEditorTheme)?.palette ?? "emerald",
-                  "desktop",
-                ) as CSSProperties
-              : undefined
-          }
-        >
-          <SharedDocument
-            locale={(i18n.resolvedLanguage || i18n.language || "zh-CN").startsWith("en") ? "en-US" : "zh-CN"}
-            share={share}
-            token={token}
-          />
-        </div>
-      </article>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+              {share.title?.trim() || t("common.untitledMemo")}
+            </h1>
+            {share.tags.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {share.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">#{tag}</span>)}
+              </div>
+            ) : null}
+          </header>
+          <div
+            className="edgeever-editor px-1 py-4 sm:px-4 sm:py-7"
+            data-editor-theme={shareEditorTheme ?? "default"}
+            data-paper-theme={isPaperEditorTheme(shareEditorTheme) ? "true" : undefined}
+            style={
+              isPaperEditorTheme(shareEditorTheme)
+                ? publishEditorCssVars(
+                    shareEditorTheme,
+                    resolvePaperEditorTheme(shareEditorTheme)?.palette ?? "emerald",
+                    "desktop",
+                  ) as CSSProperties
+                : undefined
+            }
+          >
+            <SharedDocument
+              locale={(i18n.resolvedLanguage || i18n.language || "zh-CN").startsWith("en") ? "en-US" : "zh-CN"}
+              share={share}
+              token={token}
+              onEditorReady={setShareEditor}
+            />
+          </div>
+        </article>
+        <EditorOutline
+          editor={shareEditor}
+          collapsed={outlineCollapsed}
+          trackWindowScroll
+          className="max-lg:hidden"
+          onCollapsedChange={setOutlineCollapsed}
+        />
+      </div>
     </main>
   );
 };

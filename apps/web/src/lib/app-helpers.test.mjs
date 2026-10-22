@@ -4,6 +4,7 @@ import {
   DESKTOP_FOCUS_MODE_STORAGE_KEY,
   DESKTOP_READING_PROTECTION_STORAGE_KEY,
   NOTE_READING_PROTECTION_STORAGE_KEY,
+  NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY,
   NOTEBOOK_SIDEBAR_COLLAPSED_STORAGE_KEY,
   NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY,
   DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX,
@@ -25,6 +26,8 @@ import {
   readDesktopReadingProtectionPreference,
   readNoteReadingProtection,
   readNoteReadingProtectionMap,
+  readNoteEditorOutlineCollapsed,
+  readNoteEditorOutlineCollapsedMap,
   readNotebookSidebarCollapsedPreference,
   readEditorOutlineCollapsedPreference,
   readEditorToolbarExpandedPreference,
@@ -35,6 +38,7 @@ import {
   writeDesktopFocusModePreference,
   writeDesktopReadingProtectionPreference,
   writeNoteReadingProtection,
+  writeNoteEditorOutlineCollapsed,
   writeNotebookSidebarCollapsedPreference,
   writeEditorOutlineCollapsedPreference,
   writeEditorToolbarExpandedPreference,
@@ -404,6 +408,74 @@ describe("editor outline preference", () => {
 
     expect(readEditorOutlineCollapsedPreference()).toBe(true);
     expect(() => writeEditorOutlineCollapsedPreference(false)).not.toThrow();
+  });
+});
+
+describe("per-note editor outline preference", () => {
+  test("falls back to the device-wide flag when the note has no override", () => {
+    installLocalStorage();
+    expect(readNoteEditorOutlineCollapsed("memo-1", true)).toBe(true);
+    expect(readNoteEditorOutlineCollapsed("memo-1", false)).toBe(false);
+    expect(readNoteEditorOutlineCollapsed(null, true)).toBe(true);
+  });
+
+  test("keeps each note's outline state independent", () => {
+    const values = installLocalStorage();
+
+    writeNoteEditorOutlineCollapsed("memo-1", false, true);
+    expect(readNoteEditorOutlineCollapsed("memo-1", true)).toBe(false);
+    expect(readNoteEditorOutlineCollapsed("memo-2", true)).toBe(true);
+    expect(values.get(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY)).toBe(JSON.stringify({ "memo-1": false }));
+
+    writeNoteEditorOutlineCollapsed("memo-2", false, true);
+    expect(readNoteEditorOutlineCollapsed("memo-2", true)).toBe(false);
+    expect(readNoteEditorOutlineCollapsed("memo-1", true)).toBe(false);
+  });
+
+  test("drops the override once it matches the device default again", () => {
+    const values = installLocalStorage();
+
+    writeNoteEditorOutlineCollapsed("memo-1", false, true);
+    writeNoteEditorOutlineCollapsed("memo-1", true, true);
+    expect(readNoteEditorOutlineCollapsed("memo-1", true)).toBe(true);
+    expect(values.get(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY)).toBe(JSON.stringify({}));
+  });
+
+  test("writes through to the device flag for untitled or unsaved notes", () => {
+    const values = installLocalStorage();
+
+    writeNoteEditorOutlineCollapsed(null, false, true);
+    expect(values.get(EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY)).toBe("false");
+    expect(values.has(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY)).toBe(false);
+  });
+
+  test("fails closed to the fallback when local storage is unavailable", () => {
+    globalThis.window = {
+      localStorage: {
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        setItem: () => {
+          throw new Error("blocked");
+        },
+      },
+    };
+
+    expect(readNoteEditorOutlineCollapsed("memo-1", true)).toBe(true);
+    expect(readNoteEditorOutlineCollapsedMap()).toEqual({});
+    expect(() => writeNoteEditorOutlineCollapsed("memo-1", false, true)).not.toThrow();
+  });
+
+  test("ignores malformed stored maps", () => {
+    installLocalStorage();
+    window.localStorage.setItem(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY, "not-json");
+    expect(readNoteEditorOutlineCollapsedMap()).toEqual({});
+
+    window.localStorage.setItem(
+      NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY,
+      JSON.stringify({ "memo-1": "yes", "memo-2": false })
+    );
+    expect(readNoteEditorOutlineCollapsedMap()).toEqual({ "memo-2": false });
   });
 });
 

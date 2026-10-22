@@ -135,6 +135,8 @@ export const DESKTOP_READING_PROTECTION_STORAGE_KEY = "edgeever.desktopReadingPr
 /** Per-note reading-protection overrides, stored as a memo-id → boolean map. */
 export const NOTE_READING_PROTECTION_STORAGE_KEY = "edgeever.noteReadingProtection";
 export const EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY = "edgeever.editorOutlineCollapsed";
+/** Per-note outline overrides, stored as a memo-id → collapsed map. */
+export const NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY = "edgeever.noteEditorOutlineCollapsed";
 export const EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY = "edgeever.editorContentAlignment";
 export const EDITOR_TOOLBAR_EXPANDED_STORAGE_KEY = "edgeever.editorToolbarExpanded";
 export const EDITOR_PHONE_PREVIEW_STORAGE_KEY = "edgeever.editor.phonePreviewOpen";
@@ -372,9 +374,9 @@ export const writeNotebookSidebarCollapsedPreference = (collapsed: boolean) => {
   }
 };
 
-export const readNoteReadingProtectionMap = (): Record<string, boolean> => {
+const readBooleanMap = (storageKey: string): Record<string, boolean> => {
   try {
-    const raw = window.localStorage.getItem(NOTE_READING_PROTECTION_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -390,12 +392,19 @@ export const readNoteReadingProtectionMap = (): Record<string, boolean> => {
   }
 };
 
-export const writeNoteReadingProtectionMap = (map: Record<string, boolean>) => {
+const writeBooleanMap = (storageKey: string, map: Record<string, boolean>) => {
   try {
-    window.localStorage.setItem(NOTE_READING_PROTECTION_STORAGE_KEY, JSON.stringify(map));
+    window.localStorage.setItem(storageKey, JSON.stringify(map));
   } catch {
     // Local storage can be unavailable in private or restricted browser contexts.
   }
+};
+
+export const readNoteReadingProtectionMap = (): Record<string, boolean> =>
+  readBooleanMap(NOTE_READING_PROTECTION_STORAGE_KEY);
+
+export const writeNoteReadingProtectionMap = (map: Record<string, boolean>) => {
+  writeBooleanMap(NOTE_READING_PROTECTION_STORAGE_KEY, map);
 };
 
 /**
@@ -454,6 +463,39 @@ export const writeEditorOutlineCollapsedPreference = (collapsed: boolean) => {
   } catch {
     // Local storage can be unavailable in private or restricted browser contexts.
   }
+};
+
+export const readNoteEditorOutlineCollapsedMap = (): Record<string, boolean> =>
+  readBooleanMap(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY);
+
+export const writeNoteEditorOutlineCollapsedMap = (map: Record<string, boolean>) => {
+  writeBooleanMap(NOTE_EDITOR_OUTLINE_COLLAPSED_STORAGE_KEY, map);
+};
+
+/**
+ * Outline state is remembered per note: true (collapsed) / false (expanded);
+ * missing entries fall back to the device-wide preference.
+ */
+export const readNoteEditorOutlineCollapsed = (memoId: string | null | undefined, fallback: boolean) => {
+  if (!memoId) return fallback;
+  const value = readNoteEditorOutlineCollapsedMap()[memoId];
+  return typeof value === "boolean" ? value : fallback;
+};
+
+export const writeNoteEditorOutlineCollapsed = (memoId: string | null | undefined, collapsed: boolean, fallback: boolean) => {
+  if (!memoId) {
+    writeEditorOutlineCollapsedPreference(collapsed);
+    return;
+  }
+  if (collapsed === fallback) {
+    // The value matches the device default, so no per-note override is needed.
+    const map = readNoteEditorOutlineCollapsedMap();
+    if (!(memoId in map)) return;
+    delete map[memoId];
+    writeNoteEditorOutlineCollapsedMap(map);
+    return;
+  }
+  writeNoteEditorOutlineCollapsedMap({ ...readNoteEditorOutlineCollapsedMap(), [memoId]: collapsed });
 };
 
 export const readEditorContentAlignmentPreference = (): EditorContentAlignment => {

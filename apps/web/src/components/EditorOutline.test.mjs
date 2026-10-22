@@ -42,4 +42,10 @@ describe("editor outline floating toggle", () => {
     expect(phonePreviewSource).toContain("onScrollerChange?.(element);");
     expect(helpersSource).toContain('PHONE_PREVIEW_STAGE_QUERY = "(min-width: 1280px)"');
   });
+
+  test("tracks window scrolling on reading pages such as the public share view", () => {
+    expect(outlineSource).toContain("trackWindowScroll?: boolean");
+    expect(outlineSource).toContain('window.addEventListener("scroll", updateFromScroll');
+    expect(outlineSource).toContain('window.removeEventListener("scroll", updateFromScroll)');
+  });
 });

@@ -25,3 +25,13 @@ describe("PublicSharePage image preview", () => {
     expect(source).toContain("sharing.imageResetZoom");
   });
 });
+
+describe("PublicSharePage outline", () => {
+  test("shows the document outline beside shared rich notes", () => {
+    expect(source).toContain("<EditorOutline");
+    expect(source).toContain("trackWindowScroll");
+    expect(source).toContain("onEditorReady={setShareEditor}");
+    expect(source).toContain("const [outlineCollapsed, setOutlineCollapsed] = useState(false)");
+    expect(source).toContain("className=\"max-lg:hidden\"");
+  });
+});

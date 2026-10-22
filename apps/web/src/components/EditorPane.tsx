@@ -168,9 +168,10 @@ import {
   readDesktopReadingProtectionPreference,
   readEditorOutlineCollapsedPreference,
   readEditorPhonePreviewPreference,
+  readNoteEditorOutlineCollapsed,
   readNoteReadingProtection,
+  writeNoteEditorOutlineCollapsed,
   writeNoteReadingProtection,
-  writeEditorOutlineCollapsedPreference,
   writeEditorPhonePreviewPreference,
   type EditorContentAlignment,
   type MemoDocumentActionRequest,
@@ -635,10 +636,15 @@ const RichEditorPane = ({
     setDesktopReadingProtection(readNoteReadingProtection(memo?.id ?? null, readDesktopReadingProtectionPreference()));
   }, [memo?.id]);
 
+  // Follow the per-note outline state when switching notes.
+  useEffect(() => {
+    setEditorOutlineCollapsed(readNoteEditorOutlineCollapsed(memo?.id ?? null, readEditorOutlineCollapsedPreference()));
+  }, [memo?.id]);
+
   const handleEditorOutlineCollapsedChange = useCallback((collapsed: boolean) => {
     setEditorOutlineCollapsed(collapsed);
-    writeEditorOutlineCollapsedPreference(collapsed);
-  }, []);
+    writeNoteEditorOutlineCollapsed(memo?.id ?? null, collapsed, readEditorOutlineCollapsedPreference());
+  }, [memo?.id]);
 
   const handlePhonePreviewChange = useCallback((open: boolean) => {
     setPhonePreviewOpen(open);
@@ -648,10 +654,10 @@ const RichEditorPane = ({
   const toggleEditorOutline = useCallback(() => {
     setEditorOutlineCollapsed((collapsed) => {
       const nextCollapsed = !collapsed;
-      writeEditorOutlineCollapsedPreference(nextCollapsed);
+      writeNoteEditorOutlineCollapsed(memo?.id ?? null, nextCollapsed, readEditorOutlineCollapsedPreference());
       return nextCollapsed;
     });
-  }, []);
+  }, [memo?.id]);
 
   useEffect(() => {
     if (!isMobileViewport && mobileDefaultEditRequested && desktopReadingProtection) {

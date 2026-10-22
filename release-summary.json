@@ -1,17 +1,17 @@
 {
-  "version": "1.94.0",
+  "version": "1.95.0",
   "changes": {
     "en-US": [
-      "Group-shared notes now clearly show whether they are editable or read-only. Read-only shares open in preview so they cannot be edited accidentally.",
-      "Saving a shared note as your own now adds the sharer's name to the copy title and opens the copy in the target notebook."
+      "The document outline now remembers whether it is expanded or collapsed for each note, instead of applying one global toggle to every note.",
+      "Public share pages now include a document outline with click-to-jump navigation, scroll highlighting, and a collapsible panel."
     ],
     "zh-CN": [
-      "群组共享笔记现在会明确显示「可编辑」或「只读」；只读共享会以预览模式打开，避免误编辑。",
-      "将共享笔记保存为自己的笔记时，副本标题会加上分享人名字，并在保存后自动打开到目标笔记本。"
+      "文档大纲的展开或收起状态现在会按笔记分别记忆，不再用一次切换影响所有笔记。",
+      "公开分享链接的阅读页现在会显示文档大纲，支持点击标题跳转、滚动高亮以及折叠。"
     ],
     "ja": [
-      "グループ共有ノートに編集可能・読み取り専用の状態を明示し、閲覧のみの共有はプレビューで開いて誤編集を防ぐようにしました。",
-      "共有ノートを自分のノートとして保存すると、コピーのタイトルに共有者の名前を追加し、保存先のノートブックで自動的に開くようにしました。"
+      "文档大纲の展開・折りたたみ状態をノートごとに記憶するようになり、1つのノートでの切り替えが他のノートに影響しなくなりました。",
+      "公開共有リンクの閲覧ページに見出し一覧（アウトライン）を表示し、見出しへのジャンプ、スクロール連動のハイライト、折りたたみに対応しました。"
     ]
   }
 }
