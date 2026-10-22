@@ -4,6 +4,7 @@ import { globSync, readFileSync } from "node:fs";
 import { Hono } from "hono";
 import { sha256 } from "./hash-utils.ts";
 import { registerInstanceAdminRoutes } from "./instance-admin-routes.ts";
+import { getShareServerConfig } from "./instance-settings-service.ts";
 import { encryptSecret } from "./secret-encryption.ts";
 
 class SqliteD1PreparedStatement {
@@ -960,6 +961,118 @@ describe("verification code binding", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: { code: "email_code_invalid" } });
+    sqlite.close();
+  });
+});
+
+describe("share server settings", () => {
+  const patchSettings = (app, body, environment) => app.request(
+    "/api/v1/admin/instance-settings",
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    environment,
+  );
+
+  test("stores multiple share servers with a default endpoint", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await patchSettings(app, {
+      shareServers: [
+        { url: "https://notes.example.com/", label: "Public" },
+        { url: "http://192.168.1.9:9634", label: "" },
+      ],
+      defaultShareServerUrl: "https://notes.example.com",
+    }, environment);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.settings.shareServers).toEqual([
+      { url: "https://notes.example.com", label: "Public" },
+      { url: "http://192.168.1.9:9634", label: null },
+    ]);
+    expect(body.settings.defaultShareServerUrl).toBe("https://notes.example.com");
+    expect(await getShareServerConfig(environment.storage.db)).toEqual({
+      servers: [
+        { url: "https://notes.example.com", label: "Public" },
+        { url: "http://192.168.1.9:9634", label: null },
+      ],
+      defaultUrl: "https://notes.example.com",
+    });
+    sqlite.close();
+  });
+
+  test("falls back to the first server when the default is cleared", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await patchSettings(app, {
+      shareServers: [{ url: "https://notes.example.com", label: null }],
+      defaultShareServerUrl: null,
+    }, environment);
+
+    expect(response.status).toBe(200);
+    expect(await getShareServerConfig(environment.storage.db)).toEqual({
+      servers: [{ url: "https://notes.example.com", label: null }],
+      defaultUrl: "https://notes.example.com",
+    });
+    sqlite.close();
+  });
+
+  test("clears a removed default when no replacement is provided", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    await patchSettings(app, {
+      shareServers: [
+        { url: "https://notes.example.com", label: null },
+        { url: "https://backup.example.com", label: null },
+      ],
+      defaultShareServerUrl: "https://notes.example.com",
+    }, environment);
+
+    const response = await patchSettings(app, {
+      shareServers: [{ url: "https://backup.example.com", label: null }],
+    }, environment);
+
+    expect(response.status).toBe(200);
+    expect(await getShareServerConfig(environment.storage.db)).toEqual({
+      servers: [{ url: "https://backup.example.com", label: null }],
+      defaultUrl: "https://backup.example.com",
+    });
+    sqlite.close();
+  });
+
+  test("rejects a default that is not in the configured list", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await patchSettings(app, {
+      shareServers: [{ url: "https://notes.example.com", label: null }],
+      defaultShareServerUrl: "https://other.example.com",
+    }, environment);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "bad_request" } });
+    sqlite.close();
+  });
+
+  test("rejects duplicate server addresses after normalization", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp();
+
+    const response = await patchSettings(app, {
+      shareServers: [
+        { url: "https://notes.example.com", label: null },
+        { url: "https://notes.example.com/", label: null },
+      ],
+    }, environment);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "bad_request" } });
     sqlite.close();
   });
 });

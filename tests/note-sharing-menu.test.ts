@@ -8,6 +8,7 @@ const readSource = (path: string) => readFileSync(new URL(path, import.meta.url)
 const editorSource = readSource("../apps/web/src/components/EditorPane.tsx");
 const memoListSource = readSource("../apps/web/src/components/MemoListPane.tsx");
 const shareDialogSource = readSource("../apps/web/src/components/dialogs/ShareMemoDialog.tsx");
+const sharedWithMeSource = readSource("../apps/web/src/components/SharedWithMePane.tsx");
 const publicShareSource = readSource("../apps/web/src/components/PublicSharePage.tsx");
 
 describe("note sharing menu", () => {
@@ -24,5 +25,15 @@ describe("note sharing menu", () => {
     expect(shareDialogSource).toContain('t("sharing.passwordToggle")');
     expect(shareDialogSource).toContain("api.updateMemoShare(memoId, { passwordProtected })");
     expect(publicShareSource).toContain("api.unlockPublicMemoShare");
+  });
+
+  test("share dialog lets users pick an admin-configured share server", () => {
+    expect(zhCN.sharing.serverLabel).toBe("分享服务器");
+    expect(enUS.sharing.serverLabel).toBe("Share server");
+    expect(shareDialogSource).toContain("useShareServerConfig");
+    expect(shareDialogSource).toContain("resolveDefaultShareServerUrl");
+    expect(shareDialogSource).toContain('t("sharing.serverLabel")');
+    expect(shareDialogSource).toContain("buildPublicShareUrl(share.token, activeShareServerUrl)");
+    expect(sharedWithMeSource).toContain("buildPublicShareUrl(token, defaultShareServerUrl)");
   });
 });

@@ -271,6 +271,25 @@ export const RegistrationInviteDeleteSchema = z.object({
 export const SITE_ICON_DATA_URL_PATTERN =
   /^data:image\/(?:png|jpeg|webp|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
 
+export const ShareServerUrlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2048)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Share server URLs must use http or https.");
+
+export const ShareServerEntrySchema = z.object({
+  url: ShareServerUrlSchema,
+  label: z.string().trim().max(60).nullable().optional(),
+});
+
 export const InstanceAdminSettingsUpdateSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
@@ -333,6 +352,8 @@ export const InstanceAdminSettingsUpdateSchema = z
     emailAllowlistEnabled: z.boolean().optional(),
     emailAllowlist: z.string().max(4000).nullable().optional(),
     emailBlocklist: z.string().max(4000).nullable().optional(),
+    shareServers: z.array(ShareServerEntrySchema).max(8).nullable().optional(),
+    defaultShareServerUrl: ShareServerUrlSchema.nullable().optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 

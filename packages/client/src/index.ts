@@ -45,6 +45,8 @@ import type {
   ResourceStorageSummary,
   ObjectStorageSettings,
   PublicMemoShare,
+  ShareServerConfig,
+  ShareServerEntry,
   TagSummary,
   TiptapDoc,
   AiSettings,
@@ -373,6 +375,8 @@ export type InstanceAdminSettings = {
   smtpFromAddress: string | null;
   smtpFromName: string | null;
   shareMissingMessage: string | null;
+  shareServers: ShareServerEntry[] | null;
+  defaultShareServerUrl: string | null;
   editorShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   appShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   siteName: string | null;
@@ -417,6 +421,8 @@ export type InstanceAdminSettingsUpdatePayload = {
   smtpFromAddress?: string | null;
   smtpFromName?: string | null;
   shareMissingMessage?: string | null;
+  shareServers?: ShareServerEntry[] | null;
+  defaultShareServerUrl?: string | null;
   siteName?: string | null;
   siteDescription?: string | null;
   siteIcon?: string | null;
@@ -1963,6 +1969,9 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         // group); only a real group share carries a groupId.
         access: body.access?.groupId ? { ...body.access, shared: true as const } : null,
       })),
+
+    listShareServers: () =>
+      request<ShareServerConfig>("/api/v1/share-servers"),
 
     getMemoShare: (memoId: string) =>
       request<MemoShareResponse>(`/api/v1/memos/${memoId}/share`),

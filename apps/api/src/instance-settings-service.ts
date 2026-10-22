@@ -1,3 +1,4 @@
+import type { ShareServerConfig, ShareServerEntry } from "@edgeever/shared";
 import { decryptSecret } from "./secret-encryption";
 import { resolvePrimaryObjectStorageEncryptionKey } from "./object-storage";
 import type { DatabaseAdapter } from "./storage-contract";
@@ -27,6 +28,8 @@ export type InstanceSettingsRow = {
   smtp_from_address: string | null;
   smtp_from_name: string | null;
   share_missing_message: string | null;
+  share_servers: string | null;
+  default_share_server_url: string | null;
   editor_shortcuts: string | null;
   app_shortcuts: string | null;
   site_name: string | null;
@@ -51,6 +54,56 @@ export type InstanceRegistrationConfig = {
   codeRequired: boolean;
 };
 
+/** Normalizes a share endpoint and rejects non-HTTP(S) values. */
+export const normalizeShareServerUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+};
+
+export const parseShareServerEntries = (value: string | null): ShareServerEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const servers: ShareServerEntry[] = [];
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== "object") continue;
+      const candidate = entry as { url?: unknown; label?: unknown };
+      const url = normalizeShareServerUrl(candidate.url);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const label = typeof candidate.label === "string" ? candidate.label.trim().slice(0, 60) : "";
+      servers.push({ url, label: label || null });
+    }
+    return servers;
+  } catch {
+    return [];
+  }
+};
+
+export const getShareServerConfig = async (database: DatabaseAdapter): Promise<ShareServerConfig> => {
+  const row = await database
+    .prepare(
+      `SELECT share_servers, default_share_server_url FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`,
+    )
+    .first<{ share_servers: string | null; default_share_server_url: string | null }>();
+  const servers = parseShareServerEntries(row?.share_servers ?? null);
+  const configuredDefault = normalizeShareServerUrl(row?.default_share_server_url);
+  const defaultUrl = configuredDefault && servers.some((server) => server.url === configuredDefault)
+    ? configuredDefault
+    : servers[0]?.url ?? null;
+  return { servers, defaultUrl };
+};
+
 export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   registrationEnabled: Boolean(row.registration_enabled),
   registrationCodeRequired: Boolean(row.registration_code_required),
@@ -72,6 +125,8 @@ export const mapInstanceSettingsRow = (row: InstanceSettingsRow) => ({
   smtpFromAddress: row.smtp_from_address,
   smtpFromName: row.smtp_from_name,
   shareMissingMessage: row.share_missing_message,
+  shareServers: parseShareServerEntries(row.share_servers),
+  defaultShareServerUrl: normalizeShareServerUrl(row.default_share_server_url),
   editorShortcuts: row.editor_shortcuts,
   appShortcuts: row.app_shortcuts,
   siteName: row.site_name,
@@ -85,7 +140,8 @@ const SETTINGS_SELECT = `SELECT id, registration_enabled, registration_code_requ
   code_bind_ip, code_bind_device, abuse_guard_enabled, code_ip_hourly_limit,
   code_ip_daily_limit, email_allowlist_enabled, email_allowlist, email_blocklist,
   smtp_host, smtp_port, smtp_secure, smtp_username,
-  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message, editor_shortcuts, app_shortcuts,
+  smtp_password_encrypted, smtp_from_address, smtp_from_name, share_missing_message,
+  share_servers, default_share_server_url, editor_shortcuts, app_shortcuts,
   site_name, site_description, site_icon, site_icon_updated_at, updated_at
   FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`;
 
@@ -117,6 +173,8 @@ export const getInstanceSettingsRow = async (
     smtp_from_address: null,
     smtp_from_name: null,
     share_missing_message: null,
+    share_servers: null,
+    default_share_server_url: null,
     editor_shortcuts: null,
     app_shortcuts: null,
     site_name: null,

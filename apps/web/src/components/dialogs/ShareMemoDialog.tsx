@@ -7,15 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import {
+  buildPublicShareUrl,
+  resolveDefaultShareServerUrl,
+  useShareServerConfig,
+} from "@/lib/share-servers";
 import { cn } from "@/lib/utils";
 import { DEFAULT_SHARE_DISPLAY_POLICY, ShareDisplayPolicyPicker, ShareToGroupForm } from "./ShareToGroupDialog";
-
-const getPublicShareUrl = (token: string) => {
-  const baseUrl = getConfiguredDesktopApiBaseUrl() || window.location.origin;
-  return `${baseUrl.replace(/\/$/, "")}/share/${encodeURIComponent(token)}`;
-};
 
 const sharePasswordStorageKey = (memoId: string) => `edgeever.sharePassword.${memoId}`;
 
@@ -66,6 +66,7 @@ export const ShareMemoDialog = ({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [copyTarget, setCopyTarget] = useState<"link" | "password" | "both">("link");
   const [revealedPassword, setRevealedPassword] = useState("");
+  const [selectedShareServerUrl, setSelectedShareServerUrl] = useState("");
   const copyResetTimerRef = useRef<number | null>(null);
   const queryKey = memoShareQueryKey(memoId);
   const shareQuery = useQuery({
@@ -99,6 +100,7 @@ export const ShareMemoDialog = ({
       queryClient.setQueryData(queryKey, { share: null });
     },
   });
+  const shareServersQuery = useShareServerConfig(open && mode === "link");
   const displayPolicyQuery = useQuery({
     queryKey: ["memo-share-display-policy", memoId],
     queryFn: () => api.getShareDisplayPolicy(memoId),
@@ -116,6 +118,7 @@ export const ShareMemoDialog = ({
     setCopyState("idle");
     setCopyTarget("link");
     setRevealedPassword("");
+    setSelectedShareServerUrl("");
   }, [memoId]);
   useEffect(() => () => {
     if (copyResetTimerRef.current !== null) window.clearTimeout(copyResetTimerRef.current);
@@ -129,10 +132,16 @@ export const ShareMemoDialog = ({
     }
     setRevealedPassword(readStoredSharePassword(memoId, share.token));
   }, [memoId, share?.passwordProtected, share?.token]);
+  useEffect(() => {
+    if (open) setSelectedShareServerUrl("");
+  }, [open]);
 
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: api.listGroups, enabled: open });
 
-  const shareUrl = share ? getPublicShareUrl(share.token) : "";
+  const shareServers = shareServersQuery.data?.servers ?? [];
+  const defaultShareServerUrl = resolveDefaultShareServerUrl(shareServersQuery.data);
+  const activeShareServerUrl = selectedShareServerUrl || defaultShareServerUrl;
+  const shareUrl = share ? buildPublicShareUrl(share.token, activeShareServerUrl) : "";
   const isWorking = shareQuery.isLoading || createMutation.isPending || passwordMutation.isPending || revokeMutation.isPending;
   const error = shareQuery.error || createMutation.error || passwordMutation.error || revokeMutation.error;
 
@@ -221,6 +230,26 @@ export const ShareMemoDialog = ({
             </div>
           ) : share ? (
             <>
+              {shareServers.length > 0 ? (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600" htmlFor="share-server-select">
+                    {t("sharing.serverLabel")}
+                  </label>
+                  <select
+                    className="h-9 w-full rounded-md border border-slate-200 bg-card px-2 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+                    id="share-server-select"
+                    value={activeShareServerUrl}
+                    onChange={(event) => setSelectedShareServerUrl(event.target.value)}
+                  >
+                    {shareServers.map((server) => (
+                      <option key={server.url} value={server.url}>
+                        {server.label ? `${server.label} · ${server.url}` : server.url}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">{t("sharing.serverHint")}</p>
+                </div>
+              ) : null}
               <div className="flex gap-2">
                 <Input value={shareUrl} readOnly aria-label={t("sharing.linkLabel")} className="min-w-0 font-mono text-xs" />
                 <Button

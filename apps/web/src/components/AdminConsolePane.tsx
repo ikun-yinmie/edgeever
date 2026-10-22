@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, Share2, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
@@ -11,6 +11,7 @@ import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
 import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
 import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
 import { RegistrationSettingsCard } from "@/components/settings/RegistrationSettingsCard";
+import { ShareServerSettingsCard } from "@/components/settings/ShareServerSettingsCard";
 import { SiteSettingsCard } from "@/components/settings/SiteSettingsCard";
 import { UserManagementCard } from "@/components/settings/UserManagementCard";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import type { AuthUser } from "@edgeever/shared";
 type AdminTabKey =
   | "members"
   | "site"
+  | "share"
   | "groups"
   | "invites"
   | "registration"
@@ -51,6 +53,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     : [];
   const tabs: AdminTab[] = [
     { key: "site", label: t("adminConsole.navSite"), icon: Globe },
+    { key: "share", label: t("adminConsole.navShare"), icon: Share2 },
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
     { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
@@ -64,6 +67,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     switch (activeTab) {
       case "site":
         return <SiteSettingsCard />;
+      case "share":
+        return <ShareServerSettingsCard />;
       case "groups":
         return (
           <>

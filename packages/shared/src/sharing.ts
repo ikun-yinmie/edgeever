@@ -1,6 +1,18 @@
 import type { TiptapDoc, TiptapNode, TiptapTextNode } from "./content";
 import { parseMemoLinkHref } from "./note-links";
 
+/** A reachable base URL for this instance, optionally named for the picker. */
+export type ShareServerEntry = {
+  url: string;
+  label: string | null;
+};
+
+export type ShareServerConfig = {
+  servers: ShareServerEntry[];
+  /** Configured default; falls back to the first server when unset. */
+  defaultUrl: string | null;
+};
+
 export type MemoShare = {
   memoId: string;
   token: string;

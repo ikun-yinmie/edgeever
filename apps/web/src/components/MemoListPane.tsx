@@ -1726,8 +1726,8 @@ export const MemoListPane = ({
                       <Folder className="h-4 w-4" />
                       <span className="min-w-0 flex-1 truncate">{t("memoList.moveToNotebook")}</span>
                     </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="max-h-64 w-56 overflow-y-auto">
-                      <div className="sticky top-0 z-10 border-b border-slate-100 bg-card p-2">
+                    <DropdownMenuSubContent sideOffset={6} className="w-60 overflow-hidden p-0">
+                      <div className="border-b border-slate-100 bg-card p-2">
                         <div className="flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2">
                           <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                           <input
@@ -1743,29 +1743,31 @@ export const MemoListPane = ({
                           />
                         </div>
                       </div>
-                      {filteredMoveNotebookOptions.length === 0 ? (
-                        <div className="px-3 py-6 text-center text-xs text-slate-500">{t("memoList.noNotebookFound")}</div>
-                      ) : (
-                        filteredMoveNotebookOptions.map((option) => (
-                          <DropdownMenuItem
-                            key={option.id}
-                            className={cn(
-                              "flex h-9 items-center gap-2 px-3 text-sm",
-                              option.id === memoContextMenu.memo.notebookId ? "font-semibold text-slate-950" : "text-slate-700"
-                            )}
-                            style={{ paddingLeft: `${12 + option.depth * 14}px` }}
-                            disabled={option.id === memoContextMenu.memo.notebookId}
-                            onSelect={() => {
-                              const { memo } = memoContextMenu;
-                              setMemoContextMenu(null);
-                              onMoveMemo(memo.id, option.id);
-                            }}
-                          >
-                            <NotebookIcon className="h-4 w-4 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                          </DropdownMenuItem>
-                        ))
-                      )}
+                      <div className="max-h-56 overflow-y-auto bg-card p-1">
+                        {filteredMoveNotebookOptions.length === 0 ? (
+                          <div className="px-3 py-6 text-center text-xs text-slate-500">{t("memoList.noNotebookFound")}</div>
+                        ) : (
+                          filteredMoveNotebookOptions.map((option) => (
+                            <DropdownMenuItem
+                              key={option.id}
+                              className={cn(
+                                "flex h-9 items-center gap-2 px-3 text-sm",
+                                option.id === memoContextMenu.memo.notebookId ? "font-semibold text-slate-950" : "text-slate-700"
+                              )}
+                              style={{ paddingLeft: `${12 + option.depth * 14}px` }}
+                              disabled={option.id === memoContextMenu.memo.notebookId}
+                              onSelect={() => {
+                                const { memo } = memoContextMenu;
+                                setMemoContextMenu(null);
+                                onMoveMemo(memo.id, option.id);
+                              }}
+                            >
+                              <NotebookIcon className="h-4 w-4 shrink-0" />
+                              <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </div>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                   <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />

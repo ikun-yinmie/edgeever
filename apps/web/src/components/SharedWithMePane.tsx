@@ -21,12 +21,15 @@ import { GroupSharePolicyDialog } from "@/components/settings/GroupSharePolicyDi
 import { ShareToGroupDialog } from "@/components/dialogs/ShareToGroupDialog";
 import { describeEditPolicy, groupSharedItems } from "@/lib/shared-with-me";
 import type { SharedPaneScope } from "@/lib/shared-with-me";
+import {
+  buildPublicShareUrl,
+  resolveDefaultShareServerUrl,
+  useShareServerConfig,
+} from "@/lib/share-servers";
 import { cn } from "@/lib/utils";
 
 export const SHARED_WITH_ME_QUERY_KEY = ["shared-with-me"];
 export const MEMO_LINK_SHARES_QUERY_KEY = ["memo-link-shares"];
-
-const buildShareUrl = (token: string) => `${window.location.origin}/share/${encodeURIComponent(token)}`;
 
 interface SharedWithMePaneProps {
   onClose: () => void;
@@ -78,6 +81,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
   const sharedQuery = useQuery({ queryKey: SHARED_WITH_ME_QUERY_KEY, queryFn: api.getSharedWithMe });
   const groupsQuery = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const linkSharesQuery = useQuery({ queryKey: MEMO_LINK_SHARES_QUERY_KEY, queryFn: api.listMemoLinkShares, staleTime: 60_000 });
+  const shareServersQuery = useShareServerConfig();
+  const defaultShareServerUrl = resolveDefaultShareServerUrl(shareServersQuery.data);
   const [expandedNotebookId, setExpandedNotebookId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [policyTarget, setPolicyTarget] = useState<{ share: GroupShareSummary; groupId: string } | null>(null);
@@ -136,7 +141,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
 
   const copyShareLink = async (token: string) => {
     const { copyTextToClipboard } = await import("@/lib/clipboard");
-    const copied = await copyTextToClipboard(buildShareUrl(token));
+    const copied = await copyTextToClipboard(buildPublicShareUrl(token, defaultShareServerUrl));
     if (copied) {
       setCopiedToken(token);
       window.setTimeout(() => setCopiedToken((current) => (current === token ? null : current)), 1800);

@@ -26,6 +26,8 @@ import {
   isRegistrationCodeRequired,
   isRegistrationEnabled,
   mapInstanceSettingsRow,
+  normalizeShareServerUrl,
+  parseShareServerEntries,
 } from "./instance-settings-service";
 import { requireInstanceAdmin } from "./request-auth";
 import { hitRateLimit } from "./rate-limit";
@@ -604,6 +606,7 @@ export const registerInstanceAdminRoutes = (
         }
       }
       const database = context.env.storage.db;
+      const currentSettings = await getInstanceSettingsRow(database);
       const updates: string[] = [];
       const binds: unknown[] = [];
       const auditPayload: Record<string, unknown> = {};
@@ -613,6 +616,40 @@ export const registerInstanceAdminRoutes = (
         binds.push(value);
         auditPayload[key] = value;
       };
+
+      if (input.shareServers !== undefined || input.defaultShareServerUrl !== undefined) {
+        const configuredServers = input.shareServers !== undefined
+          ? (input.shareServers ?? []).map((entry) => ({
+              url: normalizeShareServerUrl(entry.url) ?? entry.url.trim(),
+              label: entry.label?.trim() || null,
+            }))
+          : parseShareServerEntries(currentSettings.share_servers);
+        if (new Set(configuredServers.map((entry) => entry.url)).size !== configuredServers.length) {
+          return badRequest(context, "Share server URLs must be unique.");
+        }
+        const requestedDefault = input.defaultShareServerUrl !== undefined
+          ? (input.defaultShareServerUrl ? normalizeShareServerUrl(input.defaultShareServerUrl) : null)
+          : normalizeShareServerUrl(currentSettings.default_share_server_url);
+        if (input.defaultShareServerUrl !== undefined && input.defaultShareServerUrl !== null && !requestedDefault) {
+          return badRequest(context, "Default share server must be a valid HTTP(S) URL.");
+        }
+        const defaultIsConfigured = Boolean(
+          requestedDefault && configuredServers.some((entry) => entry.url === requestedDefault),
+        );
+        if (input.defaultShareServerUrl !== undefined && input.defaultShareServerUrl !== null && !defaultIsConfigured) {
+          return badRequest(context, "Default share server must be one of the configured servers.");
+        }
+        // Removing the current default server without naming a replacement must
+        // not leave a dangling default behind.
+        const effectiveDefault = defaultIsConfigured ? requestedDefault : null;
+
+        if (input.shareServers !== undefined) {
+          setColumn("share_servers", configuredServers.length > 0 ? JSON.stringify(configuredServers) : null, "shareServers");
+        }
+        if (input.shareServers !== undefined || input.defaultShareServerUrl !== undefined) {
+          setColumn("default_share_server_url", effectiveDefault, "defaultShareServerUrl");
+        }
+      }
 
       if (input.registrationEnabled !== undefined) setColumn("registration_enabled", input.registrationEnabled ? 1 : 0, "registrationEnabled");
       if (input.registrationCodeRequired !== undefined) setColumn("registration_code_required", input.registrationCodeRequired ? 1 : 0, "registrationCodeRequired");

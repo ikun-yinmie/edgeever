@@ -363,3 +363,42 @@ describe("password-protected memo shares", () => {
     sqlite.close();
   });
 });
+
+describe("share server picker config", () => {
+  test("returns configured servers and falls back to the first default", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    sqlite.query(
+      "UPDATE instance_settings SET share_servers = ?, default_share_server_url = ? WHERE id = 'instance'",
+    ).run(
+      JSON.stringify([
+        { url: "https://notes.example.com", label: "Public" },
+        { url: "http://192.168.1.9:9634", label: null },
+      ]),
+      "https://removed.example.com",
+    );
+    const app = createShareApp(environment);
+
+    const response = await app.request("/api/v1/share-servers", {}, environment);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      servers: [
+        { url: "https://notes.example.com", label: "Public" },
+        { url: "http://192.168.1.9:9634", label: null },
+      ],
+      defaultUrl: "https://notes.example.com",
+    });
+    sqlite.close();
+  });
+
+  test("requires a signed-in user", async () => {
+    const { sqlite, environment } = createDatabaseEnvironment();
+    const app = new Hono();
+    registerMemoShareRoutes(app);
+
+    const response = await app.request("/api/v1/share-servers", {}, environment);
+
+    expect(response.status).toBe(403);
+    sqlite.close();
+  });
+});

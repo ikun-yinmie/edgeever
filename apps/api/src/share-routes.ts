@@ -9,7 +9,7 @@ import { hashPassword, randomToken, verifyPassword } from "./auth-crypto";
 import { parseByteRange, rangeNotSatisfiable } from "./byte-range";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { apiError, notFound } from "./http-errors";
-import { getShareMissingMessage } from "./instance-settings-service";
+import { getShareMissingMessage, getShareServerConfig } from "./instance-settings-service";
 import { resolveObjectStorage } from "./object-storage";
 import { getAuditActor, getWorkspaceId, requireUser } from "./request-auth";
 import { contentDispositionAttachment, contentDispositionInline } from "./resource-service";
@@ -306,6 +306,14 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
 };
 
 export const registerMemoShareRoutes = (app: Hono<AppEnv>) => {
+  // Signed-in share pickers need the configured public endpoints; the values
+  // are not sensitive but are only useful inside the workspace.
+  app.get("/api/v1/share-servers", async (c) => {
+    const denied = requireUser(c);
+    if (denied) return denied;
+    return c.json(await getShareServerConfig(c.env.storage.db));
+  });
+
   // Listing of every active public (link) share in the workspace, used by the
   // "My shares" sidebar section to review and revoke outbound shares.
   app.get("/api/v1/memo-link-shares", async (c) => {
