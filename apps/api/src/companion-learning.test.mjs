@@ -162,9 +162,11 @@ for (const legacyColumn of [false, true]) test(`upgrade preserves old SQLite dat
       INSERT INTO companion_turns(id,workspace_id,owner_id,thread_id,memory_revision,message,status,model,use_memory,allow_notes,locale,created_at,expires_at)
       VALUES ('legacy-turn','paw','user','legacy-turn',0,'old','completed','old-model',0,1,'en-US','2026-09-01','2027-01-01');
       INSERT INTO companion_discoveries(id,workspace_id,owner_id,turn_id,settings_version,kind,title,body,sources_json,fingerprint,created_at)
-      VALUES ('legacy-discovery','paw','user','legacy-turn',7,'insight','Old','Keep me','[]','old','2026-09-01');`);
-    const oldStorage = createSelfHostedStorageAdapter(sqlite, `${dir}/resources`);
-    const note = await createMemoRecord(oldStorage.db, scope.workspaceId, { notebookId: "inbox", title: "Original", contentMarkdown: "Preserve **exactly**", tags: ["original"] }, actor, "user");
+      VALUES ('legacy-discovery','paw','user','legacy-turn',7,'insight','Old','Keep me','[]','old','2026-09-01');
+      INSERT INTO memos(id,workspace_id,notebook_id,title,excerpt,tags_json,created_by,updated_by,created_at,updated_at)
+      VALUES ('legacy-note','paw','inbox','Original','Preserve exactly','["original"]','user','user','2026-09-01','2026-09-01');
+      INSERT INTO memo_contents(memo_id,content_json,content_markdown,content_text,content_hash,created_at,updated_at)
+      VALUES ('legacy-note','{"type":"doc","content":[]}','Preserve **exactly**','Preserve exactly','legacy-hash','2026-09-01','2026-09-01');`);
     if (legacyColumn) sqlite.exec("ALTER TABLE companion_discovery_settings ADD COLUMN use_memory INTEGER NOT NULL DEFAULT 0");
     sqlite.close(); sqlite = new Database(`${dir}/old.sqlite`);
     sqlite.exec("PRAGMA foreign_keys = ON");
@@ -173,7 +175,7 @@ for (const legacyColumn of [false, true]) test(`upgrade preserves old SQLite dat
     expect(await getDiscoverySettings(db, scope)).toMatchObject({ enabled: true, version: 7, learningEnabled: false, useMemory: false });
     expect((await listCompanionMemories(db, scope))[0]).toMatchObject({ id: "legacy", content: "Keep originals", version: 4, kind: "explicit" });
     expect(sqlite.query("SELECT body FROM companion_discoveries WHERE id = 'legacy-discovery'").get().body).toBe("Keep me");
-    expect(sqlite.query("SELECT content_markdown FROM memo_contents WHERE memo_id = ?").get(note.id).content_markdown).toBe("Preserve **exactly**");
+    expect(sqlite.query("SELECT content_markdown FROM memo_contents WHERE memo_id = ?").get("legacy-note").content_markdown).toBe("Preserve **exactly**");
     expect(sqlite.query("PRAGMA foreign_key_check").all()).toEqual([]);
   } finally { sqlite.close(); rmSync(dir, { recursive: true }); }
 });

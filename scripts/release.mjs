@@ -459,10 +459,11 @@ export const runParallelValidations = async ({
   executable = process.execPath,
   validations = RELEASE_VALIDATIONS,
 } = {}) => {
-  console.log(`[release] running ${validations.length} validations in parallel`);
-  const results = await Promise.all(
-    validations.map(({ label, args }) => new Promise((resolveValidation) => {
-      console.log(`[release] start: ${label}`);
+  console.log(`[release] running ${validations.length} validations sequentially`);
+  const results = [];
+  for (const { label, args } of validations) {
+    console.log(`[release] start: ${label}`);
+    const result = await new Promise((resolveValidation) => {
       const child = spawn(executable, args, {
         cwd: resolve("."),
         env: process.env,
@@ -470,15 +471,16 @@ export const runParallelValidations = async ({
       });
       child.on("error", (error) => resolveValidation({ label, error }));
       child.on("exit", (code, signal) => resolveValidation({ label, code, signal }));
-    })),
-  );
+    });
+    results.push(result);
+  }
   const failures = results.filter((result) => result.error || result.code !== 0);
   if (failures.length > 0) {
     throw new Error(
       `Release validation failed: ${failures.map(({ label }) => label).join(", ")}`,
     );
   }
-  console.log("[release] all parallel validations passed");
+  console.log("[release] all validations passed");
 };
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));

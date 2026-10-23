@@ -1348,7 +1348,7 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
   }, [editor]);
 
   useDOMImperativeHandle(
-    props.ref,
+    props.ref as Parameters<typeof useDOMImperativeHandle>[0],
     () => ({
       beginImageUpload,
       cancelImageUpload,
