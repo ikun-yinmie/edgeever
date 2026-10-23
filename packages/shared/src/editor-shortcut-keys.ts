@@ -140,15 +140,21 @@ export const normalizeEditorShortcutSettings = (value: unknown): EditorShortcutS
 export const serializeEditorShortcutSettings = (settings: EditorShortcutSettings) =>
   JSON.stringify(settings);
 
-const runEditorShortcut = (editor: Editor, id: EditorShortcutId): boolean => {
+export const runEditorShortcut = (editor: Editor, id: EditorShortcutId): boolean => {
   const chain = editor.chain().focus();
+  // Re-applying the heading that is already active toggles back to body text,
+  // so a second Alt+Ctrl+N press undoes the first instead of doing nothing.
+  const applyHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) =>
+    editor.isActive("heading", { level })
+      ? chain.setParagraph().run()
+      : chain.setHeading({ level }).run();
   switch (id) {
-    case "heading-1": return chain.setHeading({ level: 1 }).run();
-    case "heading-2": return chain.setHeading({ level: 2 }).run();
-    case "heading-3": return chain.setHeading({ level: 3 }).run();
-    case "heading-4": return chain.setHeading({ level: 4 }).run();
-    case "heading-5": return chain.setHeading({ level: 5 }).run();
-    case "heading-6": return chain.setHeading({ level: 6 }).run();
+    case "heading-1": return applyHeading(1);
+    case "heading-2": return applyHeading(2);
+    case "heading-3": return applyHeading(3);
+    case "heading-4": return applyHeading(4);
+    case "heading-5": return applyHeading(5);
+    case "heading-6": return applyHeading(6);
     case "paragraph": return chain.setParagraph().run();
     case "bold": return chain.toggleBold().run();
     case "italic": return chain.toggleItalic().run();

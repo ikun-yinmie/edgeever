@@ -11,6 +11,7 @@ import {
   editorShortcutBindingToKeymapName,
   editorShortcutBindingsEqual,
   normalizeEditorShortcutSettings,
+  runEditorShortcut,
 } from "./editor-shortcut-keys.ts";
 
 const KEYMAP_MODIFIERS = new Set(["Mod", "Alt", "Shift", "Ctrl"]);
@@ -117,6 +118,36 @@ describe("editor shortcut keys", () => {
 
     expect(editor.state.doc.childCount).toBe(2);
     expect(editor.state.doc.child(1).attrs.meta).toMatchObject({ collapsed: false });
+    editor.destroy();
+  });
+
+  test("pressing the active heading shortcut toggles the block back to body text", () => {
+    const editor = new Editor({
+      extensions: [
+        StarterKit.configure({ codeBlock: false }),
+        createEdgeEverCodeBlock(),
+        createEditorShortcutExtension(() => DEFAULT_EDITOR_SHORTCUT_SETTINGS),
+      ],
+      content: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "hello" }] }],
+      },
+    });
+    editor.commands.setTextSelection(1);
+
+    runEditorShortcut(editor, "heading-1");
+    expect(editor.state.doc.firstChild.type.name).toBe("heading");
+    expect(editor.state.doc.firstChild.attrs.level).toBe(1);
+
+    runEditorShortcut(editor, "heading-1");
+    expect(editor.state.doc.firstChild.type.name).toBe("paragraph");
+
+    // A different heading level still replaces the current one rather than clearing it.
+    runEditorShortcut(editor, "heading-2");
+    expect(editor.state.doc.firstChild.attrs.level).toBe(2);
+    runEditorShortcut(editor, "heading-1");
+    expect(editor.state.doc.firstChild.type.name).toBe("heading");
+    expect(editor.state.doc.firstChild.attrs.level).toBe(1);
     editor.destroy();
   });
 });
