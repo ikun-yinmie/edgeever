@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
   openRendererIssue: (details) => ipcRenderer.invoke("desktop:open-renderer-issue", details),
   rendererBootstrapReady: () => ipcRenderer.send("desktop:renderer-bootstrap-ready"),
   updateStatus: () => ipcRenderer.invoke("desktop:update-status"),
+  updatePreferences: () => ipcRenderer.invoke("desktop:update-preferences"),
+  setUpdatePreferences: (value) => ipcRenderer.invoke("desktop:set-update-preferences", value),
   checkUpdate: () => ipcRenderer.invoke("desktop:check-update"),
   downloadUpdate: () => ipcRenderer.invoke("desktop:download-update"),
   installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
@@ -76,6 +78,29 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("desktop:update-status-changed", listener);
     return () => ipcRenderer.removeListener("desktop:update-status-changed", listener);
+  },
+  onUpdateInstallPrepare: (callback) => {
+    const listener = async (_event, payload) => {
+      if (typeof payload?.requestId !== "string") return;
+      try {
+        const result = await callback();
+        ipcRenderer.send("desktop:update-install-prepared", {
+          requestId: payload.requestId,
+          ok: result?.ok === true,
+          reason: typeof result?.reason === "string" ? result.reason : null,
+          pending: Number.isFinite(result?.pending) ? result.pending : 0,
+        });
+      } catch {
+        ipcRenderer.send("desktop:update-install-prepared", {
+          requestId: payload.requestId,
+          ok: false,
+          reason: "sync-failed",
+          pending: 0,
+        });
+      }
+    };
+    ipcRenderer.on("desktop:update-install-prepare", listener);
+    return () => ipcRenderer.removeListener("desktop:update-install-prepare", listener);
   },
   sidecarRequest: (method, params = {}) => ipcRenderer.invoke("desktop:sidecar-request", method, params),
   beginStagedResource: (input) => ipcRenderer.invoke("desktop:stage-resource-begin", input),

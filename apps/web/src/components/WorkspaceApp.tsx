@@ -139,6 +139,7 @@ import { closeOtherMemoTabs, reorderMemoTabs, replaceActiveMemoTab } from "@/lib
 import { useWorkspacePreferences } from "@/hooks/useWorkspacePreferences";
 import { useWorkspaceSelection } from "@/hooks/useWorkspaceSelection";
 import { useWorkspaceQueuedSync } from "@/hooks/useWorkspaceQueuedSync";
+import { useDesktopUpdateInstallGuard } from "@/hooks/useDesktopUpdateInstallGuard";
 import { EdgeEverPluginHost, type RegisteredPluginPanel } from "@/lib/plugins/plugin-host";
 import { loadResolvedPluginMarketplace } from "@/lib/plugins/plugin-marketplace";
 import { updateOfficialMarketplacePlugins } from "@/lib/plugins/plugin-updates";
@@ -679,6 +680,10 @@ export const WorkspaceApp = ({
     setOnline: setIsOnline,
     setSelectedMemoId,
   });
+
+  // A desktop update restart is only allowed after this renderer flushed the
+  // live draft and emptied the local sync queue.
+  useDesktopUpdateInstallGuard(runQueuedSync);
 
   const invalidateWorkspaceQueries = useCallback(async () => {
     await Promise.all([

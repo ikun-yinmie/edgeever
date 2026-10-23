@@ -6,6 +6,10 @@ const preloadSource = readFileSync(new URL("../preload/index.cjs", import.meta.u
 const noticeSource = readFileSync(new URL("../../../web/src/components/DesktopUpdateNotice.tsx", import.meta.url), "utf8");
 const systemInfoSource = readFileSync(new URL("../../../web/src/components/settings/SystemInfoPanel.tsx", import.meta.url), "utf8");
 const notebookPaneSource = readFileSync(new URL("../../../web/src/components/NotebookPane.tsx", import.meta.url), "utf8");
+const updateCardSource = readFileSync(new URL("../../../web/src/components/settings/DesktopUpdateCard.tsx", import.meta.url), "utf8");
+const updateGuardSource = readFileSync(new URL("../../../web/src/hooks/useDesktopUpdateInstallGuard.ts", import.meta.url), "utf8");
+const editorPaneSource = readFileSync(new URL("../../../web/src/components/EditorPane.tsx", import.meta.url), "utf8");
+const updateFlushSource = readFileSync(new URL("../../../web/src/lib/update-install-flush.ts", import.meta.url), "utf8");
 
 describe("desktop update flow", () => {
   test("enables automatic updates for packaged Linux AppImages", () => {
@@ -28,7 +32,7 @@ describe("desktop update flow", () => {
   test("fails closed around unsigned Windows automatic updates", () => {
     expect(mainSource).toContain("fetchTrustedWindowsUpdate({");
     expect(mainSource).toContain("verifyDownloadedWindowsUpdate({");
-    expect(mainSource).toContain('autoUpdater.autoInstallOnAppQuit = process.platform !== "win32"');
+    expect(mainSource).toContain("autoUpdater.autoInstallOnAppQuit = false");
     expect(mainSource).toContain("windowsDownloadedUpdateVerified = true");
     expect(mainSource).toContain('writeDiagnostic("update.windows-package-blocked"');
     expect(mainSource).toContain('downloadTrustedDesktopUpdate("manual-download")');
@@ -80,6 +84,35 @@ describe("desktop update flow", () => {
     expect(noticeSource).toContain('role="alert"');
     expect(notebookPaneSource).toContain("<DesktopUpdateNotice />");
     expect(notebookPaneSource).toContain('className="flex items-center gap-1"');
+  });
+
+  test("persists auto-update preferences and gates background checks by time window", () => {
+    expect(mainSource).toContain("UPDATE_PREFERENCES_FILE");
+    expect(mainSource).toContain("loadUpdatePreferences()");
+    expect(mainSource).toContain('ipcMain.handle("desktop:update-preferences"');
+    expect(mainSource).toContain('ipcMain.handle("desktop:set-update-preferences"');
+    expect(mainSource).toContain("persistUpdatePreferences()");
+    expect(mainSource).toContain("shouldAutoUpdateNow(updatePreferences)");
+    expect(mainSource).toContain('checkForDesktopUpdate("window")');
+    expect(updateCardSource).toContain("desktopUpdate.autoUpdate");
+    expect(updateCardSource).toContain("desktopUpdate.windowStart");
+    expect(updateCardSource).toContain("bridge.setUpdatePreferences");
+    expect(updateCardSource).toContain("desktopUpdate.currentVersion");
+    expect(preloadSource).toContain('updatePreferences: () => ipcRenderer.invoke("desktop:update-preferences")');
+  });
+
+  test("syncs local notes before installing and cancels the restart when sync is incomplete", () => {
+    expect(mainSource).toContain("prepareRendererForUpdateInstall");
+    expect(mainSource).toContain('"desktop:update-install-prepare"');
+    expect(mainSource).toContain('"desktop:update-install-prepared"');
+    expect(mainSource).toContain('writeDiagnostic("update.install-sync-blocked"');
+    expect(preloadSource).toContain("onUpdateInstallPrepare");
+    expect(updateGuardSource).toContain("flushEditorBeforeUpdateInstall");
+    expect(updateGuardSource).toContain("getDesktopSyncSummary");
+    expect(updateGuardSource).toContain("summary.total === 0");
+    expect(updateFlushSource).toContain("registerEditorUpdateFlush");
+    expect(editorPaneSource).toContain("registerEditorUpdateFlush");
+    expect(mainSource).not.toContain("autoUpdater.autoInstallOnAppQuit = true");
   });
 
   test("does not hold auto-restart while the GitHub release is newer than the instance", () => {

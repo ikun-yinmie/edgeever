@@ -322,7 +322,11 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
     },
   });
   const desktopUpdateInstallMutation = useMutation({
-    mutationFn: () => desktopBridge!.installUpdate(),
+    mutationFn: async () => {
+      const result = await desktopBridge!.installUpdate();
+      if (!result?.started) throw new Error(result?.reason ?? "install-failed");
+      return result;
+    },
   });
   const infoGroups = useMemo(() => {
     const groups = getWebSystemInfoGroups(t, i18n.language, {

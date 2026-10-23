@@ -110,10 +110,15 @@ interface EdgeEverDesktopBridge {
   }>;
   setAccountScope(accountId: string | null): Promise<{ ready: true; scope: string }>;
   updateStatus(): Promise<DesktopUpdateStatus>;
+  updatePreferences(): Promise<DesktopUpdatePreferences>;
+  setUpdatePreferences(value: DesktopUpdatePreferenceInput): Promise<DesktopUpdatePreferences>;
   checkUpdate(): Promise<DesktopUpdateStatus>;
   downloadUpdate(): Promise<unknown>;
-  installUpdate(): Promise<unknown>;
+  installUpdate(): Promise<DesktopUpdateInstallResult>;
   onUpdateStatus(callback: (status: DesktopUpdateStatus) => void): () => void;
+  onUpdateInstallPrepare?(
+    callback: () => Promise<DesktopUpdateInstallPreparation>,
+  ): () => void;
   sidecarRequest<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   beginStagedResource(input: { memoId: string; name: string; type: string; size: number }): Promise<{ id: string; partSize: number }>;
   appendStagedResource(id: string, bytes: ArrayBuffer): Promise<{ receivedBytes: number }>;
@@ -158,7 +163,31 @@ type DesktopMarkdownMirrorResult = DesktopMarkdownMirrorStatus & {
 interface DesktopUpdateStatus {
   state: "idle" | "available" | "downloaded";
   version: string | null;
+  currentVersion: string;
 }
+
+interface DesktopUpdatePreferenceInput {
+  autoUpdateEnabled: boolean;
+  windowEnabled: boolean;
+  windowStart: string;
+  windowEnd: string;
+}
+
+type DesktopUpdatePreferences = DesktopUpdatePreferenceInput & {
+  autoUpdateSupported: boolean;
+};
+
+type DesktopUpdateInstallPreparation = {
+  ok: boolean;
+  reason?: string | null;
+  pending?: number;
+};
+
+type DesktopUpdateInstallResult = {
+  started: boolean;
+  reason?: string;
+  pending?: number;
+};
 
 type DesktopLocalDataResetErrorCode =
   | "unsafe-data-directory"

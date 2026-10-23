@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, session, net, pro
 import { createReadStream, existsSync } from "node:fs";
 import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -53,6 +54,13 @@ import {
   serializeMarkdownMirrorConfig,
   syncMarkdownMirror,
 } from "./markdown-mirror.mjs";
+import {
+  UPDATE_PREFERENCES_FILE,
+  normalizeUpdatePreferences,
+  parseUpdatePreferences,
+  serializeUpdatePreferences,
+  shouldAutoUpdateNow,
+} from "./update-preferences.mjs";
 import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
@@ -150,6 +158,9 @@ let updateState = "idle";
 let updateCheckInFlight = null;
 let updateDownloadInFlight = null;
 let updateCheckTimer = null;
+let updateWindowTimer = null;
+let updateInstallInProgress = false;
+let updatePreferences = normalizeUpdatePreferences(null);
 let lastUpdateCheckAt = 0;
 let downloadedUpdateVersion = null;
 let promptedUpdateVersion = null;
@@ -190,6 +201,10 @@ const scheduledTaskScheduler = new ScheduledTaskScheduler({
 });
 const updateCheckIntervalMs = 60 * 60 * 1_000;
 const updateCheckFocusThrottleMs = 15 * 60 * 1_000;
+// A short tick catches the start of a configured update window even when it is
+// narrower than the hourly background interval. The 15-minute throttle still
+// limits how often a check actually runs.
+const updateWindowTickMs = 5 * 60 * 1_000;
 const proxyProbeTimeoutMs = 5_000;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const windowStatePath = () => join(app.getPath("userData"), "window-state.json");
@@ -222,6 +237,26 @@ const sidecarDataDirectory = (accountId = null) => {
 const legacyDataDirectory = () => app.getPath("userData");
 const stagedResourceDirectory = () => join(sidecarDataDirectory(activeAccountId), "resource-outbox");
 const resourceCacheDirectory = () => join(sidecarDataDirectory(activeAccountId), "resource-cache");
+
+const updatePreferencesFilePath = () => join(app.getPath("userData"), UPDATE_PREFERENCES_FILE);
+
+const loadUpdatePreferences = async () => {
+  try {
+    updatePreferences = parseUpdatePreferences(await readFile(updatePreferencesFilePath(), "utf8"));
+  } catch {
+    updatePreferences = normalizeUpdatePreferences(null);
+  }
+};
+
+const persistUpdatePreferences = async () => {
+  await writeFile(updatePreferencesFilePath(), serializeUpdatePreferences(updatePreferences), { mode: 0o600 });
+  await restrictFile(updatePreferencesFilePath());
+};
+
+const desktopUpdatePreferencesPayload = () => ({
+  ...updatePreferences,
+  autoUpdateSupported: app.isPackaged && process.env.EDGE_EVER_DISABLE_AUTO_UPDATE !== "1",
+});
 
 const markdownMirrorConfigFilePath = () => join(app.getPath("userData"), MARKDOWN_MIRROR_CONFIG_FILE);
 const MARKDOWN_MIRROR_SYNC_METHODS = new Set([
@@ -1164,6 +1199,7 @@ const refreshTrayMenu = () => {
 const desktopUpdateStatus = () => ({
   state: updateState,
   version: downloadedUpdateVersion,
+  currentVersion: app.getVersion(),
 });
 
 const publishDesktopUpdateStatus = () => {
@@ -1171,17 +1207,100 @@ const publishDesktopUpdateStatus = () => {
   mainWindow.webContents.send("desktop:update-status-changed", desktopUpdateStatus());
 };
 
-const installDownloadedUpdate = () => {
+const UPDATE_INSTALL_PREPARE_TIMEOUT_MS = 60_000;
+
+/**
+ * Ask the renderer to flush the active editor and push every queued local
+ * change to the server. Installation only proceeds when it reports success, so
+ * a restart can never strand unsynced notes in the local sidecar.
+ */
+const prepareRendererForUpdateInstall = () => {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+    return Promise.resolve({ ok: false, reason: "renderer-unavailable", pending: 0 });
+  }
+  return new Promise((resolve) => {
+    const requestId = randomUUID();
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      ipcMain.removeListener("desktop:update-install-prepared", listener);
+      resolve(result);
+    };
+    const listener = (_event, payload) => {
+      if (payload?.requestId !== requestId) return;
+      finish({
+        ok: payload?.ok === true,
+        reason: typeof payload?.reason === "string" ? payload.reason : null,
+        pending: Number.isFinite(payload?.pending) ? payload.pending : 0,
+      });
+    };
+    const timeout = setTimeout(() => {
+      finish({ ok: false, reason: "sync-timeout", pending: 0 });
+    }, UPDATE_INSTALL_PREPARE_TIMEOUT_MS);
+    ipcMain.on("desktop:update-install-prepared", listener);
+    mainWindow.webContents.send("desktop:update-install-prepare", { requestId });
+  });
+};
+
+const showUpdateSyncBlockedDialog = async (preparation) => {
+  showWindow(mainWindow);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const isChinese = app.getLocale().toLowerCase().startsWith("zh");
+  const pending = Number.isFinite(preparation?.pending) ? preparation.pending : 0;
+  const detail = pending > 0
+    ? (isChinese
+        ? `仍有 ${pending} 项本地更改未同步到服务器。请检查网络或同步冲突后重试。`
+        : `${pending} local change${pending === 1 ? "" : "s"} could not be synced to the server. Check the connection or sync conflicts and try again.`)
+    : (isChinese
+        ? "本地笔记尚未确认同步到服务器，已取消本次重启。请检查网络后重试。"
+        : "Local notes could not be confirmed as synced, so the restart was cancelled. Check the connection and try again.");
+  await dialog.showMessageBox(mainWindow, {
+    type: "warning",
+    title: isChinese ? "更新前同步未完成" : "Sync incomplete before update",
+    message: isChinese ? "已取消重启，以免丢失笔记" : "Restart cancelled to protect your notes",
+    detail,
+    buttons: [isChinese ? "知道了" : "OK"],
+    noLink: true,
+  });
+};
+
+const installDownloadedUpdate = async () => {
   if (
     updateState !== "downloaded" ||
     (process.platform === "win32" && !windowsDownloadedUpdateVerified)
-  ) return { started: false };
-  // The normal window close handler hides the app. Mark this as a real quit
-  // before electron-updater closes windows so installation can proceed.
-  isQuitting = true;
-  // Keep Windows updates silent and reuse the registered installation directory.
-  autoUpdater.quitAndInstall(process.platform === "win32", true);
-  return { started: true };
+  ) return { started: false, reason: "not-ready" };
+  if (updateInstallInProgress) return { started: false, reason: "in-progress" };
+  updateInstallInProgress = true;
+  try {
+    // The Linux AppImage verification harness has no signed-in workspace to
+    // sync; production installs always pass through the renderer gate.
+    const preparation = linuxUpdateTestMode
+      ? { ok: true, pending: 0, reason: null }
+      : await prepareRendererForUpdateInstall();
+    if (!preparation.ok || preparation.pending > 0) {
+      await writeDiagnostic("update.install-sync-blocked", {
+        reason: preparation.reason,
+        pending: preparation.pending,
+      });
+      await showUpdateSyncBlockedDialog(preparation).catch(() => undefined);
+      return {
+        started: false,
+        reason: preparation.reason ?? "sync-blocked",
+        pending: preparation.pending,
+      };
+    }
+    await writeDiagnostic("update.install-sync-ready");
+    // The normal window close handler hides the app. Mark this as a real quit
+    // before electron-updater closes windows so installation can proceed.
+    isQuitting = true;
+    // Keep Windows updates silent and reuse the registered installation directory.
+    autoUpdater.quitAndInstall(process.platform === "win32", true);
+    return { started: true };
+  } finally {
+    updateInstallInProgress = false;
+  }
 };
 
 const trackDesktopUpdateDownload = (downloadPromise, reason) => {
@@ -1219,8 +1338,8 @@ const promptForDownloadedUpdate = async (version) => {
       ? `EdgeEver v${version || "最新版"} 已下载完成。`
       : `EdgeEver v${version || "latest"} has been downloaded.`,
     detail: isChinese
-      ? "现在重启即可完成安装。也可以选择稍后，EdgeEver 会在您退出应用时自动安装。"
-      : "Restart now to finish installing it. You can also choose Later; EdgeEver will install it automatically when you quit the app.",
+      ? "现在重启即可完成安装，重启前会先同步本地笔记。也可以选择稍后，稍后在个人中心的“客户端更新”中重启。"
+      : "Restart now to finish installing it; local notes are synced first. You can also choose Later and restart from Client update in your profile settings.",
     buttons: [isChinese ? "重启以更新" : "Restart to Update", isChinese ? "稍后" : "Later"],
     defaultId: 0,
     cancelId: 1,
@@ -1234,8 +1353,16 @@ const promptForDownloadedUpdate = async (version) => {
   }
 };
 
+const AUTOMATIC_UPDATE_REASONS = new Set(["startup", "interval", "resume", "activate", "window", "preferences"]);
+
 const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } = {}) => {
   if (!app.isPackaged || process.env.EDGE_EVER_DISABLE_AUTO_UPDATE === "1" || updateState === "downloaded") {
+    return Promise.resolve(null);
+  }
+  // Manual checks stay available at any time; background checks (and the
+  // downloads they start) only run when the user enabled them and the current
+  // local time is inside the configured window.
+  if (AUTOMATIC_UPDATE_REASONS.has(reason) && !shouldAutoUpdateNow(updatePreferences)) {
     return Promise.resolve(null);
   }
   if (updateCheckInFlight) {
@@ -1294,7 +1421,9 @@ const configureAutoUpdater = () => {
     });
   }
   autoUpdater.autoDownload = process.platform !== "win32";
-  autoUpdater.autoInstallOnAppQuit = process.platform !== "win32";
+  // Installing on quit would bypass the renderer sync gate, so every install
+  // goes through the explicit restart flow instead.
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.autoRunAppAfterInstall = true;
   autoUpdater.on("update-available", (info) => {
     updateState = "available";
@@ -1331,7 +1460,6 @@ const configureAutoUpdater = () => {
           manifest: trustedWindowsUpdate,
         });
         windowsDownloadedUpdateVerified = true;
-        autoUpdater.autoInstallOnAppQuit = true;
       }
       updateState = "downloaded";
       downloadedUpdateVersion = info?.version || downloadedUpdateVersion;
@@ -1351,7 +1479,6 @@ const configureAutoUpdater = () => {
         await writeDiagnostic("update.download-handler-failed", { message: error.message });
         return;
       }
-      autoUpdater.autoInstallOnAppQuit = false;
       updateState = "idle";
       downloadedUpdateVersion = null;
       windowsDownloadedUpdateVerified = false;
@@ -1375,6 +1502,10 @@ const configureAutoUpdater = () => {
   updateCheckTimer = setInterval(() => {
     void checkForDesktopUpdate("interval", { force: true });
   }, updateCheckIntervalMs);
+  updateWindowTimer = setInterval(() => {
+    if (!updatePreferences.windowEnabled) return;
+    void checkForDesktopUpdate("window");
+  }, updateWindowTickMs);
   powerMonitor.on("resume", () => {
     void checkForDesktopUpdate("resume", { force: true });
     void scheduledTaskScheduler.runMissedOccurrences();
@@ -1741,6 +1872,7 @@ const startApplication = async () => {
   await loadProxySettings();
   await loadStorageLocation();
   await loadMarkdownMirrorConfig();
+  await loadUpdatePreferences();
   app.setAsDefaultProtocolClient("edgeever");
   recoveredAfterAbnormalExit = existsSync(crashMarkerPath());
   void writeDiagnostic(recoveredAfterAbnormalExit ? "session.recovered-after-abnormal-exit" : "session.started");
@@ -2140,6 +2272,16 @@ const startApplication = async () => {
     return { directMs, proxyMs, chosen };
   });
   ipcMain.handle("desktop:update-status", () => desktopUpdateStatus());
+  ipcMain.handle("desktop:update-preferences", () => desktopUpdatePreferencesPayload());
+  ipcMain.handle("desktop:set-update-preferences", async (_event, value) => {
+    updatePreferences = normalizeUpdatePreferences(value);
+    await persistUpdatePreferences();
+    void writeDiagnostic("update.preferences-changed", { ...updatePreferences });
+    if (updatePreferences.autoUpdateEnabled && shouldAutoUpdateNow(updatePreferences)) {
+      void checkForDesktopUpdate("preferences", { force: true });
+    }
+    return desktopUpdatePreferencesPayload();
+  });
   ipcMain.handle("desktop:check-update", async () => {
     await checkForDesktopUpdate("manual", { force: true, throwOnError: true });
     return desktopUpdateStatus();
@@ -2331,6 +2473,10 @@ app.on("before-quit", (event) => {
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer);
     updateCheckTimer = null;
+  }
+  if (updateWindowTimer) {
+    clearInterval(updateWindowTimer);
+    updateWindowTimer = null;
   }
   tray?.destroy();
   void (async () => {

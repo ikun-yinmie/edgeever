@@ -179,6 +179,7 @@ import {
 } from "@/lib/app-helpers";
 import { isPaperEditorTheme, publishEditorCssVars, resolvePaperEditorTheme } from "@/lib/publish-layout";
 import { resolveEditorShortcutSettings } from "@/lib/editor-shortcuts-settings";
+import { registerEditorUpdateFlush } from "@/lib/update-install-flush";
 import { createEditorShortcutExtension } from "@edgeever/shared";
 import { ThemeBlock } from "./ThemeBlock";
 import { EditorPhonePreview, PhonePreviewGlyph } from "./EditorPhonePreview";
@@ -3222,6 +3223,21 @@ const RichEditorPane = ({
   const mutateSave = saveMutation.mutate;
   const mutateSaveAsync = saveMutation.mutateAsync;
   const saveMutationPending = saveMutation.isPending;
+  const saveMutationPendingRef = useRef(saveMutationPending);
+  saveMutationPendingRef.current = saveMutationPending;
+
+  // A desktop update restart asks the renderer to persist the live draft
+  // before reporting that all local notes are safely synced. Wait out an
+  // autosave already in flight so the two writes never race on the revision.
+  useEffect(() => registerEditorUpdateFlush(async () => {
+    persistEditorScrollRef.current();
+    const deadline = Date.now() + 10_000;
+    while (saveMutationPendingRef.current && Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    if (!hasUnsavedChangesRef.current) return;
+    await mutateSaveAsync();
+  }), [mutateSaveAsync]);
 
   const editorShortcutBlocked = Boolean(
     historyOpen ||
