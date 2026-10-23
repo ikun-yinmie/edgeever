@@ -86,6 +86,12 @@ interface EdgeEverDesktopBridge {
   >;
   openStorageLocation(): Promise<{ ok: boolean }>;
   revealStorageLocation?(): Promise<{ ok: boolean }>;
+  markdownMirrorStatus(): Promise<DesktopMarkdownMirrorStatus>;
+  setMarkdownMirrorEnabled(enabled: boolean): Promise<DesktopMarkdownMirrorStatus>;
+  chooseMarkdownMirrorDirectory(): Promise<DesktopMarkdownMirrorResult>;
+  resetMarkdownMirrorDirectory(): Promise<DesktopMarkdownMirrorResult>;
+  syncMarkdownMirror(): Promise<DesktopMarkdownMirrorStatus>;
+  openMarkdownMirrorDirectory(): Promise<{ ok: boolean }>;
   recordRendererError(details: DesktopRendererErrorDetails): Promise<{ recorded: true }>;
   openRendererIssue(details: DesktopRendererErrorDetails): Promise<{ opened: true }>;
   rendererBootstrapReady(): void;
@@ -129,6 +135,25 @@ interface EdgeEverDesktopBridge {
   onImportMarkdown(callback: (payload: { name: string; content: string }) => void): () => void;
   onImportScreenshot?(callback: (payload: { captureId?: string; name: string; type: string; title?: string; bytes: Uint8Array }) => void): () => void;
 }
+
+type DesktopMarkdownMirrorStatus = {
+  enabled: boolean;
+  directory: string;
+  defaultDirectory: string;
+  isCustom: boolean;
+  lastSyncedAt: string;
+  fileCount: number;
+  lastError: string;
+  syncing: boolean;
+};
+
+type DesktopMarkdownMirrorErrorCode = "invalid-directory" | "target-not-writable" | "sync-failed";
+
+type DesktopMarkdownMirrorResult = DesktopMarkdownMirrorStatus & {
+  ok: boolean;
+  canceled?: boolean;
+  errorCode?: DesktopMarkdownMirrorErrorCode;
+};
 
 interface DesktopUpdateStatus {
   state: "idle" | "available" | "downloaded";

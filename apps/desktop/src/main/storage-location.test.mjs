@@ -98,17 +98,19 @@ describe("storage directory inspection", () => {
       await writeFile(join(source, "backups", "index.json"), "{}");
       await mkdir(join(source, "resource-outbox"), { recursive: true });
       await writeFile(join(source, "resource-outbox", "staged.bin"), "blob");
+      await mkdir(join(source, "markdown", "Work"), { recursive: true });
+      await writeFile(join(source, "markdown", "Work", "Plan.md"), "note");
       await mkdir(target, { recursive: true });
 
       const moved = await moveSidecarData(source, target);
-      expect(moved).toEqual(["accounts", "backups", "resource-outbox"]);
+      expect(moved).toEqual(["accounts", "backups", "resource-outbox", "markdown"]);
       expect(hasSidecarData(source)).toBe(false);
       expect(hasSidecarData(target)).toBe(true);
-      expect(await sidecarStorageUsage(target)).toEqual({ bytes: 8, files: 3 });
+      expect(await sidecarStorageUsage(target)).toEqual({ bytes: 12, files: 4 });
 
       await rollbackSidecarData(source, target, moved);
       expect(hasSidecarData(target)).toBe(false);
-      expect(await sidecarStorageUsage(source)).toEqual({ bytes: 8, files: 3 });
+      expect(await sidecarStorageUsage(source)).toEqual({ bytes: 12, files: 4 });
       expect(await readdir(target)).toEqual([]);
     } finally {
       await rm(base, { recursive: true, force: true });

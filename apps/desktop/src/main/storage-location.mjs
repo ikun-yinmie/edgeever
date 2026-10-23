@@ -15,6 +15,7 @@ export const SIDECAR_ROOT_ENTRIES = [
   "backups",
   "resource-outbox",
   "resource-cache",
+  "markdown",
 ];
 
 export const storageLocationConfigPath = (userDataDirectory) =>

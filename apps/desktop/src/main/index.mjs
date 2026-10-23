@@ -33,6 +33,7 @@ import {
 import { userDataDirectoryFromArguments } from "./user-data-directory.mjs";
 import {
   hasSidecarData,
+  isPathInside,
   movePath,
   moveSidecarData,
   normalizeStorageDirectory,
@@ -44,6 +45,14 @@ import {
   storageRevealTarget,
   validateStorageTarget,
 } from "./storage-location.mjs";
+import {
+  MARKDOWN_MIRROR_CONFIG_FILE,
+  normalizeMirrorDirectory,
+  parseMarkdownMirrorConfig,
+  removeMarkdownMirrorFiles,
+  serializeMarkdownMirrorConfig,
+  syncMarkdownMirror,
+} from "./markdown-mirror.mjs";
 import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
@@ -213,6 +222,158 @@ const sidecarDataDirectory = (accountId = null) => {
 const legacyDataDirectory = () => app.getPath("userData");
 const stagedResourceDirectory = () => join(sidecarDataDirectory(activeAccountId), "resource-outbox");
 const resourceCacheDirectory = () => join(sidecarDataDirectory(activeAccountId), "resource-cache");
+
+const markdownMirrorConfigFilePath = () => join(app.getPath("userData"), MARKDOWN_MIRROR_CONFIG_FILE);
+const MARKDOWN_MIRROR_SYNC_METHODS = new Set([
+  "memo.create",
+  "memo.update",
+  "memo.delete",
+  "memo.deleteBatch",
+  "memo.restore",
+  "memo.moveBatch",
+  "memo.merge",
+  "memo.emptyTrash",
+  "memo.restoreRevision",
+  "notebook.create",
+  "notebook.update",
+  "notebook.delete",
+  "notebook.restore",
+  "tag.rename",
+  "tag.delete",
+  "sync.apply",
+  "sync.bootstrap.prepare",
+]);
+let markdownMirrorConfig = parseMarkdownMirrorConfig("");
+let markdownMirrorTimer = null;
+let markdownMirrorSyncInFlight = false;
+let markdownMirrorSyncFollowUp = false;
+
+const loadMarkdownMirrorConfig = async () => {
+  try {
+    markdownMirrorConfig = parseMarkdownMirrorConfig(await readFile(markdownMirrorConfigFilePath(), "utf8"));
+  } catch {
+    markdownMirrorConfig = parseMarkdownMirrorConfig("");
+  }
+};
+
+const markdownMirrorDefaultDirectory = () => join(sidecarDataDirectory(activeAccountId), "markdown");
+const markdownMirrorDirectory = () => markdownMirrorConfig.directory || markdownMirrorDefaultDirectory();
+
+const persistMarkdownMirrorConfig = async () => {
+  try {
+    await writeFile(markdownMirrorConfigFilePath(), serializeMarkdownMirrorConfig(markdownMirrorConfig), { mode: 0o600 });
+    await restrictFile(markdownMirrorConfigFilePath());
+  } catch (error) {
+    void writeDiagnostic("markdown-mirror.config-write-failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const markdownMirrorStatus = () => ({
+  enabled: markdownMirrorConfig.enabled,
+  directory: markdownMirrorDirectory(),
+  defaultDirectory: markdownMirrorDefaultDirectory(),
+  isCustom: Boolean(markdownMirrorConfig.directory),
+  lastSyncedAt: markdownMirrorConfig.lastSyncedAt,
+  fileCount: markdownMirrorConfig.fileCount,
+  lastError: markdownMirrorConfig.lastError,
+  syncing: markdownMirrorSyncInFlight,
+});
+
+const runMarkdownMirrorSync = async () => {
+  if (!markdownMirrorConfig.enabled || storageMigrationInProgress) return null;
+  if (markdownMirrorSyncInFlight) {
+    markdownMirrorSyncFollowUp = true;
+    return null;
+  }
+  const client = sidecar;
+  if (!client) return null;
+  markdownMirrorSyncInFlight = true;
+  try {
+    const stats = await syncMarkdownMirror({
+      root: markdownMirrorDirectory(),
+      request: (method, params) => client.request(method, params),
+    });
+    markdownMirrorConfig = {
+      ...markdownMirrorConfig,
+      lastSyncedAt: new Date().toISOString(),
+      fileCount: stats.files,
+      lastError: "",
+    };
+    await persistMarkdownMirrorConfig();
+    void writeDiagnostic("markdown-mirror.synced", {
+      files: stats.files,
+      written: stats.written,
+      removed: stats.removed,
+    });
+    return stats;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    markdownMirrorConfig = { ...markdownMirrorConfig, lastError: message };
+    await persistMarkdownMirrorConfig();
+    void writeDiagnostic("markdown-mirror.sync-failed", { message });
+    return null;
+  } finally {
+    markdownMirrorSyncInFlight = false;
+    if (markdownMirrorSyncFollowUp) {
+      markdownMirrorSyncFollowUp = false;
+      requestMarkdownMirrorSync(1_000);
+    }
+  }
+};
+
+const requestMarkdownMirrorSync = (delayMs = 2_000) => {
+  if (!markdownMirrorConfig.enabled || isQuitting) return;
+  if (markdownMirrorTimer) clearTimeout(markdownMirrorTimer);
+  markdownMirrorTimer = setTimeout(() => {
+    markdownMirrorTimer = null;
+    void runMarkdownMirrorSync();
+  }, delayMs);
+};
+
+// Switching folders writes the new copy first and only then removes the files
+// recorded in the previous mirror manifest, so a failed move never loses notes.
+const applyMarkdownMirrorDirectory = async (requestedDirectory) => {
+  const previousDirectory = markdownMirrorDirectory();
+  const target = requestedDirectory ? normalizeMirrorDirectory(requestedDirectory) : "";
+  if (!target && requestedDirectory) {
+    return { ok: false, errorCode: "invalid-directory", ...markdownMirrorStatus() };
+  }
+  if (target) {
+    try {
+      await mkdir(target, { recursive: true });
+      const probePath = join(target, ".edgeever-write-probe");
+      try {
+        await writeFile(probePath, "", { flag: "wx", mode: 0o600 });
+      } catch {
+        return { ok: false, errorCode: "target-not-writable", ...markdownMirrorStatus() };
+      }
+      await rm(probePath, { force: true });
+    } catch {
+      return { ok: false, errorCode: "target-not-writable", ...markdownMirrorStatus() };
+    }
+  }
+
+  markdownMirrorConfig = { ...markdownMirrorConfig, directory: target, lastError: "" };
+  await persistMarkdownMirrorConfig();
+  const stats = markdownMirrorConfig.enabled ? await runMarkdownMirrorSync() : null;
+  const nextDirectory = markdownMirrorDirectory();
+  const overlapping = isPathInside(previousDirectory, nextDirectory) || isPathInside(nextDirectory, previousDirectory);
+  if (stats && previousDirectory && previousDirectory !== nextDirectory && !overlapping) {
+    try {
+      await removeMarkdownMirrorFiles(previousDirectory);
+    } catch (error) {
+      void writeDiagnostic("markdown-mirror.cleanup-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  if (markdownMirrorConfig.enabled && !stats && markdownMirrorConfig.lastError) {
+    return { ok: false, errorCode: "sync-failed", ...markdownMirrorStatus() };
+  }
+  return { ok: true, ...markdownMirrorStatus() };
+};
 
 const migrateLegacyAccountData = async (accountId) => {
   if (!accountId) return;
@@ -1319,6 +1480,7 @@ const changeStorageLocation = async (requestedTarget) => {
     if (!restarted) throw new Error("EdgeEver sidecar is unavailable");
     await restarted.waitUntilReady();
     void writeDiagnostic("storage.location-changed", { scope: sidecarScopeKey });
+    requestMarkdownMirrorSync(500);
     return { ok: true, rootDirectory: target };
   } catch (error) {
     await rollbackSidecarData(currentRoot, target, moved);
@@ -1356,6 +1518,7 @@ const scheduleSidecarRestart = () => {
       if (!restarted) throw new Error("EdgeEver sidecar is unavailable");
       await restarted.waitUntilReady();
       void writeDiagnostic("sidecar.restarted", { attempt: sidecarRestartAttempts, delayMs });
+      requestMarkdownMirrorSync(1_000);
     } catch (error) {
       void writeDiagnostic("sidecar.restart-failed", { attempt: sidecarRestartAttempts, message: error.message });
       await stopSidecar();
@@ -1577,6 +1740,7 @@ const startApplication = async () => {
   await loadDesktopSessionToken();
   await loadProxySettings();
   await loadStorageLocation();
+  await loadMarkdownMirrorConfig();
   app.setAsDefaultProtocolClient("edgeever");
   recoveredAfterAbnormalExit = existsSync(crashMarkerPath());
   void writeDiagnostic(recoveredAfterAbnormalExit ? "session.recovered-after-abnormal-exit" : "session.started");
@@ -1605,6 +1769,7 @@ const startApplication = async () => {
   ipcMain.handle("desktop:sidecar-request", async (_event, method, params) => {
     if (!sidecar) throw new Error("EdgeEver sidecar is unavailable");
     const result = await sidecar.request(method, params);
+    if (MARKDOWN_MIRROR_SYNC_METHODS.has(method)) requestMarkdownMirrorSync();
     if (method === "resource.delete" && isSafeResourceId(params?.resourceId)) {
       const directory = resourceCacheDirectory();
       await Promise.all([
@@ -1667,6 +1832,42 @@ const startApplication = async () => {
     shell.showItemInFolder(target);
     return { ok: true };
   });
+  ipcMain.handle("desktop:markdown-mirror-status", () => markdownMirrorStatus());
+  ipcMain.handle("desktop:set-markdown-mirror-enabled", async (event, enabled) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Markdown mirror changes must come from the main window");
+    markdownMirrorConfig = { ...markdownMirrorConfig, enabled: enabled === true, lastError: "" };
+    await persistMarkdownMirrorConfig();
+    if (markdownMirrorConfig.enabled) void runMarkdownMirrorSync();
+    return markdownMirrorStatus();
+  });
+  ipcMain.handle("desktop:choose-markdown-mirror-directory", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Markdown mirror changes must come from the main window");
+    const isChinese = app.getLocale().toLowerCase().startsWith("zh");
+    const options = {
+      title: isChinese ? "选择文章 Markdown 本地库目录" : "Choose the local Markdown library folder",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: markdownMirrorDirectory(),
+    };
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+    if (result.canceled) return { ok: false, canceled: true, ...markdownMirrorStatus() };
+    return applyMarkdownMirrorDirectory(result.filePaths[0] ?? "");
+  });
+  ipcMain.handle("desktop:reset-markdown-mirror-directory", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Markdown mirror changes must come from the main window");
+    return applyMarkdownMirrorDirectory("");
+  });
+  ipcMain.handle("desktop:sync-markdown-mirror", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Markdown mirror changes must come from the main window");
+    await runMarkdownMirrorSync();
+    return markdownMirrorStatus();
+  });
+  ipcMain.handle("desktop:open-markdown-mirror-directory", async (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Markdown mirror access must come from the main window");
+    const directory = markdownMirrorDirectory();
+    await mkdir(directory, { recursive: true });
+    const error = await shell.openPath(directory);
+    return { ok: !error };
+  });
   ipcMain.handle("desktop:set-account-scope", async (_event, accountId) => {
     if (storageMigrationInProgress) throw new Error("EdgeEver is moving local data to another folder");
     const normalizedAccountId = typeof accountId === "string" && accountId.trim() ? accountId.trim() : null;
@@ -1674,12 +1875,14 @@ const startApplication = async () => {
     scheduledTaskScheduler.clear();
     if (sidecar && sidecarScopeKey === nextScopeKey) {
       await sidecar.waitUntilReady();
+      requestMarkdownMirrorSync(1_000);
       return { ready: true, scope: nextScopeKey };
     }
     await stopSidecar();
     const nextSidecar = await startSidecar(normalizedAccountId);
     if (!nextSidecar) throw new Error("EdgeEver sidecar is unavailable");
     await nextSidecar.waitUntilReady();
+    requestMarkdownMirrorSync(1_000);
     return { ready: true, scope: nextScopeKey };
   });
   ipcMain.on("desktop:renderer-ready", (event) => {
@@ -2120,6 +2323,10 @@ app.on("before-quit", (event) => {
   if (sidecarRestartTimer) {
     clearTimeout(sidecarRestartTimer);
     sidecarRestartTimer = null;
+  }
+  if (markdownMirrorTimer) {
+    clearTimeout(markdownMirrorTimer);
+    markdownMirrorTimer = null;
   }
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer);
