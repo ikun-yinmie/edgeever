@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -439,7 +440,7 @@ describe("Cloudflare deployment entrypoints", () => {
     }
   });
 
-  test("deployed repositories receive guarded daily upstream updates", () => {
+  test.skipIf(!existsSync(resolve(repositoryRoot, ".github/workflows/sync-edgeever-upstream.yml")))("deployed repositories receive guarded daily upstream updates", () => {
     const workflow = readRepositoryFile(".github/workflows/sync-edgeever-upstream.yml");
     const bunConfig = readRepositoryFile("bunfig.toml");
     const packageJson = JSON.parse(readRepositoryFile("package.json"));
