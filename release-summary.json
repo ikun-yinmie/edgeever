@@ -1,14 +1,14 @@
 {
-  "version": "1.96.0",
+  "version": "1.97.0",
   "changes": {
     "en-US": [
-      "Site owners can enable a read-only People directory and choose whether to view all members' notes or only selected members' notes; the feature is off by default."
+      "The desktop app can now keep a local Markdown library that mirrors notes into their notebook folders; the location can be changed, and it follows the local storage folder when that moves."
     ],
     "zh-CN": [
-      "站长可在后台「人员簿」中选择查看全部成员笔记或指定成员笔记，并以只读方式浏览；该功能默认关闭。"
+      "桌面端新增「文章 Markdown 本地库」：笔记按笔记本目录自动写成 Markdown 文件，可自选保存位置；更换位置或迁移本地存储目录时，文件会一起处理。"
     ],
     "ja": [
-      "サイト管理者は読み取り専用の「メンバー」ディレクトリを有効にし、全メンバーのノートまたは選択したメンバーのノートのみを閲覧できるようになりました。この機能は初期状態では無効です。"
+      "デスクトップ版に「記事の Markdown ローカルライブラリ」を追加しました。ノートはノートブックのフォルダーごとに Markdown ファイルとして自動保存され、保存先の変更やローカル保存先の移行にも追随します。"
     ]
   }
 }
