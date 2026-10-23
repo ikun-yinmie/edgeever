@@ -1,14 +1,20 @@
 {
-  "version": "1.97.0",
+  "version": "1.98.0",
   "changes": {
     "en-US": [
-      "The desktop app can now keep a local Markdown library that mirrors notes into their notebook folders; the location can be changed, and it follows the local storage folder when that moves."
+      "The desktop client now shows the installed and latest versions in profile settings, supports manual download and restart, and lets you disable automatic updates or limit them to a daily time window.",
+      "A desktop update restart now saves the active draft and syncs all queued local notes first; the restart is cancelled if that sync cannot finish, preventing note loss.",
+      "Pressing the heading shortcut for the heading level that is already active now returns the block to body text."
     ],
     "zh-CN": [
-      "桌面端新增「文章 Markdown 本地库」：笔记按笔记本目录自动写成 Markdown 文件，可自选保存位置；更换位置或迁移本地存储目录时，文件会一起处理。"
+      "桌面端在个人中心显示当前版本和最新版本，支持手动下载并重启更新，也可以关闭自动更新或限定每天允许自动更新的时间段。",
+      "更新重启前会先保存当前草稿并同步所有待同步笔记；同步未完成时会取消重启，避免笔记丢失。",
+      "再次按下当前标题层级对应的快捷键会将段落恢复为正文。"
     ],
     "ja": [
-      "デスクトップ版に「記事の Markdown ローカルライブラリ」を追加しました。ノートはノートブックのフォルダーごとに Markdown ファイルとして自動保存され、保存先の変更やローカル保存先の移行にも追随します。"
+      "デスクトップ版のプロフィール設定で現在のバージョンと最新バージョンを確認でき、手動でのダウンロードと再起動、自動更新の停止、毎日の更新時間帯の指定に対応しました。",
+      "更新の再起動前には編集中の下書きを保存し、未同期のノートをすべて同期します。同期が完了しない場合は再起動を中止し、ノートの消失を防ぎます。",
+      "現在の見出しレベルと同じショートカットを再度押すと、段落を本文に戻せるようになりました。"
     ]
   }
 }
