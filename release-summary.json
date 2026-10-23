@@ -1,17 +1,14 @@
 {
-  "version": "1.95.0",
+  "version": "1.96.0",
   "changes": {
     "en-US": [
-      "The document outline now remembers whether it is expanded or collapsed for each note, instead of applying one global toggle to every note.",
-      "Public share pages now include a document outline with click-to-jump navigation, scroll highlighting, and a collapsible panel."
+      "Site owners can enable a read-only People directory and choose whether to view all members' notes or only selected members' notes; the feature is off by default."
     ],
     "zh-CN": [
-      "文档大纲的展开或收起状态现在会按笔记分别记忆，不再用一次切换影响所有笔记。",
-      "公开分享链接的阅读页现在会显示文档大纲，支持点击标题跳转、滚动高亮以及折叠。"
+      "站长可在后台「人员簿」中选择查看全部成员笔记或指定成员笔记，并以只读方式浏览；该功能默认关闭。"
     ],
     "ja": [
-      "文档大纲の展開・折りたたみ状態をノートごとに記憶するようになり、1つのノートでの切り替えが他のノートに影響しなくなりました。",
-      "公開共有リンクの閲覧ページに見出し一覧（アウトライン）を表示し、見出しへのジャンプ、スクロール連動のハイライト、折りたたみに対応しました。"
+      "サイト管理者は読み取り専用の「メンバー」ディレクトリを有効にし、全メンバーのノートまたは選択したメンバーのノートのみを閲覧できるようになりました。この機能は初期状態では無効です。"
     ]
   }
 }
