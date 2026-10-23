@@ -302,6 +302,32 @@ export type InstanceUser = AuthUser & {
   accountType: "user" | "group";
 };
 
+export type MemberNotesAccessMode = "off" | "all" | "selected";
+
+export type MemberNotesAccessSettings = {
+  mode: MemberNotesAccessMode;
+  selectedUserIds: string[];
+};
+
+export type MemberNotesMember = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  accountType: "user" | "group";
+  memoCount: number;
+  lastMemoUpdatedAt: string | null;
+};
+
+export type MemberNotesMembersResponse = {
+  mode: MemberNotesAccessMode;
+  members: MemberNotesMember[];
+};
+
+export type MemberNotesMemoResponse = {
+  memo: MemoDetail;
+  member: Pick<MemberNotesMember, "id" | "username" | "displayName">;
+};
+
 export type GroupAccount = {
   id: string;
   username: string;

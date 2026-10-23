@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, Share2, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, BookUser, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, Share2, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
@@ -8,6 +8,7 @@ import { EditorShortcutsAdminCard } from "@/components/settings/EditorShortcutsA
 import { AppShortcutsAdminCard } from "@/components/settings/AppShortcutsAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
 import { EmailSettingsCard } from "@/components/settings/EmailSettingsCard";
+import { MemberNotesAccessCard } from "@/components/settings/MemberNotesAccessCard";
 import { MessagesSettingsCard } from "@/components/settings/MessagesSettingsCard";
 import { RegistrationInvitesCard } from "@/components/settings/RegistrationInvitesCard";
 import { RegistrationSettingsCard } from "@/components/settings/RegistrationSettingsCard";
@@ -19,6 +20,7 @@ import type { AuthUser } from "@edgeever/shared";
 
 type AdminTabKey =
   | "members"
+  | "member-notes"
   | "site"
   | "share"
   | "groups"
@@ -51,10 +53,14 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
   const ownerOnlyStorageTab: AdminTab[] = isOwner
     ? [{ key: "storage", label: t("adminConsole.navStorage"), icon: Database }]
     : [];
+  const ownerOnlyMemberNotesTab: AdminTab[] = isOwner
+    ? [{ key: "member-notes", label: t("adminConsole.navMemberNotes"), icon: BookUser }]
+    : [];
   const tabs: AdminTab[] = [
     { key: "site", label: t("adminConsole.navSite"), icon: Globe },
     { key: "share", label: t("adminConsole.navShare"), icon: Share2 },
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
+    ...ownerOnlyMemberNotesTab,
     { key: "groups", label: t("adminConsole.navGroups"), icon: UsersRound },
     { key: "invites", label: t("adminConsole.navInvites"), icon: KeyRound },
     ...ownerOnlyTabs,
@@ -69,6 +75,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
         return <SiteSettingsCard />;
       case "share":
         return <ShareServerSettingsCard />;
+      case "member-notes":
+        return <MemberNotesAccessCard />;
       case "groups":
         return (
           <>

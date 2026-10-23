@@ -29,6 +29,9 @@ import type {
   JsonBackupNotebook,
   JsonBackupAiPrompt,
   JsonBackupRevision,
+  MemberNotesAccessSettings,
+  MemberNotesMemoResponse,
+  MemberNotesMembersResponse,
   MemoDetail,
   MemoEditSession,
   MemoRevision,
@@ -397,6 +400,15 @@ export type SiteBrandingResponse = {
 
 export type InstanceAdminSettingsResponse = {
   settings: InstanceAdminSettings;
+};
+
+export type MemberNotesAccessResponse = {
+  settings: MemberNotesAccessSettings;
+};
+
+export type MemberNotesAccessUpdatePayload = {
+  mode: MemberNotesAccessSettings["mode"];
+  selectedUserIds?: string[];
 };
 
 export type InstanceAdminSettingsUpdatePayload = {
@@ -1625,6 +1637,45 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         method: "PATCH",
         body: JSON.stringify(payload),
       }),
+
+    getMemberNotesAccess: () =>
+      request<MemberNotesAccessResponse>("/api/v1/admin/member-notes/access"),
+
+    updateMemberNotesAccess: (payload: MemberNotesAccessUpdatePayload) =>
+      request<MemberNotesAccessResponse>("/api/v1/admin/member-notes/access", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+
+    getMemberNotesMembers: () =>
+      request<MemberNotesMembersResponse>("/api/v1/admin/member-notes/members"),
+
+    listMemberNotes: (
+      userId: string,
+      params: {
+        q?: string;
+        sort?: MemoSortMode;
+        filter?: MemoFilterMode;
+        cursor?: string | null;
+        limit?: number;
+      } = {},
+    ) => {
+      const search = new URLSearchParams();
+      if (params.q?.trim()) search.set("q", params.q.trim());
+      if (params.sort) search.set("sort", params.sort);
+      if (params.filter && params.filter !== "all") search.set("filter", params.filter);
+      if (params.cursor) search.set("cursor", params.cursor);
+      if (params.limit) search.set("limit", String(params.limit));
+      const query = search.toString();
+      return request<ListMemosResponse>(
+        `/api/v1/admin/member-notes/${encodeURIComponent(userId)}/memos${query ? `?${query}` : ""}`,
+      );
+    },
+
+    getMemberNotesMemo: (userId: string, memoId: string) =>
+      request<MemberNotesMemoResponse>(
+        `/api/v1/admin/member-notes/${encodeURIComponent(userId)}/memos/${encodeURIComponent(memoId)}`,
+      ),
 
     updateUser: (
       userId: string,

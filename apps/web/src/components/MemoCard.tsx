@@ -48,6 +48,7 @@ export const MemoCard = ({
   isLast = false,
   isTrashView,
   selectionMode,
+  readOnly = false,
   listDensity,
   sortMode,
   multiSelectKeyDown,
@@ -68,6 +69,7 @@ export const MemoCard = ({
   isLast?: boolean;
   isTrashView: boolean;
   selectionMode: boolean;
+  readOnly?: boolean;
   listDensity: MemoListDensity;
   sortMode: MemoSortMode;
   multiSelectKeyDown: boolean;
@@ -98,7 +100,7 @@ export const MemoCard = ({
     i18n.resolvedLanguage ?? i18n.language,
     t("memoCard.yesterday"),
   );
-  const showSelectionControl = selectionMode || checked || multiSelectKeyDown || modifierHoverActive;
+  const showSelectionControl = !readOnly && (selectionMode || checked || multiSelectKeyDown || modifierHoverActive);
   const selectionControlLabel = checked
     ? t("memoCard.unselect", { title: memoTitle })
     : t("memoCard.select", { title: memoTitle });
@@ -168,6 +170,10 @@ export const MemoCard = ({
   };
 
   const handleMouseDown = (event: MouseEvent<HTMLButtonElement>) => {
+    if (readOnly) {
+      return;
+    }
+
     if (shouldToggleSelection(event)) {
       handleModifierToggle(event);
     }
@@ -189,7 +195,7 @@ export const MemoCard = ({
       return;
     }
 
-    if (selectionMode) {
+    if (readOnly || selectionMode) {
       return;
     }
 
@@ -236,7 +242,7 @@ export const MemoCard = ({
   };
 
   const handleDragStart = (event: DragEvent<HTMLElement>) => {
-    if (isTrashView || !isDesktopViewport() || dragMemoIds.length === 0) {
+    if (readOnly || isTrashView || !isDesktopViewport() || dragMemoIds.length === 0) {
       event.preventDefault();
       return;
     }
@@ -260,6 +266,11 @@ export const MemoCard = ({
       return;
     }
 
+    if (readOnly) {
+      onOpen();
+      return;
+    }
+
     if (selectionMode) {
       event.preventDefault();
       event.stopPropagation();
@@ -276,6 +287,10 @@ export const MemoCard = ({
   };
 
   const handleContextMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    if (readOnly) {
+      return;
+    }
+
     if (longPressPointRef.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -310,6 +325,10 @@ export const MemoCard = ({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (readOnly) {
+      return;
+    }
+
     const opensContextMenu = event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 
     if (!opensContextMenu) {
@@ -331,7 +350,7 @@ export const MemoCard = ({
   return (
     <article
       data-memo-id={memo.id}
-      draggable={!isTrashView}
+      draggable={!readOnly && !isTrashView}
       onDragStart={handleDragStart}
       className={cn(
         "edgeever-memo-divider group relative overflow-hidden border border-slate-100 bg-card transition lg:rounded-none lg:border-x-0 lg:border-t-0 lg:border-slate-200 lg:shadow-none transition-all duration-200 select-none",
@@ -381,7 +400,7 @@ export const MemoCard = ({
             "min-w-0 flex-1 px-4 py-3.5 text-left touch-pan-y focus-visible:bg-slate-50 focus-visible:shadow-[inset_3px_0_0_rgb(148,163,184)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400/60 [-webkit-touch-callout:none] lg:py-3.5 transition-all duration-200",
             listDensity === "compact" && "py-2.5",
             showSelectionControl && "pl-3 lg:pl-3",
-            !isTrashView && !multiSelectKeyDown && "lg:cursor-grab lg:active:cursor-grabbing",
+            !readOnly && !isTrashView && !multiSelectKeyDown && "lg:cursor-grab lg:active:cursor-grabbing",
             multiSelectKeyDown && "cursor-copy"
           )}
           onMouseMove={handleMouseMove}
@@ -439,7 +458,7 @@ export const MemoCard = ({
             ))}
           </div>
         </button>
-        {!selectionMode && (
+        {!selectionMode && !readOnly && (
           <div
             className={cn(
               "mr-3 mt-4 hidden shrink-0 flex-col gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100 lg:flex",

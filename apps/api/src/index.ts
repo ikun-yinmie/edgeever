@@ -120,6 +120,8 @@ export { createMemoEditSession, mergeMemosRecord, updateMemoRecord };
 import { listMemos } from "./memo-list-service";
 import { resolveSharedResourceRow } from "./group-service";
 import { registerGroupRoutes } from "./group-routes";
+import { resolveMemberNotesResourceRow } from "./member-notes-service";
+import { registerMemberNotesRoutes } from "./member-notes-routes";
 import { registerInstanceAdminRoutes } from "./instance-admin-routes";
 import { registerUserRoutes,
 
@@ -347,6 +349,8 @@ registerTemplateRoutes(app, {
   getMemoDetail: (...args) => getMemoDetail(...args),
 });
 
+registerMemberNotesRoutes(app);
+
 registerMemoRoutes(app, {
   clampNumber: (...args) => clampNumber(...args),
   createMemo: (...args) => createMemoRecord(...args),
@@ -387,6 +391,7 @@ registerResourceRoutes(app, {
   getMemoDetail: (...args) => getMemoDetail(...args),
   getResourceRow: (...args) => getResourceRow(...args),
   resolveSharedResourceRow: (...args) => resolveSharedResourceRow(...args),
+  resolveMemberNotesResourceRow: (...args) => resolveMemberNotesResourceRow(...args),
   initiateResourceUpload: (...args) => initiateResourceUpload(...args),
   uploadResourcePart: (...args) => uploadResourcePart(...args),
   completeResourceUpload: (...args) => completeResourceUpload(...args),

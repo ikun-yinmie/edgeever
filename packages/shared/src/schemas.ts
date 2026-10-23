@@ -357,6 +357,11 @@ export const InstanceAdminSettingsUpdateSchema = z
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 
+export const MemberNotesAccessUpdateSchema = z.object({
+  mode: z.enum(["off", "all", "selected"]),
+  selectedUserIds: z.array(z.string().trim().min(1).max(80)).max(1000).optional(),
+});
+
 export const UserUpdateSchema = z
   .object({
     username: z

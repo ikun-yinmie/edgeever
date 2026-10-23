@@ -333,6 +333,7 @@ type EditorPaneProps = {
   preserveUnsavedContentFromMemoId?: string | null;
   saveBlocked?: boolean;
   isTrashView: boolean;
+  readOnly?: boolean;
   notebooks: Notebook[];
   isLoading: boolean;
   contentSearchQuery?: string;
@@ -373,7 +374,7 @@ type RichEditorPaneProps = EditorPaneProps & {
 
 export const EditorPane = (props: EditorPaneProps) => {
   const { t } = useTranslation();
-  const readOnly = props.isTrashView || Boolean(props.memo?.isDeleted);
+  const readOnly = Boolean(props.readOnly) || props.isTrashView || Boolean(props.memo?.isDeleted);
   const sharedReadOnly = isSharedAccessReadOnly(props.sharedAccess);
   const { editingActive, requestEdit } = useStandaloneMobileEditor({
     memoId: props.memo?.id ?? null,
@@ -411,6 +412,7 @@ const RichEditorPane = ({
   preserveUnsavedContentFromMemoId: _preserveUnsavedContentFromMemoId,
   saveBlocked: _saveBlocked = false,
   isTrashView,
+  readOnly: forceReadOnly = false,
   notebooks,
   isLoading,
   contentSearchQuery = "",
@@ -583,7 +585,7 @@ const RichEditorPane = ({
     setEditorScrollContainer(element);
   }, []);
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
-  const readOnly = isTrashView || Boolean(memo?.isDeleted);
+  const readOnly = forceReadOnly || isTrashView || Boolean(memo?.isDeleted);
   const isGroupSharedNote = Boolean(sharedAccess);
   // Group members without write access must never enter edit mode: their
   // saves would be rejected by the server and surface as sync failures.
@@ -4309,7 +4311,7 @@ const RichEditorPane = ({
                   <ImageIcon className="h-4 w-4 text-slate-500" />
                   {t("editor.imageShare.action")}
                 </DropdownMenuItem>
-                {readOnly ? (
+                {isTrashView ? (
                   <>
                     <DropdownMenuItem
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
@@ -4323,16 +4325,15 @@ const RichEditorPane = ({
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
                       onClick={() => void onPermanentDeleted(memo.id)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 text-slate-500" />
                       {t("editor.deleteForever")}
                     </DropdownMenuItem>
                   </>
-                ) : (
+                ) : !effectiveReadOnly ? (
                   <>
                     <DropdownMenuItem
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                       onClick={handleSaveAsTemplate}
-                      disabled={effectiveReadOnly}
                     >
                       <Pencil className="h-4 w-4 text-slate-500" />
                       {t("templates.saveAsTemplate")}
@@ -4341,13 +4342,12 @@ const RichEditorPane = ({
                     <DropdownMenuItem
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
                       onClick={() => void onDeleted(memo.id)}
-                      disabled={effectiveReadOnly}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 text-slate-500" />
                       {t("editor.deleteMemo")}
                     </DropdownMenuItem>
                   </>
-                )}
+                ) : null}
                 </>
               )}
             />

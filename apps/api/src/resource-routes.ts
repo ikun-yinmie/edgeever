@@ -57,6 +57,11 @@ type ResourceRouteDependencies = {
     database: DatabaseAdapter,
     input: { userId: string; ownWorkspaceId: string; resourceId: string },
   ) => Promise<ResourceRow | null>;
+  resolveMemberNotesResourceRow?: (
+    database: DatabaseAdapter,
+    ownerUserId: string,
+    resourceId: string,
+  ) => Promise<ResourceRow | null>;
   initiateResourceUpload: typeof initiateResourceUploadService;
   uploadResourcePart: (
     context: AppContext,
@@ -97,8 +102,8 @@ export const registerResourceRoutes = (
   /**
    * Notes shared into a group live in the author's workspace, so images inside
    * them must resolve through the share grant instead of the viewer's own
-   * workspace. Owners keep the direct lookup; only a missing row falls back to
-   * the shared path.
+   * workspace. The site owner also reads member notes from the member-notes
+   * directory, which needs the same cross-workspace fallback in read-only mode.
    */
   const resolveReadableResourceRow = async (
     context: AppContext,
@@ -110,11 +115,21 @@ export const registerResourceRoutes = (
     const owned = await dependencies.getResourceRow(database, ownWorkspaceId, resourceId);
     if (owned || auth?.kind !== "user") return owned;
 
-    return dependencies.resolveSharedResourceRow(database, {
+    const shared = await dependencies.resolveSharedResourceRow(database, {
       userId: auth.actorId ?? "",
       ownWorkspaceId,
       resourceId,
     });
+    if (shared) return shared;
+
+    if (auth.role === "owner" && dependencies.resolveMemberNotesResourceRow) {
+      return dependencies.resolveMemberNotesResourceRow(
+        database,
+        auth.actorId ?? "",
+        resourceId,
+      );
+    }
+    return null;
   };
 
   app.get("/api/v1/resources", async (context) => {

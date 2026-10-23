@@ -56,7 +56,7 @@ import {
 } from "@/lib/mobile-editor";
 import { cn } from "@/lib/utils";
 import { isBrowserOffline, isBrowserOnline } from "@/lib/network-status";
-import { createDefaultDiagramDocument, diagramFallbackMarkdown, getNotebookDescendantIds, markdownToDoc, parseDiagramDocument, serializeDiagramDocument, type DiagramKind, type Notebook, type AuthUser, type MemoSummary, type MemoDetail, type MemoTemplate as SavedMemoTemplate } from "@edgeever/shared";
+import { createDefaultDiagramDocument, diagramFallbackMarkdown, getNotebookDescendantIds, markdownToDoc, parseDiagramDocument, serializeDiagramDocument, type DiagramKind, type Notebook, type AuthUser, type MemberNotesMember, type MemoSummary, type MemoDetail, type MemoTemplate as SavedMemoTemplate } from "@edgeever/shared";
 import { toggleMobileMemoSelection } from "@edgeever/shared/mobile-ui";
 import type {
   Pane,
@@ -254,6 +254,8 @@ export const WorkspaceApp = ({
   const [memoView, setMemoView] = useState<MemoView>(() => (
     isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
   ));
+  const [memberNotesView, setMemberNotesView] = useState<MemberNotesMember | null>(null);
+  const memberNotesActive = memberNotesView !== null;
   const {
     beginMemoSelection,
     clearMemoSelection,
@@ -281,9 +283,10 @@ export const WorkspaceApp = ({
   // instantly clear such an external selection; this ref holds it open.
   const externalSelectionRef = useRef<string | null>(null);
   useEffect(() => {
+    const restorableSelectedMemoId = memberNotesView ? null : selectedMemoId;
     if (window.edgeeverDesktop?.isAvailable) {
       writeDesktopWorkspaceRestoreState({
-        selectedMemoId,
+        selectedMemoId: restorableSelectedMemoId,
         selectedNotebookId,
         memoView,
       });
@@ -292,12 +295,12 @@ export const WorkspaceApp = ({
 
     if (user?.id) {
       writeWebWorkspaceRestoreState(user.id, {
-        selectedMemoId,
+        selectedMemoId: restorableSelectedMemoId,
         selectedNotebookId,
         memoView,
       });
     }
-  }, [memoView, selectedMemoId, selectedNotebookId, user?.id]);
+  }, [memberNotesView, memoView, selectedMemoId, selectedNotebookId, user?.id]);
   const creatingMemoSelectionRef = useRef(false);
   const createMemoInFlightRef = useRef(false);
   const memoDocumentActionIdRef = useRef(0);
@@ -603,6 +606,19 @@ export const WorkspaceApp = ({
               ? "recent"
               : "editor"
   );
+  useEffect(() => {
+    if (!memberNotesView) return;
+    if (
+      memoView === "trash"
+      || selectedNotebookId !== null
+      || selectedTag !== null
+      || rightView !== "editor"
+    ) {
+      setMemberNotesView(null);
+      setSelectedMemoId(null);
+      setOpenMemoTabs([]);
+    }
+  }, [memberNotesView, memoView, rightView, selectedNotebookId, selectedTag, setSelectedMemoId]);
   const [sharedScope, setSharedScope] = useState<SharedPaneScope>("all");
   const [sharedGroupId, setSharedGroupId] = useState<string | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -771,7 +787,7 @@ export const WorkspaceApp = ({
   const createMemoNotebookId =
     (selectedNotebookId && notebooks.some((notebook) => notebook.id === selectedNotebookId) ? selectedNotebookId : null) ??
     defaultMemoNotebookId;
-  const canCreateMemo = Boolean(createMemoNotebookId && memoView !== "trash");
+  const canCreateMemo = Boolean(createMemoNotebookId && memoView !== "trash" && !memberNotesActive);
   const memoSelectionModeActive = memoSelectionMode || selectedMemoIds.size > 0;
   const mobileSearchActive = mobileBottomNavActive === "search";
   const workspaceBackTargetActive = Boolean(
@@ -1132,17 +1148,26 @@ export const WorkspaceApp = ({
     [notebooks, selectedNotebookId, selectedTag]
   );
   const memosQuery = useInfiniteQuery({
-    queryKey: ["memos", memoView, selectedNotebookId, search, memoFilterMode, memoSortMode, selectedNotebookDescendantIds, selectedTag],
-    queryFn: ({ pageParam }) => repository.listMemos({
-        notebookId: memoView === "notebook" && !selectedTag ? selectedNotebookId : null,
-        notebookIds: memoView === "notebook" && !selectedTag ? selectedNotebookDescendantIds : undefined,
-        q: search,
-        tag: memoView === "notebook" ? selectedTag ?? undefined : undefined,
-        trash: memoView === "trash",
-        filter: memoFilterMode,
-        sort: memoSortMode,
-        offset: pageParam ? Number(pageParam) : 0,
-      }),
+    queryKey: memberNotesView
+      ? ["member-notes-memos", memberNotesView.id, search, memoFilterMode, memoSortMode]
+      : ["memos", memoView, selectedNotebookId, search, memoFilterMode, memoSortMode, selectedNotebookDescendantIds, selectedTag],
+    queryFn: ({ pageParam }) => memberNotesView
+      ? api.listMemberNotes(memberNotesView.id, {
+          q: search,
+          filter: memoFilterMode,
+          sort: memoSortMode,
+          cursor: pageParam,
+        })
+      : repository.listMemos({
+          notebookId: memoView === "notebook" && !selectedTag ? selectedNotebookId : null,
+          notebookIds: memoView === "notebook" && !selectedTag ? selectedNotebookDescendantIds : undefined,
+          q: search,
+          tag: memoView === "notebook" ? selectedTag ?? undefined : undefined,
+          trash: memoView === "trash",
+          filter: memoFilterMode,
+          sort: memoSortMode,
+          offset: pageParam ? Number(pageParam) : 0,
+        }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
@@ -1297,22 +1322,34 @@ export const WorkspaceApp = ({
   }, [rendererRecoveryMode, selectedMemoId]);
 
   const memoQuery = useQuery({
-    queryKey: detailMemoId ? memoDetailQueryKey(detailMemoId, memoView) : ["memo", detailMemoId, memoView],
-    queryFn: () => repository.getMemo(detailMemoId as string, memoView === "trash"),
+    queryKey: memberNotesView
+      ? ["member-notes-memo", memberNotesView.id, detailMemoId]
+      : detailMemoId
+        ? memoDetailQueryKey(detailMemoId, memoView)
+        : ["memo", detailMemoId, memoView],
+    queryFn: async () => {
+      if (memberNotesView) {
+        const result = await api.getMemberNotesMemo(memberNotesView.id, detailMemoId as string);
+        return { memo: result.memo, access: undefined, displayPolicy: undefined };
+      }
+      return repository.getMemo(detailMemoId as string, memoView === "trash");
+    },
     enabled: Boolean(detailMemoId),
   });
   const selectedMemoIdForAccess = memoQuery.data?.memo?.id ?? null;
   const memoAccessQuery = useQuery({
     queryKey: ["memo-access", selectedMemoIdForAccess],
     queryFn: () => api.getMemoAccess(selectedMemoIdForAccess as string),
-    enabled: Boolean(selectedMemoIdForAccess),
+    enabled: !memberNotesView && Boolean(selectedMemoIdForAccess),
     staleTime: 60_000,
     retry: false,
   });
   // The memo response already carries the share access for group-shared
   // notes, so the editor locks to preview from the first render instead of
   // waiting for the separate access request.
-  const memoAccess = memoQuery.data?.access ?? memoAccessQuery.data?.access ?? null;
+  const memoAccess = memberNotesView
+    ? null
+    : memoQuery.data?.access ?? memoAccessQuery.data?.access ?? null;
 
   // Realtime collaboration needs a runtime that serves collaboration sockets
   // (self-hosted Bun/Docker). The health endpoint answers without auth; when
@@ -1835,7 +1872,7 @@ export const WorkspaceApp = ({
   });
 
   const selectedNotebook = notebooks.find((notebook) => notebook.id === selectedNotebookId) ?? null;
-  const cachedSelectedMemo = detailMemoId
+  const cachedSelectedMemo = detailMemoId && !memberNotesView
     ? queryClient.getQueryData<{ memo: MemoDetail }>(memoDetailQueryKey(detailMemoId, memoView))?.memo ?? null
     : null;
   const selectedMemo = memoQuery.data?.memo ?? cachedSelectedMemo;
@@ -2530,10 +2567,13 @@ export const WorkspaceApp = ({
     setMemoView("notebook");
     setSelectedTag(null);
     setSelectedNotebookId(notebookId);
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
+    setSelectedMemoId(null);
     setMobileNotebookPickerOpen(false);
     setActivePane("memos");
   };
@@ -2544,10 +2584,35 @@ export const WorkspaceApp = ({
     setSelectedTag(null);
     setSelectedNotebookId(null);
     setRightView("editor");
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
+    setSelectedMemoId(null);
+    setMobileNotebookPickerOpen(false);
+    setActivePane("memos");
+  };
+
+  const handleOpenMemberNotes = (member: MemberNotesMember) => {
+    clearHiddenMobileSearch();
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setSelectedTag(null);
+    setSelectedNotebookId(null);
+    setRightView("editor");
+    setSearch("");
+    setMemoFilterMode("all");
+    setMemoSortMode("updated-desc");
+    setMemberNotesView(member);
+    setOpenMemoTabs([]);
+    setMobileBottomNavActive("home");
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setSelectedMemoId(null);
     setMobileNotebookPickerOpen(false);
     setActivePane("memos");
   };
@@ -2559,10 +2624,13 @@ export const WorkspaceApp = ({
     setMemoView("notebook");
     setSelectedTag(null);
     setRightView("recent");
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
+    setSelectedMemoId(null);
     setActivePane("editor");
   };
 
@@ -2574,10 +2642,13 @@ export const WorkspaceApp = ({
     setMobileBottomNavActive("home");
     setSelectedTag(null);
     setSelectedNotebookId(null);
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setSearch("");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
+    setSelectedMemoId(null);
     setActivePane("memos");
   };
 
@@ -2587,6 +2658,8 @@ export const WorkspaceApp = ({
     setSelectedTag(tag);
     setSelectedNotebookId(null);
     setRightView("editor");
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
@@ -2608,6 +2681,9 @@ export const WorkspaceApp = ({
     setSelectedNotebookId(null);
     setMemoFilterMode("all");
     setRightView("editor");
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
+    setSelectedMemoId(null);
     clearMemoSelection();
     handleMobileSearch();
   }, [clearMemoSelection, handleMobileSearch, navigateWorkspaceHome, setSelectedNotebookId]);
@@ -2620,6 +2696,8 @@ export const WorkspaceApp = ({
     setMemoView("notebook");
     setSelectedTag(null);
     setSelectedNotebookId(memo.notebookId);
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setSearch("");
     setMemoFilterMode("all");
     setRightView("editor");
@@ -2636,6 +2714,8 @@ export const WorkspaceApp = ({
     setMemoView("notebook");
     setSelectedTag(null);
     if (notebookId) setSelectedNotebookId(notebookId);
+    setMemberNotesView(null);
+    setOpenMemoTabs([]);
     setSearch("");
     setMemoFilterMode("all");
     setRightView("editor");
@@ -3434,6 +3514,8 @@ export const WorkspaceApp = ({
                   onOpenAdmin={handleOpenAdminConsole}
                   onOpenShared={handleOpenShared}
                   isOwner={authRequired && (user?.role === "owner" || user?.role === "admin")}
+                  activeMemberNotesUserId={memberNotesView?.id ?? null}
+                  onOpenMemberNotes={handleOpenMemberNotes}
                   isLoggingOut={isLoggingOut}
                   imageCompressionEnabled={imageCompressionEnabled}
                   onImageCompressionChange={setImageCompressionEnabled}
@@ -3505,6 +3587,9 @@ export const WorkspaceApp = ({
             <MemoListPane
               notebook={selectedTag ? null : selectedNotebook}
               selectedTag={selectedTag}
+              readOnly={memberNotesActive}
+              listTitleOverride={memberNotesView ? memberNotesView.displayName || memberNotesView.username : undefined}
+              listContextLabelOverride={memberNotesView ? t("memberNotes.readOnlyContext") : undefined}
               notebooks={notebooks}
               view={memoView}
               memos={memos}
@@ -3762,7 +3847,8 @@ export const WorkspaceApp = ({
                           notebooks={notebooks}
                           repository={repository}
                           readOnly={
-                            memoView === "trash"
+                            memberNotesActive
+                            || memoView === "trash"
                             || selectedMemo.isDeleted
                             || isSharedAccessReadOnly(memoAccess)
                           }
@@ -3817,6 +3903,7 @@ export const WorkspaceApp = ({
                     editorContentAlignment={editorContentAlignment}
                     mobileDefaultEditMemoId={createdMemoEditId}
                     isTrashView={memoView === "trash"}
+                    readOnly={memberNotesActive}
                     notebooks={notebooks}
                     isLoading={memoQuery.isLoading}
                     sharedAccess={memoAccess?.shared ? memoAccess : null}

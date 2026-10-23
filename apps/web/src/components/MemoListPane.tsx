@@ -366,6 +366,9 @@ export const MemoListPane = ({
   notebooks,
   notebook,
   selectedTag,
+  readOnly = false,
+  listTitleOverride,
+  listContextLabelOverride,
   memos,
   totalMemoCount,
   hasMoreMemos,
@@ -447,6 +450,9 @@ export const MemoListPane = ({
   notebooks: Notebook[];
   notebook: Notebook | null;
   selectedTag: string | null;
+  readOnly?: boolean;
+  listTitleOverride?: string;
+  listContextLabelOverride?: string;
   memos: MemoSummary[];
   totalMemoCount: number;
   hasMoreMemos: boolean;
@@ -564,14 +570,14 @@ export const MemoListPane = ({
     getItemKey: (index) => memos[index]?.id ?? index,
   });
 
-  const canEnterSelectionMode = visibleMemoIds.length > 0;
+  const canEnterSelectionMode = !readOnly && visibleMemoIds.length > 0;
   const selectedVisibleMemoCount = visibleMemoIds.filter((memoId) => selectedMemoIds.has(memoId)).length;
   const allVisibleMemosSelected = visibleMemoIds.length > 0 && selectedVisibleMemoCount === visibleMemoIds.length;
   const canToggleVisibleMemoSelection = visibleMemoIds.length > 0;
   const visibleSelectionToggleLabel = allVisibleMemosSelected ? t("memoList.selectedListNone") : t("memoList.selectedListAll");
 
-  const listTitle = view === "trash" ? t("memoList.trash") : selectedTag ? `#${selectedTag}` : notebook?.name ?? t("memoList.allMemos");
-  const listContextLabel = view === "trash" ? t("memoList.deletedMemos") : selectedTag ? t("memoList.tagFilter") : notebook ? t("memoList.currentNotebook") : t("memoList.allNotebooks");
+  const listTitle = listTitleOverride ?? (view === "trash" ? t("memoList.trash") : selectedTag ? `#${selectedTag}` : notebook?.name ?? t("memoList.allMemos"));
+  const listContextLabel = listContextLabelOverride ?? (view === "trash" ? t("memoList.deletedMemos") : selectedTag ? t("memoList.tagFilter") : notebook ? t("memoList.currentNotebook") : t("memoList.allNotebooks"));
   const visibleCount = `${memos.length}${memos.length !== totalMemoCount ? ` / ${totalMemoCount}` : ""}`;
   const listCountLabel = view === "trash"
     ? t("memoList.deletedCount", { count: visibleCount })
@@ -862,6 +868,20 @@ export const MemoListPane = ({
     setMobileMoveOpen(false);
     setMobileMoreOpen(false);
   }, [selectionMode, setDesktopActionsOpen, setDesktopFilterOpen, setDesktopSortOpen, setMobileListActionsOpen, setMobileMoreOpen, setMobileMoveOpen]);
+
+  useEffect(() => {
+    if (!readOnly) {
+      return;
+    }
+
+    setDesktopActionsOpen(false);
+    setDesktopFilterOpen(false);
+    setDesktopSortOpen(false);
+    setMemoContextMenu(null);
+    setMobileListActionsOpen(false);
+    setMobileMoveOpen(false);
+    setMobileMoreOpen(false);
+  }, [readOnly, setDesktopActionsOpen, setDesktopFilterOpen, setDesktopSortOpen, setMobileListActionsOpen, setMobileMoreOpen, setMobileMoveOpen]);
 
   const handleToggleMemo = (memoId: string, event?: MouseEvent<HTMLElement>) => {
     const currentIndex = visibleMemoIds.indexOf(memoId);
@@ -1190,7 +1210,10 @@ export const MemoListPane = ({
               </button>
             </div>
             <button
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
+                readOnly && "hidden"
+              )}
               type="button"
               title={selectionMode ? t("memoList.bulkActions") : t("memoList.listOptions")}
               aria-label={selectionMode ? t("memoList.bulkActions") : t("memoList.listOptions")}
@@ -1231,16 +1254,18 @@ export const MemoListPane = ({
 
         <div className="mb-3 hidden flex-wrap items-center justify-between gap-2 lg:flex">
           <div className="flex min-w-0 flex-wrap items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              title={t("memoList.selectMemo")}
-              aria-label={t("memoList.selectMemo")}
-              onClick={onEnterSelectionMode}
-              disabled={!canEnterSelectionMode}
-            >
-              <CheckSquare className="h-4 w-4" />
-            </Button>
+            {!readOnly && (
+              <Button
+                size="icon"
+                variant="ghost"
+                title={t("memoList.selectMemo")}
+                aria-label={t("memoList.selectMemo")}
+                onClick={onEnterSelectionMode}
+                disabled={!canEnterSelectionMode}
+              >
+                <CheckSquare className="h-4 w-4" />
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -1328,16 +1353,18 @@ export const MemoListPane = ({
             </ToggleGroup>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              title={syncMemosTitle}
-              aria-label={syncMemosTitle}
-              disabled={!canSyncMemos || isSyncingMemos}
-              onClick={onSyncMemos}
-            >
-              <RefreshCw className={cn("h-4 w-4", isSyncingMemos && "animate-spin")} />
-            </Button>
+            {!readOnly && (
+              <Button
+                size="icon"
+                variant="ghost"
+                title={syncMemosTitle}
+                aria-label={syncMemosTitle}
+                disabled={!canSyncMemos || isSyncingMemos}
+                onClick={onSyncMemos}
+              >
+                <RefreshCw className={cn("h-4 w-4", isSyncingMemos && "animate-spin")} />
+              </Button>
+            )}
             {view === "trash" && (
               <Button
                 size="sm"
@@ -1349,48 +1376,50 @@ export const MemoListPane = ({
                 {t("memoList.emptyTrash")}
               </Button>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title={t("memoList.more")}
-                  aria-label={t("memoList.moreActions")}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40 bg-card border border-slate-200 rounded-md py-1 shadow-md">
-                <DropdownMenuItem
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={onOpenTags}
-                >
-                  <Tags className="h-4 w-4 text-slate-500" />
-                  {t("memoList.tags")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={onOpenAssets}
-                >
-                  <Archive className="h-4 w-4 text-slate-500" />
-                  {t("memoList.assets")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={view === "trash" ? onEmptyTrash : onOpenTrash}
-                >
-                  <Trash2 className="h-4 w-4 text-rose-700" />
-                  {view === "trash" ? t("memoList.emptyTrash") : t("memoList.trash")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={onOpenSettings}
-                >
-                  <KeyRound className="h-4 w-4 text-slate-500" />
-                  MCP Token
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {!readOnly && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={t("memoList.more")}
+                    aria-label={t("memoList.moreActions")}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={onOpenTags}
+                  >
+                    <Tags className="h-4 w-4 text-slate-500" />
+                    {t("memoList.tags")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={onOpenAssets}
+                  >
+                    <Archive className="h-4 w-4 text-slate-500" />
+                    {t("memoList.assets")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={view === "trash" ? onEmptyTrash : onOpenTrash}
+                  >
+                    <Trash2 className="h-4 w-4 text-rose-700" />
+                    {view === "trash" ? t("memoList.emptyTrash") : t("memoList.trash")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    onClick={onOpenSettings}
+                  >
+                    <KeyRound className="h-4 w-4 text-slate-500" />
+                    MCP Token
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
 
@@ -1559,6 +1588,7 @@ export const MemoListPane = ({
                       isLast={virtualRow.index === memos.length - 1}
                       isTrashView={view === "trash"}
                       selectionMode={selectionMode}
+                      readOnly={readOnly}
                       listDensity={listDensity}
                       sortMode={view === "trash" ? "updated-desc" : sortMode}
                       multiSelectKeyDown={multiSelectKeyDown}

@@ -9,6 +9,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Plus,
+  BookUser,
   Clock,
   LayoutGrid,
   LayoutList,
@@ -54,7 +55,7 @@ import {
 import { NotebookTreeItem } from "./NotebookTreeItem";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { Notebook, AuthUser, DiagramKind } from "@edgeever/shared";
+import type { Notebook, AuthUser, DiagramKind, MemberNotesMember } from "@edgeever/shared";
 import type { NotebookNode, NotebookDropPosition, NotebookSortMode } from "@/lib/app-helpers";
 import type { SyncQueueSummary } from "@/lib/sync-queue";
 import {
@@ -479,6 +480,8 @@ export const NotebookPane = ({
   onOpenAdmin,
   onOpenShared,
   isOwner,
+  activeMemberNotesUserId,
+  onOpenMemberNotes,
   onCreateMemo,
   onCreateMemoInNotebook,
   canCreateMemo,
@@ -523,6 +526,8 @@ export const NotebookPane = ({
   onOpenAdmin?: () => void;
   onOpenShared?: (target?: SharedPaneTarget) => void;
   isOwner?: boolean;
+  activeMemberNotesUserId?: string | null;
+  onOpenMemberNotes?: (member: MemberNotesMember) => void;
   onCreateMemo: (kind?: DiagramKind) => void;
   onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;
   canCreateMemo: boolean;
@@ -554,6 +559,7 @@ export const NotebookPane = ({
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
   const [groupSectionOpen, setGroupSectionOpen] = useState(false);
   const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);
+  const [memberDirectoryOpen, setMemberDirectoryOpen] = useState(true);
   const linkSharesQuery = useQuery({
     queryKey: ["memo-link-shares"],
     queryFn: api.listMemoLinkShares,
@@ -634,6 +640,19 @@ export const NotebookPane = ({
   const sharedNotebookCount = sharedWithMeQuery.data?.notebooks.length ?? 0;
   const sharedMemoCount = sharedWithMeQuery.data?.memos.length ?? 0;
   const sharedTotalCount = sharedNotebookCount + sharedMemoCount;
+  const memberNotesQuery = useQuery({
+    queryKey: ["member-notes-members"],
+    queryFn: api.getMemberNotesMembers,
+    enabled: user?.role === "owner",
+    staleTime: 60_000,
+  });
+  const memberNotesMembers = memberNotesQuery.data?.members ?? [];
+  const showMemberDirectory = Boolean(
+    user?.role === "owner"
+      && memberNotesQuery.data?.mode
+      && memberNotesQuery.data.mode !== "off"
+      && memberNotesMembers.length > 0,
+  );
 
   const notebooks = notebooksQuery.data?.notebooks ?? [];
   const notebookSortOptions = useMemo(() => getNotebookSortOptions(t), [t]);
@@ -898,6 +917,52 @@ export const NotebookPane = ({
             ))}
           </div>
         )}
+
+        {showMemberDirectory ? (
+          <div className="mb-4" data-member-notes-section>
+            <button
+              className="group mb-1 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+              type="button"
+              aria-expanded={memberDirectoryOpen}
+              onClick={() => setMemberDirectoryOpen((open) => !open)}
+            >
+              <SidebarSectionLabel icon={<BookUser className="h-4 w-4" />} label={t("memberNotes.title")} />
+              {memberDirectoryOpen ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              )}
+            </button>
+            {memberDirectoryOpen ? (
+              <div className="space-y-1">
+                {memberNotesMembers.map((member) => {
+                  const active = activeMemberNotesUserId === member.id;
+                  return (
+                    <button
+                      className={cn(
+                        "flex h-9 w-full items-center gap-2 rounded-md px-2 text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]",
+                        active
+                          ? "edgeever-workspace-selection text-slate-950"
+                          : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
+                      )}
+                      type="button"
+                      key={member.id}
+                      onClick={() => onOpenMemberNotes?.(member)}
+                    >
+                      <span className="flex h-6 w-5 shrink-0 items-center justify-center">
+                        <CircleUserRound className={cn("h-4 w-4", active ? "text-emerald-600" : "text-slate-500")} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {member.displayName || member.username}
+                      </span>
+                      <span className="shrink-0 text-xs tabular-nums text-slate-400">{member.memoCount}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mb-4" data-group-section>
           {sharedGroups.length > 0 ? (
