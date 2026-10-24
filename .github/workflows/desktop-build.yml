@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Prepare macOS, Windows, and Linux assets on this existing Draft Release (optional)"
+        description: "Prepare Windows and Linux assets on this existing Draft Release (optional)"
         required: false
         type: string
   release:
@@ -18,7 +18,7 @@ jobs:
   release-plan:
     if: >-
       ${{
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         (
           github.event_name == 'release' ||
           (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
@@ -135,7 +135,7 @@ jobs:
             --pattern 'latest-linux.yml' \
             --pattern 'SHA256SUMS-linux.txt' \
             --dir "$RUNNER_TEMP/native-assets"
-          test "$(find "$RUNNER_TEMP/native-assets" -type f | wc -l | tr -d ' ')" = "17"
+           test "$(find "$RUNNER_TEMP/native-assets" -type f | wc -l | tr -d ' ')" = "9"
           gh release upload "$CURRENT_TAG" "$RUNNER_TEMP/native-assets/"* \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
@@ -145,7 +145,7 @@ jobs:
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
+        false &&
         (
           (github.event_name == 'workflow_dispatch' && inputs.release_tag == '') ||
           (
@@ -387,7 +387,7 @@ jobs:
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         (
           (github.event_name == 'workflow_dispatch' && inputs.release_tag == '') ||
           (
@@ -548,7 +548,7 @@ jobs:
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         (
           (github.event_name == 'workflow_dispatch' && inputs.release_tag == '') ||
           (
@@ -735,12 +735,12 @@ jobs:
           retention-days: 14
 
   native-build-timings:
-    needs: [desktop, windows, linux]
+    needs: [windows, linux]
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
-        (needs.desktop.result != 'skipped' || needs.windows.result != 'skipped' || needs.linux.result != 'skipped')
+        github.repository == 'ikun-yinmie/edgeever' &&
+        (needs.windows.result != 'skipped' || needs.linux.result != 'skipped')
       }}
     name: Report desktop build timings
     runs-on: ubuntu-latest
@@ -771,12 +771,11 @@ jobs:
           retention-days: 90
 
   desktop-assets:
-    needs: [release-plan, desktop, windows, linux]
+    needs: [release-plan, windows, linux]
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
-        needs.desktop.result == 'success' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         needs.windows.result == 'success' &&
         needs.linux.result == 'success' &&
         (
@@ -806,8 +805,7 @@ jobs:
       - name: Create and audit combined update metadata
         run: |
           version="$(node -p "JSON.parse(require('fs').readFileSync('apps/desktop/package.json', 'utf8')).version")"
-          node scripts/create-mac-update-metadata.mjs release/desktop "$version"
-          node scripts/verify-linux-update-release.mjs release/desktop "$version"
+           node scripts/verify-linux-update-release.mjs release/desktop "$version"
           asset_ready="$(
             find release/desktop -maxdepth 1 -type f -exec basename {} \; |
               node scripts/check-native-release-assets.mjs desktop true "v${version}" "$version" allow-missing-windows-signature
@@ -827,7 +825,7 @@ jobs:
       - name: Upload combined desktop installers and metadata
         uses: actions/upload-artifact@v6
         with:
-          name: edgeever-desktop-macOS-Windows-and-Linux-x64
+           name: edgeever-desktop-Windows-and-Linux-x64
           path: release/desktop/*
           if-no-files-found: error
           retention-days: 14
@@ -837,7 +835,7 @@ jobs:
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         needs.release-plan.result == 'success' &&
         needs.release-plan.outputs.asset_ready == 'true' &&
         (
@@ -874,7 +872,7 @@ jobs:
     if: >-
       ${{
         always() &&
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         needs.release-plan.result == 'success' &&
         needs.release-plan.outputs.asset_ready == 'true' &&
         (

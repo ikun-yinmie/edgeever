@@ -36,7 +36,7 @@ describe("release automation", () => {
     expect(RELEASE_WORKFLOWS.timings).toBe("release-timings.yml");
     const releaseSource = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
     expect(releaseSource).toContain("desktop_run_id=\${desktopRunId}");
-    expect(releaseSource).toContain("mobile_run_id=\${mobileRunId}");
+    expect(releaseSource).not.toContain("mobile_run_id=\${mobileRunId}");
     expect(releaseSource).toContain("docker_run_id=\${dockerRunId}");
     expect(releaseSource).toContain("store_run_id=\${timingStoreRunId}");
     expect(releaseSource).toContain("attempt_run_ids=\${timingAttemptRunIds}");
@@ -84,17 +84,11 @@ describe("release automation", () => {
     expect(issueCreation).toBeGreaterThan(keyCheck);
   });
 
-  test("starts Play delivery as soon as Android preparation finishes", () => {
+  test("publishes only Windows and Linux desktop clients", () => {
     const releaseSource = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
-    const androidReady = releaseSource.lastIndexOf("const androidReleaseReady");
-    const mobileWait = releaseSource.indexOf('label: "Draft Android assets"', androidReady);
-    const playDelivery = releaseSource.indexOf("await ensurePlayDelivery", androidReady);
-    const allDraftGates = releaseSource.indexOf("await Promise.all", androidReady);
-
-    expect(RELEASE_WORKFLOWS.storeDelivery).toBe("store-delivery.yml");
-    expect(mobileWait).toBeGreaterThan(androidReady);
-    expect(playDelivery).toBeGreaterThan(mobileWait);
-    expect(playDelivery).toBeLessThan(allDraftGates);
+    expect(releaseSource).toContain("Windows x64 Preview");
+    expect(releaseSource).toContain("Linux x64 AppImage Preview");
+    expect(releaseSource).not.toContain("mobile_run_id=\${mobileRunId}");
   });
 
   test("starts App Store delivery from the native iOS tree without blocking GitHub publication", () => {
@@ -513,7 +507,7 @@ describe("release automation", () => {
     expect(body).toContain("## 中文说明");
     expect(body).toContain("- 并行检查。");
     expect(body).toContain("## Commit coverage audit");
-    expect(body).toContain("Play-signed Android arm64 APK");
+    expect(body).toContain("Windows x64 Preview");
     expect(body).toContain("unsigned Windows x64 Preview");
     expect(body).toContain("Linux x64 AppImage Preview");
     expect(body).toContain("- Change 1: `aaaaaaaa`");

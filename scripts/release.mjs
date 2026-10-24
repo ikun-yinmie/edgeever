@@ -373,7 +373,7 @@ export const buildIssueBody = ({ changesEn, changesZh, commitCoverageAudit }) =>
   "## Acceptance criteria",
   "",
   "- Required type checks, Web build, and native release planning tests pass.",
-  "- The Draft Release contains audited macOS arm64/x64 DMGs, an unsigned Windows x64 Preview with an independently signed update manifest, a Linux x64 AppImage Preview with verified updater metadata, checksum, and cross-version installation, and a Play-signed Android arm64 APK.",
+  "- The Draft Release contains an audited unsigned Windows x64 Preview with an independently signed update manifest and a Linux x64 AppImage Preview with verified updater metadata, checksum, and cross-version installation.",
   "- Post-publication native asset audits pass.",
 ].join("\n");
 
@@ -1236,32 +1236,13 @@ const assertDraftAssets = ({
   })) {
     throw new Error("Draft Release desktop assets are incomplete or incompatible.");
   }
-  if (!nativeReleaseAssetsReady({
-    platform: "mobile",
-    rebuild: mobileRebuild,
-    currentTag: tag,
-    assetNames,
-  })) {
-    throw new Error("Draft Release Android assets are incomplete or incompatible.");
-  }
-
-  if (!mobileRebuild) {
-    const previousApk = previousAssets.find((asset) =>
-      /^edgeever-android-v.*-arm64-v8a\.apk$/.test(asset.name)
-    );
-    if (!previousApk || !reusedAssetMatches(previousAssets, assets, previousApk.name)) {
-      throw new Error("Reused Android APK filename, size, or checksum changed.");
-    }
-  }
   if (!desktopRebuild) {
     const previousDesktopNames = previousAssets
       .map((asset) => asset.name)
       .filter((name) =>
-        /^EdgeEver-.*-mac-(?:arm64|x64)\.(?:dmg|zip)(?:\.blockmap)?$/.test(name) ||
-        /^EdgeEver-.*-windows-x64\.exe$/.test(name) ||
+      /^EdgeEver-.*-windows-x64\.exe$/.test(name) ||
         /^EdgeEver-.*-linux-x64\.AppImage$/.test(name) ||
         [
-          "latest-mac.yml",
           "latest.yml",
           "latest-windows.json",
           "latest-windows.json.sig",
@@ -1271,7 +1252,7 @@ const assertDraftAssets = ({
         ].includes(name)
       );
     if (
-      previousDesktopNames.length !== 17 ||
+      previousDesktopNames.length !== 8 ||
       !previousDesktopNames.every((name) =>
         reusedAssetMatches(previousAssets, assets, name)
       )
@@ -1670,9 +1651,8 @@ const releaseMain = async (options) => {
     return runId;
   };
 
-  const [desktopRunId, mobileRunId, dockerRunId] = await Promise.all([
+  const [desktopRunId, dockerRunId] = await Promise.all([
     resolveDraftRun("desktopRunId", RELEASE_WORKFLOWS.desktop, "Draft desktop assets"),
-    resolveDraftRun("mobileRunId", RELEASE_WORKFLOWS.mobile, "Draft Android assets"),
     resolveDraftRun("dockerRunId", RELEASE_WORKFLOWS.docker, "Draft Docker image"),
   ]);
 
@@ -1686,32 +1666,6 @@ const releaseMain = async (options) => {
     });
   }
 
-  const androidReleaseReady = (async () => {
-    await waitForRun({
-      repository: options.repository,
-      runId: mobileRunId,
-      label: "Draft Android assets",
-    });
-    if (mobilePlan.rebuild) {
-      await ensurePlayDelivery({
-        repository: options.repository,
-        tag,
-        headSha: releaseSha,
-        checkpoint,
-        persistCheckpoint,
-        resumeAction: playDeliveryAction,
-      });
-    }
-    await requirePlaySignedDraftApk({
-      repository: options.repository,
-      tag,
-      headSha: releaseSha,
-      checkpoint,
-      persistCheckpoint,
-      allowRecovery: mobilePlan.rebuild,
-    });
-  })();
-
   await Promise.all([
     waitForRun({
       repository: options.repository,
@@ -1723,7 +1677,6 @@ const releaseMain = async (options) => {
       runId: dockerRunId,
       label: "Draft Docker image",
     }),
-    androidReleaseReady,
   ]);
 
   let windowsUpdateAuditRunId;
@@ -1793,17 +1746,10 @@ const releaseMain = async (options) => {
   ], { capture: true });
   console.log(`[release] published: ${releaseUrl}`);
 
-  const [desktopAudit, mobileAudit, dockerAudit] = await Promise.all([
+  const [desktopAudit, dockerAudit] = await Promise.all([
     findReleaseRun({
       repository: options.repository,
       workflow: RELEASE_WORKFLOWS.desktop,
-      tag,
-      headSha: releaseSha,
-      publishedAfter: publishedAt,
-    }),
-    findReleaseRun({
-      repository: options.repository,
-      workflow: RELEASE_WORKFLOWS.mobile,
       tag,
       headSha: releaseSha,
       publishedAfter: publishedAt,
@@ -1836,11 +1782,6 @@ const releaseMain = async (options) => {
         repository: options.repository,
         runId: desktopAudit.databaseId,
         label: "Published desktop asset audit",
-      }),
-      waitForRun({
-        repository: options.repository,
-        runId: mobileAudit.databaseId,
-        label: "Published Android asset audit",
       }),
       waitForRun({
         repository: options.repository,
@@ -1909,10 +1850,6 @@ const releaseMain = async (options) => {
     `desktop_run_id=${desktopRunId}`,
     "-f",
     `desktop_mode=${desktopPlan.rebuild ? "rebuild" : "reuse"}`,
-    "-f",
-    `mobile_run_id=${mobileRunId}`,
-    "-f",
-    `mobile_mode=${mobilePlan.rebuild ? "rebuild" : "reuse"}`,
     "-f",
     `docker_run_id=${dockerRunId}`,
     ...(timingStoreRunId
