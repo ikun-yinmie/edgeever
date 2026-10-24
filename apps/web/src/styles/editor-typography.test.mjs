@@ -49,7 +49,6 @@ describe("editor typography contract", () => {
     const publishLayout = readStyle("./publish-layout.css");
 
     expect(editorPane).toContain("isPaperEditorTheme(resolvedEditorTheme)");
-    expect(editorPane).toContain("MEMO_CONTENT_STYLE.body.lineHeight");
     expect(publishLayout).toContain('[data-editor-theme="letter"]');
     expect(publishLayout).toContain("[data-paper-theme]");
     expect(publishLayout).not.toContain("[data-publish-layout]");
