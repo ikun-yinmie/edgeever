@@ -1,14 +1,14 @@
 {
-  "version": "1.100.1",
+  "version": "1.100.2",
   "changes": {
     "en-US": [
-      "Fix copying WebP, AVIF, and SVG images to the clipboard by converting them to valid PNG data when needed."
+      "Improve image loading and recovery, make paragraph formatting and heading numbering independent of article themes, and fix desktop image clipboard copying."
     ],
     "zh-CN": [
-      "修复复制 WebP、AVIF 和 SVG 图片到剪贴板时格式不匹配的问题，必要时会转换为有效的 PNG 数据。"
+      "改进图片加载与失败重试，确保段落格式和标题编号不受文章主题影响，并修复客户端复制图片。"
     ],
     "ja": [
-      "WebP、AVIF、SVG 画像をクリップボードへコピーする際、必要に応じて有効な PNG データへ変換するよう修正しました。"
+      "画像の読み込みと再試行を改善し、段落書式と見出し番号が記事テーマに影響されないようにし、デスクトップでの画像コピーを修正しました。"
     ]
   }
 }
