@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, session, net, protocol, shell, dialog, safeStorage, clipboard, powerMonitor, desktopCapturer, screen } from "electron";
+import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, session, net, protocol, shell, dialog, safeStorage, clipboard, ClipboardItem, powerMonitor, desktopCapturer, screen } from "electron";
 import { createReadStream, existsSync } from "node:fs";
 import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -2060,8 +2060,8 @@ const startApplication = async () => {
   ipcMain.on("desktop:session-token-sync", (event) => { event.returnValue = desktopSessionToken; });
   ipcMain.on("desktop:recovered-after-abnormal-exit-sync", (event) => { event.returnValue = recoveredAfterAbnormalExit; });
   ipcMain.handle("desktop:copy-text", (_event, value) => writePlainTextClipboard(clipboard, value));
-  ipcMain.handle("desktop:copy-html", (_event, input) => writeRichClipboard(clipboard, input));
-  ipcMain.handle("desktop:copy-image", (_event, bytes) => writeImageClipboard(clipboard, nativeImage, bytes));
+  ipcMain.handle("desktop:copy-html", (_event, input) => writeRichClipboard(clipboard, ClipboardItem, input));
+  ipcMain.handle("desktop:copy-image", (_event, bytes) => writeImageClipboard(clipboard, nativeImage, ClipboardItem, bytes));
   ipcMain.handle("desktop:set-session-token", async (_event, value) => {
     await saveDesktopSessionToken(value);
     return { stored: Boolean(desktopSessionToken) };
