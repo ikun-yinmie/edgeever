@@ -15,6 +15,7 @@ import { PdfAttachment } from "./pdf-attachment";
 import { PluginEmbed } from "./plugin-embed";
 import { createEdgeEverCodeBlock } from "./code-block-meta";
 import { EdgeEverTextStyle } from "./text-style";
+import { ParagraphFormat } from "./paragraph-format";
 
 export type CreateEdgeEverDocumentExtensionsOptions = {
   mathematics: AnyExtension[];
@@ -54,6 +55,7 @@ export const createEdgeEverDocumentExtensions = (
   return [
     StarterKit.configure(starterKitConfig),
     EdgeEverTextStyle,
+    ParagraphFormat,
     TaskList,
     ...withOptional(options.taskItem, TaskItem.configure({ nested: true })),
     options.table === undefined ? TableKit : TableKit.configure(options.table),

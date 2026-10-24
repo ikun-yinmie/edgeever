@@ -31,6 +31,7 @@ export * from "./resource-links";
 export * from "./schemas";
 export * from "./sharing";
 export * from "./text-style";
+export * from "./paragraph-format";
 export * from "./video-embed";
 export * from "./font-size-scale";
 export * from "./editor-shortcut-keys";

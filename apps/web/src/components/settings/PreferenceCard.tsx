@@ -38,6 +38,7 @@ import {
   type AppLocalePreference,
 } from "@/i18n";
 import { CustomEditorThemeDialog } from "./CustomEditorThemeDialog";
+import { readEditorParagraphLineHeight, writeEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import {
   MERMAID_THEME_PREFERENCES,
   useAppearanceTheme,
@@ -79,6 +80,7 @@ export const PreferenceCard = ({
   const [linkOpenMode, setLinkOpenMode] = useState<EditorLinkOpenMode>(() => getStoredEditorLinkOpenMode());
   const [aiSelectionMenuEnabled, setAiSelectionMenuEnabled] = useState(readAiSelectionMenuPreference);
   const [aiSpaceShortcutEnabled, setAiSpaceShortcutEnabled] = useState(readAiSpaceShortcutPreference);
+  const [defaultLineHeight, setDefaultLineHeight] = useState(readEditorParagraphLineHeight);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 640px)");
@@ -274,6 +276,19 @@ export const PreferenceCard = ({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="flex min-h-16 flex-col items-start gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <div className={SETTINGS_ITEM_TITLE_CLASSNAME}>{t("settings.editorLineSpacingTitle")}</div>
+            <div className={SETTINGS_ITEM_DESCRIPTION_CLASSNAME}>{t("settings.editorLineSpacingDescription")}</div>
+          </div>
+          <Select value={defaultLineHeight} onValueChange={(value) => { setDefaultLineHeight(value); writeEditorParagraphLineHeight(value); }}>
+            <SelectTrigger className="h-9 w-32 bg-card" aria-label={t("settings.editorLineSpacingTitle")}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {["1", "1.15", "1.5", "1.6", "1.75", "2", "2.5", "3"].map((value) => <SelectItem key={value} value={value}>{value}×</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
 
         {!isMobile && (

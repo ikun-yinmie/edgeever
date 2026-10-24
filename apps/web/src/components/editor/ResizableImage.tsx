@@ -269,7 +269,7 @@ const ResizableImageNodeView = ({
       {showSizeControls && (
         <div className="edgeever-image-controls" contentEditable={false}>
           {previewButton}
-          <div className="edgeever-image-presets" aria-label={t("editor.imageScale")}>
+           <div className="edgeever-image-presets" aria-label={t("editor.imageScale")}>
             {IMAGE_WIDTH_PRESETS.map((preset) => (
               <button
                 key={preset.width}
@@ -283,7 +283,12 @@ const ResizableImageNodeView = ({
                 <span>{t(preset.labelKey)}</span>
               </button>
             ))}
-          </div>
+            </div>
+           <label className="edgeever-image-width-input">
+             <span className="sr-only">{t("editor.imageWidthPercent")}</span>
+             <input type="number" min={10} max={100} step={1} value={Math.round(width)} aria-label={t("editor.imageWidthPercent")} onMouseDown={(event) => event.stopPropagation()} onChange={(event) => updateWidth(Number(event.target.value))} />
+             <span aria-hidden="true">%</span>
+           </label>
           {canGroupAdjacentImages ? (
             <button
               type="button"

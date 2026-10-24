@@ -1,20 +1,20 @@
 {
-  "version": "1.99.0",
+  "version": "1.100.0",
   "changes": {
     "en-US": [
-      "Copying images now works reliably in the desktop client and falls back to PNG conversion in browsers that need it.",
-      "Images in the editor now provide a complete right-click action menu for copying, downloading, saving, renaming, and deleting.",
-      "Desktop Markdown mirror notes can now be revealed directly from the note tab file manager menu."
+      "Paragraph formatting now supports adjustable line spacing, indentation, and first-line indentation from the toolbar or context menu.",
+      "Headings can be applied to a selected portion without changing surrounding body text, with Arabic, Chinese, and circled numbering options.",
+      "Images can now be resized by dragging or by entering an exact width percentage."
     ],
     "zh-CN": [
-      "图片复制在桌面端更加可靠；在需要的浏览器中会自动转换为 PNG 作为兜底。",
-      "编辑器中的图片现在支持完整的右键操作菜单，可复制、下载、另存、重命名和删除。",
-      "桌面端 Markdown 镜像中的笔记现在可以直接从笔记标签页的文件管理器菜单中定位。"
+      "段落格式现在支持从工具栏或右键菜单调整行间距、缩进和首行缩进。",
+      "标题支持只作用于选中内容，不会改变前后正文，并新增阿拉伯数字、中文数字和带圈数字编号。",
+      "图片现在既可以拖拽调整，也可以直接输入精确的宽度百分比。"
     ],
     "ja": [
-      "デスクトップ版での画像コピーがより安定し、必要なブラウザでは PNG 変換によるフォールバックにも対応しました。",
-      "エディターの画像を右クリックすると、コピー、ダウンロード、名前を付けて保存、名前変更、削除を選べます。",
-      "デスクトップ版の Markdown ミラーにあるノートを、ノートタブのファイルマネージャーメニューから直接表示できるようになりました。"
+      "段落の行間、インデント、最初の行の字下げをツールバーまたはコンテキストメニューから調整できるようになりました。",
+      "見出しを選択範囲だけに適用できるようになり、前後の本文を保持したまま、アラビア数字、漢数字、丸数字の番号を設定できます。",
+      "画像をドラッグまたは幅の割合を入力してサイズ変更できるようになりました。"
     ]
   }
 }

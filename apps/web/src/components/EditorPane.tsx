@@ -53,9 +53,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isSharedAccessReadOnly } from "@/lib/shared-with-me";
 import { EditorToolbar } from "./EditorToolbar";
+import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
+import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import { EditorOutline } from "./EditorOutline";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
 import {
@@ -490,6 +499,12 @@ const RichEditorPane = ({
   }, [memo?.id]);
   const [editorStateVersion, setEditorStateVersion] = useState(0);
   const [editorContentVersion, setEditorContentVersion] = useState(0);
+  const [defaultLineHeight, setDefaultLineHeight] = useState(readEditorParagraphLineHeight);
+  useEffect(() => {
+    const update = () => setDefaultLineHeight(readEditorParagraphLineHeight());
+    window.addEventListener(EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, update);
+    return () => window.removeEventListener(EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, update);
+  }, []);
   const [imageUploadState, setImageUploadState] = useState<"idle" | "compressing" | "uploading" | "error">("idle");
   const [imagePreview, setImagePreview] = useState<ImagePreviewRequestDetail | null>(null);
   const [imageContextMenu, setImageContextMenu] = useState<{
@@ -1327,6 +1342,22 @@ const RichEditorPane = ({
 
         if (event.key === "Tab" && applyPlainTextTab(view.state, view.dispatch, event.shiftKey)) {
           event.preventDefault();
+          return true;
+        }
+
+        // Heading numbering shortcuts: Mod-Alt-1/2/3 select Arabic, Chinese,
+        // or circled numbering; Mod-Alt-0 removes numbering from the heading.
+        if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && ["0", "1", "2", "3"].includes(event.key)) {
+          if (currentNode.type.name !== "heading") return false;
+          event.preventDefault();
+          const numbering = event.key === "1"
+            ? "decimal"
+            : event.key === "2"
+              ? "chinese"
+              : event.key === "3"
+                ? "circled"
+                : null;
+          editor.commands.updateAttributes("heading", { headingNumbering: numbering });
           return true;
         }
 
@@ -4590,7 +4621,7 @@ const RichEditorPane = ({
               )
             : {
                 "--editor-body-font-size": `${MEMO_CONTENT_STYLE.body.fontSize}px`,
-                "--editor-body-line-height": String(MEMO_CONTENT_STYLE.body.lineHeight / MEMO_CONTENT_STYLE.body.fontSize),
+                 "--editor-body-line-height": defaultLineHeight,
                 "--editor-paragraph-spacing": `${MEMO_CONTENT_STYLE.body.paragraphSpacing}px`,
               }),
           "--memo-content-divider-spacing": `${MEMO_CONTENT_STYLE.divider.marginVertical}px`,
@@ -4755,7 +4786,19 @@ const RichEditorPane = ({
                 {!isMobileViewport && !effectiveReadOnly && isEditorReady(editor) ? (
                   <EditorBlockDragHandle editor={editor} />
                 ) : null}
-                <EditorContent editor={editor} />
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <div className="contents">
+                      <EditorContent editor={editor} />
+                    </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-64">
+                    <EditorParagraphFormatItems editor={editor} readOnly={effectiveReadOnly} context />
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onSelect={() => editor?.chain().focus().undo().run()}>{t("editorToolbar.undo")}</ContextMenuItem>
+                    <ContextMenuItem onSelect={() => editor?.chain().focus().redo().run()}>{t("editorToolbar.redo")}</ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               </div>
             )}
           </div>

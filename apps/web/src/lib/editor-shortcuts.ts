@@ -1,4 +1,5 @@
 import { TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import type { Editor } from "@tiptap/core";
 import { wrapInList } from "@tiptap/pm/schema-list";
 
 const TAB_DELEGATED_NODE_TYPES = new Set([
@@ -202,6 +203,40 @@ export const wrapIndentedParagraphInList = (
   const listTypeName = requestedListType ?? selection.$from.node(listItemDepth - 1).type.name;
   const listType = state.schema.nodes[listTypeName];
   return Boolean(listType && wrapInList(listType)(state, dispatch));
+};
+
+/** Keep a partial heading selection isolated from the surrounding paragraph. */
+export const setHeadingWithSelectionBoundary = (editor: Editor, level: 1 | 2 | 3 | 4 | 5 | 6) => {
+  const { state } = editor;
+  const { selection } = state;
+  if (selection.empty || selection.$from.parent !== selection.$to.parent || !selection.$from.parent.isTextblock) {
+    return editor.chain().focus().setHeading({ level }).run();
+  }
+
+  const parent = selection.$from.parent;
+  const parentStart = selection.$from.start();
+  const fromOffset = selection.from - parentStart;
+  const toOffset = selection.to - parentStart;
+  if (fromOffset <= 0 && toOffset >= parent.content.size) {
+    return editor.chain().focus().setHeading({ level }).run();
+  }
+
+  const before = parent.cut(0, fromOffset).content;
+  const selected = parent.cut(fromOffset, toOffset).content;
+  const after = parent.cut(toOffset).content;
+  const paragraph = state.schema.nodes.paragraph;
+  const heading = state.schema.nodes.heading;
+  if (!paragraph || !heading || selected.size === 0) return false;
+
+  const nodes = [];
+  if (before.size) nodes.push(paragraph.create(parent.attrs, before));
+  nodes.push(heading.create({ ...parent.attrs, level }, selected));
+  if (after.size) nodes.push(paragraph.create(parent.attrs, after));
+  const blockFrom = selection.$from.before();
+  const blockTo = blockFrom + parent.nodeSize;
+  const transaction = state.tr.replaceWith(blockFrom, blockTo, nodes);
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
 };
 
 export const saveAndSyncEditor = async ({

@@ -1197,6 +1197,43 @@ textarea {
   padding: 0;
 }
 
+/* Paragraph formatting is stored as safe data attributes so line-height and
+ * indentation survive JSON/HTML/Markdown round trips without clobbering one
+ * another's inline style attribute. */
+.ProseMirror [data-line-height="1"] { line-height: 1; }
+.ProseMirror [data-line-height="1.15"] { line-height: 1.15; }
+.ProseMirror [data-line-height="1.5"] { line-height: 1.5; }
+.ProseMirror [data-line-height="1.75"] { line-height: 1.75; }
+.ProseMirror [data-line-height="2"] { line-height: 2; }
+.ProseMirror [data-line-height="2.5"] { line-height: 2.5; }
+.ProseMirror [data-line-height="3"] { line-height: 3; }
+.ProseMirror [data-indent-left="1"] { margin-left: 1em; }
+.ProseMirror [data-indent-left="2"] { margin-left: 2em; }
+.ProseMirror [data-indent-left="3"] { margin-left: 3em; }
+.ProseMirror [data-indent-left="4"] { margin-left: 4em; }
+.ProseMirror [data-indent-left="5"] { margin-left: 5em; }
+.ProseMirror [data-indent-left="6"] { margin-left: 6em; }
+.ProseMirror [data-indent-left="7"] { margin-left: 7em; }
+.ProseMirror [data-indent-left="8"] { margin-left: 8em; }
+.ProseMirror [data-indent-right="1"] { margin-right: 1em; }
+.ProseMirror [data-indent-right="2"] { margin-right: 2em; }
+.ProseMirror [data-indent-right="3"] { margin-right: 3em; }
+.ProseMirror [data-indent-right="4"] { margin-right: 4em; }
+.ProseMirror [data-indent-right="5"] { margin-right: 5em; }
+.ProseMirror [data-indent-right="6"] { margin-right: 6em; }
+.ProseMirror [data-indent-right="7"] { margin-right: 7em; }
+.ProseMirror [data-indent-right="8"] { margin-right: 8em; }
+.ProseMirror [data-first-line-indent="1"] { text-indent: 1em; }
+.ProseMirror [data-first-line-indent="2"] { text-indent: 2em; }
+.edgeever-image-width-input { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 5px; border: 1px solid rgb(226 232 240); border-radius: 6px; background: white; color: rgb(71 85 105); font-size: 11px; }
+.edgeever-image-width-input input { width: 38px; border: 0; background: transparent; color: inherit; font: inherit; outline: none; text-align: right; }
+.ProseMirror[data-heading-numbering] { counter-reset: edgeever-heading-1 edgeever-heading-2 edgeever-heading-3 edgeever-heading-4 edgeever-heading-5 edgeever-heading-6; }
+.ProseMirror [data-heading-numbering] { counter-increment: edgeever-heading-1; }
+.ProseMirror [data-heading-numbering]::before { margin-right: 0.45em; color: var(--editor-theme-muted, #64748b); font-weight: 600; }
+.ProseMirror [data-heading-numbering="decimal"]::before { content: counter(edgeever-heading-1) "."; }
+.ProseMirror [data-heading-numbering="chinese"]::before { content: counter(edgeever-heading-1, simp-chinese-informal) "、"; }
+.ProseMirror [data-heading-numbering="circled"]::before { content: counter(edgeever-heading-1, circled-decimal) " "; }
+
 /* The root deliberately disables synthetic font faces for the application UI,
  * but rich-text emphasis must remain visible when a platform fallback font has
  * no matching bold or italic face. Allow both forms here so nested bold-italic

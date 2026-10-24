@@ -46,7 +46,9 @@ import {
   EditorHighlightColorMenu,
   EditorTextColorMenu,
 } from "@/components/EditorInlineStyleMenu";
-import { wrapIndentedParagraphInList } from "@/lib/editor-shortcuts";
+import { setHeadingWithSelectionBoundary, wrapIndentedParagraphInList } from "@/lib/editor-shortcuts";
+import { EditorParagraphFormatMenu } from "./EditorParagraphFormatMenu";
+import { EditorHeadingNumberMenu } from "./EditorHeadingNumberMenu";
 import {
   EDITOR_THEME_NAMES,
   MARKDOWN_THEME_PREFERENCES,
@@ -310,7 +312,7 @@ export const EditorToolbar = ({
 
       const headingLevel = parseHeadingBlockValue(value);
       if (headingLevel) {
-        chain.setHeading({ level: headingLevel }).run();
+        setHeadingWithSelectionBoundary(current, headingLevel);
       }
     });
   };
@@ -522,7 +524,9 @@ export const EditorToolbar = ({
           <EditorFontSizeMenu editor={editor} readOnly={readOnly} />
           <EditorFontSizeStepButtons editor={editor} readOnly={readOnly} />
           <EditorTextColorMenu editor={editor} readOnly={readOnly} />
-          <EditorHighlightColorMenu editor={editor} readOnly={readOnly} />
+           <EditorHighlightColorMenu editor={editor} readOnly={readOnly} />
+           <EditorParagraphFormatMenu editor={editor} readOnly={readOnly} />
+           <EditorHeadingNumberMenu editor={editor} readOnly={readOnly} />
 
           <MemoEditorToolbarDivider className="hidden sm:block" />
           <EditorToolbarButton
