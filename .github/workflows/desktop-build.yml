@@ -98,7 +98,7 @@ jobs:
     needs: release-plan
     if: >-
       ${{
-        github.repository == 'tianma-if/edgeever' &&
+        github.repository == 'ikun-yinmie/edgeever' &&
         github.event_name == 'workflow_dispatch' &&
         inputs.release_tag != '' &&
         needs.release-plan.result == 'success' &&
@@ -135,7 +135,7 @@ jobs:
             --pattern 'latest-linux.yml' \
             --pattern 'SHA256SUMS-linux.txt' \
             --dir "$RUNNER_TEMP/native-assets"
-           test "$(find "$RUNNER_TEMP/native-assets" -type f | wc -l | tr -d ' ')" = "9"
+          test "$(find "$RUNNER_TEMP/native-assets" -type f | wc -l | tr -d ' ')" = "8"
           gh release upload "$CURRENT_TAG" "$RUNNER_TEMP/native-assets/"* \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
@@ -805,7 +805,7 @@ jobs:
       - name: Create and audit combined update metadata
         run: |
           version="$(node -p "JSON.parse(require('fs').readFileSync('apps/desktop/package.json', 'utf8')).version")"
-           node scripts/verify-linux-update-release.mjs release/desktop "$version"
+          node scripts/verify-linux-update-release.mjs release/desktop "$version"
           asset_ready="$(
             find release/desktop -maxdepth 1 -type f -exec basename {} \; |
               node scripts/check-native-release-assets.mjs desktop true "v${version}" "$version" allow-missing-windows-signature
@@ -825,7 +825,7 @@ jobs:
       - name: Upload combined desktop installers and metadata
         uses: actions/upload-artifact@v6
         with:
-           name: edgeever-desktop-Windows-and-Linux-x64
+          name: edgeever-desktop-Windows-and-Linux-x64
           path: release/desktop/*
           if-no-files-found: error
           retention-days: 14
