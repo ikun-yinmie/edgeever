@@ -166,7 +166,7 @@ describe("desktop release workflow", () => {
     expect(linuxAuditJob).toContain("name: Check out source");
     expect(linuxAuditJob).toContain("uses: actions/checkout@v5");
     expect(linuxAuditJob).toContain("node scripts/verify-linux-update-release.mjs release/desktop");
-    expect(workflow).toContain("needs: [release-plan, desktop, windows, linux]");
+    expect(workflow).toContain("needs: [release-plan, windows, linux]");
     expect(desktopPackageVerifier).toContain("verifyGlibcBaseline(sidecar)");
   });
 });
