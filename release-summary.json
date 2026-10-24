@@ -1,20 +1,20 @@
 {
-  "version": "1.98.0",
+  "version": "1.99.0",
   "changes": {
     "en-US": [
-      "The desktop client now shows the installed and latest versions in profile settings, supports manual download and restart, and lets you disable automatic updates or limit them to a daily time window.",
-      "A desktop update restart now saves the active draft and syncs all queued local notes first; the restart is cancelled if that sync cannot finish, preventing note loss.",
-      "Pressing the heading shortcut for the heading level that is already active now returns the block to body text."
+      "Copying images now works reliably in the desktop client and falls back to PNG conversion in browsers that need it.",
+      "Images in the editor now provide a complete right-click action menu for copying, downloading, saving, renaming, and deleting.",
+      "Desktop Markdown mirror notes can now be revealed directly from the note tab file manager menu."
     ],
     "zh-CN": [
-      "桌面端在个人中心显示当前版本和最新版本，支持手动下载并重启更新，也可以关闭自动更新或限定每天允许自动更新的时间段。",
-      "更新重启前会先保存当前草稿并同步所有待同步笔记；同步未完成时会取消重启，避免笔记丢失。",
-      "再次按下当前标题层级对应的快捷键会将段落恢复为正文。"
+      "图片复制在桌面端更加可靠；在需要的浏览器中会自动转换为 PNG 作为兜底。",
+      "编辑器中的图片现在支持完整的右键操作菜单，可复制、下载、另存、重命名和删除。",
+      "桌面端 Markdown 镜像中的笔记现在可以直接从笔记标签页的文件管理器菜单中定位。"
     ],
     "ja": [
-      "デスクトップ版のプロフィール設定で現在のバージョンと最新バージョンを確認でき、手動でのダウンロードと再起動、自動更新の停止、毎日の更新時間帯の指定に対応しました。",
-      "更新の再起動前には編集中の下書きを保存し、未同期のノートをすべて同期します。同期が完了しない場合は再起動を中止し、ノートの消失を防ぎます。",
-      "現在の見出しレベルと同じショートカットを再度押すと、段落を本文に戻せるようになりました。"
+      "デスクトップ版での画像コピーがより安定し、必要なブラウザでは PNG 変換によるフォールバックにも対応しました。",
+      "エディターの画像を右クリックすると、コピー、ダウンロード、名前を付けて保存、名前変更、削除を選べます。",
+      "デスクトップ版の Markdown ミラーにあるノートを、ノートタブのファイルマネージャーメニューから直接表示できるようになりました。"
     ]
   }
 }
