@@ -4608,6 +4608,9 @@ const RichEditorPane = ({
         />
       </header>
 
+      {/* The outline column sits beside the article scroller (not inside it)
+       * so the outline keeps its own fixed height and independent scroll. */}
+      <div className="flex min-h-0 flex-1">
       <div
         ref={setEditorScrollContainerRef}
         data-editor-theme={isNamedEditorTheme(resolvedEditorTheme) ? resolvedEditorTheme : "custom"}
@@ -4652,7 +4655,7 @@ const RichEditorPane = ({
             : {}),
         } as CSSProperties}
         className={cn(
-          "edgeever-editor relative min-h-0 flex-1 bg-card",
+          "edgeever-editor relative min-h-0 min-w-0 flex-1 bg-card",
           useMobilePlainTextEditor
             ? "overflow-visible"
             : useMarkdownSourceEditor
@@ -4813,17 +4816,19 @@ const RichEditorPane = ({
               editorTheme={resolvedEditorTheme}
             />
           )}
-          {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
-            <EditorOutline
-              editor={editor}
-              scrollContainer={editorScrollContainer}
-              previewContainer={phonePreviewOpen && phonePreviewStageVisible ? phonePreviewScroller : null}
-              collapsed={editorOutlineCollapsed}
-              shortcutLabel={formatShortcutBinding(shortcutSettings.toggleOutline)}
-              onCollapsedChange={handleEditorOutlineCollapsedChange}
-            />
-          )}
         </div>
+      </div>
+      {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
+        <EditorOutline
+          editor={editor}
+          scrollContainer={editorScrollContainer}
+          previewContainer={phonePreviewOpen && phonePreviewStageVisible ? phonePreviewScroller : null}
+          collapsed={editorOutlineCollapsed}
+          shortcutLabel={formatShortcutBinding(shortcutSettings.toggleOutline)}
+          docked
+          onCollapsedChange={handleEditorOutlineCollapsedChange}
+        />
+      )}
       </div>
 
       {noteLinkHintPosition && (

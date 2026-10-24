@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { ChevronDown, ChevronRight, ListTree } from "lucide-react";
+import { ChevronDown, ChevronRight, ListTree, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -22,6 +22,10 @@ type EditorOutlineProps = {
   shortcutLabel?: string;
   /** Public share pages scroll with the window instead of an editor pane. */
   trackWindowScroll?: boolean;
+  /** Docked mode: the outline lives as an independent column beside the
+   * article scroller (own scroll, own collapse affordances) instead of a
+   * sticky panel inside the article scroll flow. */
+  docked?: boolean;
   className?: string;
   onCollapsedChange: (collapsed: boolean) => void;
 };
@@ -105,6 +109,7 @@ export const EditorOutline = ({
   collapsed,
   shortcutLabel = "",
   trackWindowScroll = false,
+  docked = false,
   className,
   onCollapsedChange,
 }: EditorOutlineProps) => {
@@ -298,10 +303,10 @@ export const EditorOutline = ({
           <li key={item.pos}>
             <div
               className={cn(
-                "group flex min-h-8 items-center rounded-[6px] pr-2 text-[13px] leading-5 transition-colors duration-150",
+                "group relative flex min-h-8 items-center rounded-md pr-2 text-[13px] leading-5 transition-colors duration-150",
                 isActive
-                  ? "bg-slate-100 text-slate-900"
-                  : "text-slate-700 hover:bg-slate-50/70 hover:text-slate-900"
+                  ? "bg-emerald-50/90 text-emerald-800"
+                  : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
               )}
               style={{
                 marginLeft: `${depth * -24}px`,
@@ -309,6 +314,13 @@ export const EditorOutline = ({
                 width: `calc(100% + ${depth * 24}px)`,
               }}
             >
+              {isActive && (
+                <span
+                  className="absolute left-1 top-1/2 h-4 -translate-y-1/2 rounded-full bg-emerald-500"
+                  style={{ width: 2.5 }}
+                  aria-hidden="true"
+                />
+              )}
               {hasChildren ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -350,7 +362,7 @@ export const EditorOutline = ({
             </div>
 
             {hasChildren && !itemCollapsed && (
-              <div className="ml-3 border-l border-slate-200/90 pl-3">
+              <div className="ml-3 border-l border-slate-200/70 pl-3">
                 {renderItems(item.children, depth + 1)}
               </div>
             )}
@@ -366,6 +378,71 @@ export const EditorOutline = ({
 
   const outlineToggleBaseLabel = t(collapsed ? "editor.showOutline" : "editor.hideOutline");
   const outlineToggleLabel = shortcutLabel ? `${outlineToggleBaseLabel} (${shortcutLabel})` : outlineToggleBaseLabel;
+
+  if (docked) {
+    return (
+      <TooltipProvider delayDuration={350} skipDelayDuration={100}>
+        <aside
+          className={cn(
+            "select-none h-full shrink-0",
+            collapsed ? "relative w-0" : "flex flex-col pl-1 pr-2 pt-5",
+            className
+          )}
+          style={{
+            ...(!collapsed ? { width: EDITOR_OUTLINE_WIDTH } : {}),
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
+          }}
+          aria-label={t("editor.outline")}
+        >
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="group absolute right-0 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/90 text-slate-400 shadow-sm backdrop-blur transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                  onClick={() => onCollapsedChange(false)}
+                  aria-expanded={false}
+                  aria-label={outlineToggleLabel}
+                >
+                  <PanelRightOpen className="h-4 w-4 group-hover:scale-105" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">{outlineToggleLabel}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center justify-between px-3 pb-1 pt-3">
+                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <ListTree className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("editor.outline")}
+                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                      onClick={() => onCollapsedChange(true)}
+                      aria-expanded
+                      aria-label={outlineToggleLabel}
+                    >
+                      <PanelRightClose className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">{outlineToggleLabel}</TooltipContent>
+                </Tooltip>
+              </div>
+              <nav
+                className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/70 [&::-webkit-scrollbar-thumb]:hover:bg-slate-400/70"
+                aria-label={t("editor.outline")}
+              >
+                {renderItems(tree)}
+              </nav>
+            </div>
+          )}
+        </aside>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={350} skipDelayDuration={100}>
