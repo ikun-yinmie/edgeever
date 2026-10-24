@@ -781,6 +781,13 @@ textarea {
   gap: 0.1rem;
 }
 
+/* Details blocks park their fold toggle at the same left edge the floating
+ * handle hovers over; nudge the handle into the gutter so one click can never
+ * hit the wrong control. */
+.edgeever-block-drag-handle-shift {
+  margin-left: -1.9em;
+}
+
 .edgeever-block-menu-trigger {
   display: none;
   width: 1.25rem;

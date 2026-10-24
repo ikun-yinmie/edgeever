@@ -4797,7 +4797,7 @@ const RichEditorPane = ({
                       <EditorContent editor={editor} />
                     </div>
                   </ContextMenuTrigger>
-                  <ContextMenuContent className="w-64">
+                  <ContextMenuContent className="max-h-[min(26rem,70vh)] w-64 overflow-y-auto">
                     <EditorParagraphFormatItems editor={editor} readOnly={effectiveReadOnly} context />
                     <ContextMenuSeparator />
                     <ContextMenuItem onSelect={() => editor?.chain().focus().undo().run()}>{t("editorToolbar.undo")}</ContextMenuItem>

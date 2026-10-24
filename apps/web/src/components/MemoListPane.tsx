@@ -1626,7 +1626,7 @@ export const MemoListPane = ({
             <DropdownMenuContent
               align="start"
               onCloseAutoFocus={(event) => event.preventDefault()}
-              className="max-h-[calc(100dvh-1.5rem)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
+              className="max-h-[min(26rem,70vh)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
               data-memo-actions-menu
             >
               <DropdownMenuSub>

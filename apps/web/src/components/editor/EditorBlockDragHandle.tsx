@@ -42,6 +42,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 const BLOCK_DRAG_HANDLE_CLASS_NAME = "edgeever-block-drag-handle";
 const BLOCK_MENU_TRIGGER_CLASS_NAME = "edgeever-block-menu-trigger";
@@ -398,12 +399,29 @@ const cutBlock = (editor: Editor, hoveredBlockPos: number | null) => {
 export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [overDetailsBlock, setOverDetailsBlock] = useState(false);
   const hoveredBlockPosRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.addEventListener("dragstart", retainBlockDragDataTransfer);
     return () => document.removeEventListener("dragstart", retainBlockDragDataTransfer);
   }, []);
+
+  useEffect(() => {
+    if (editor.isDestroyed) return;
+    // The details fold toggle lives at the block's left edge, exactly where the
+    // floating handle parks; track hover so the handle can shift into the
+    // gutter and the two controls stay clickable apart.
+    const onMouseOver = (event: Event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const overDetails = Boolean(target?.closest('[data-type="details"]'));
+      setOverDetailsBlock((current) => (current === overDetails ? current : overDetails));
+    };
+    editor.view.dom.addEventListener("mouseover", onMouseOver);
+    return () => {
+      editor.view.dom.removeEventListener("mouseover", onMouseOver);
+    };
+  }, [editor]);
 
   if (editor.isDestroyed || !editor.isEditable) {
     return null;
@@ -437,7 +455,7 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   return (
     <DragHandle
       editor={editor}
-      className={BLOCK_DRAG_HANDLE_CLASS_NAME}
+      className={cn(BLOCK_DRAG_HANDLE_CLASS_NAME, overDetailsBlock && "edgeever-block-drag-handle-shift")}
       nested
       onNodeChange={({ pos }) => {
         hoveredBlockPosRef.current = pos >= 0 ? pos : null;
