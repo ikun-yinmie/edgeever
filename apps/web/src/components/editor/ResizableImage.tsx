@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type Pointer
 import { mergeAttributes } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import { NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from "@tiptap/react";
-import { Maximize2 } from "lucide-react";
+import { LoaderCircle, Maximize2, RotateCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getImageReferrerPolicy, IMAGE_GALLERY_NODE_TYPE } from "@edgeever/shared";
 import {
@@ -24,6 +24,7 @@ export type ImageMenuRequestDetail = {
   resourceId: string | null;
   updateAttributes: (attributes: Record<string, unknown>) => void;
   deleteNode: () => void;
+  reloadImage: () => void;
 };
 
 export type ImageContextMenuRequestDetail = ImageMenuRequestDetail & {
@@ -52,6 +53,8 @@ const ResizableImageNodeView = ({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
   const nodeWidth = parseImageWidth(node.attrs.width) ?? DEFAULT_IMAGE_WIDTH_PERCENT;
   const width = previewWidth ?? nodeWidth;
   const { editable, inGallery } = useEditorState({
@@ -65,6 +68,10 @@ const ResizableImageNodeView = ({
   const alt = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
   const title = typeof node.attrs.title === "string" ? node.attrs.title : "";
   const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
+  const reloadImage = useCallback(() => {
+    setLoadState("loading");
+    setReloadKey((value) => value + 1);
+  }, []);
 
   const getAdjacentImageGroup = useCallback(() => {
     const position = getPos();
@@ -141,9 +148,10 @@ const ResizableImageNodeView = ({
         resourceId: getAttachmentResourceId(src),
         updateAttributes,
         deleteNode,
+        reloadImage,
       },
     }));
-  }, [alt, deleteNode, src, title, updateAttributes]);
+  }, [alt, deleteNode, reloadImage, src, title, updateAttributes]);
 
   const hideImageMenu = useCallback(() => {
     window.dispatchEvent(new CustomEvent(IMAGE_MENU_HIDE_EVENT));
@@ -164,10 +172,11 @@ const ResizableImageNodeView = ({
         resourceId: getAttachmentResourceId(src),
         updateAttributes,
         deleteNode,
+        reloadImage,
         point: { x: event.clientX, y: event.clientY },
       },
     }));
-  }, [alt, deleteNode, hideImageMenu, src, title, updateAttributes]);
+  }, [alt, deleteNode, hideImageMenu, reloadImage, src, title, updateAttributes]);
 
   const requestImagePreview = useCallback(() => {
     if (!src) return;
@@ -253,13 +262,31 @@ const ResizableImageNodeView = ({
       onMouseLeave={hideImageMenu}
       onContextMenu={(event: MouseEvent<HTMLElement>) => requestImageContextMenu(event)}
     >
-      <img
-        ref={imageRef}
-        src={src}
+       {loadState !== "loaded" && (
+         <div className={cn("edgeever-image-placeholder", loadState === "error" && "is-error")} role={loadState === "error" ? "alert" : undefined}>
+           {loadState === "error" ? (
+             <>
+               <span>{t("editor.imageLoadFailed")}</span>
+               <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={reloadImage}>
+                 <RotateCw aria-hidden="true" />{t("editor.reloadImage")}
+               </button>
+             </>
+           ) : (
+             <><LoaderCircle className="animate-spin" aria-hidden="true" />{t("editor.imageLoading")}</>
+           )}
+         </div>
+       )}
+       <img
+         key={reloadKey}
+         ref={imageRef}
+         src={src}
+         className={cn(loadState !== "loaded" && "is-loading")}
         alt={alt}
         title={title || undefined}
         draggable={false}
-        referrerPolicy={getImageReferrerPolicy(src)}
+         referrerPolicy={getImageReferrerPolicy(src)}
+         onLoad={() => setLoadState("loaded")}
+         onError={() => setLoadState("error")}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();

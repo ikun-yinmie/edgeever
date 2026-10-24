@@ -33,6 +33,7 @@ import {
   Eye,
   UsersRound,
   CloudOff,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
@@ -3986,6 +3987,7 @@ const RichEditorPane = ({
     rename: t("editor.resourceActions.rename"),
     delete: t("editor.resourceActions.delete"),
     unavailable: t("editor.resourceActions.unavailable"),
+    reload: t("editor.reloadImage"),
   };
   const canRenameResource = (target: ResourceMenuTarget) => Boolean(
     target.resourceId &&
@@ -4867,6 +4869,17 @@ const RichEditorPane = ({
               >
                 <Copy className="h-4 w-4" />
                 {resourceMenuLabels.copy}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  target.reloadImage();
+                }}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {resourceMenuLabels.reload}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"

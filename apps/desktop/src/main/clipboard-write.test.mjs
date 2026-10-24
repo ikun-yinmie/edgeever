@@ -61,6 +61,11 @@ describe("writeImageClipboard", () => {
     expect(writeImageClipboard(bridge.clipboard, bridge.nativeImage, new Uint8Array([4, 5]).buffer)).toBe(true);
   });
 
+  test("does not turn a successful write into a failure when read-back is empty", () => {
+    const bridge = createBridge({ readBack: false });
+    expect(writeImageClipboard(bridge.clipboard, bridge.nativeImage, new Uint8Array([4, 5]))).toBe(true);
+  });
+
   test("reports failure when the bytes are not a decodable image", () => {
     const bridge = createBridge({ empty: true });
     expect(writeImageClipboard(bridge.clipboard, bridge.nativeImage, new Uint8Array([9]))).toBe(false);

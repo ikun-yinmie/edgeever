@@ -1993,6 +1993,9 @@ export const zhCN = {
       action: "分享为图片",
       longImageWarning: "图片较长，部分社交平台可能会压缩画质；建议保留下载的原图。",
     },
+    imageLoading: "图片加载中…",
+    imageLoadFailed: "图片加载失败",
+    reloadImage: "重新加载图片",
     htmlExport: {
       error: "导出 HTML 失败。",
       imageEmbedPartial:

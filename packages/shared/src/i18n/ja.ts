@@ -1995,6 +1995,9 @@ export const ja = {
       action: "画像として共有",
       longImageWarning: "この画像はとても長いです。一部のソーシャルプラットフォームでは圧縮される場合があります。画質を保つには、ダウンロードした原画像を残してください。",
     },
+    imageLoading: "画像を読み込み中…",
+    imageLoadFailed: "画像の読み込みに失敗しました",
+    reloadImage: "画像を再読み込み",
     htmlExport: {
       error: "ノートを HTML としてエクスポートできませんでした。",
       imageEmbedPartial:

@@ -35,15 +35,10 @@ export const writeImageClipboard = (clipboard, nativeImage, value) => {
   if (!image || image.isEmpty()) return false;
   clipboard.writeImage(image);
 
-  // Reading the image back proves the OS clipboard accepted the bitmap. Some
-  // platforms only expose a bitmap after a paste target asks for it, so an
-  // unavailable read-back must not turn a successful write into a failure.
-  if (typeof clipboard.readImage !== "function") return true;
-  try {
-    return !clipboard.readImage().isEmpty();
-  } catch {
-    return true;
-  }
+  // Electron's readImage() is not a reliable write acknowledgement on Linux
+  // and some Wayland/desktop clipboard providers. It may be empty until a
+  // paste target requests the bitmap, even though writeImage() succeeded.
+  return true;
 };
 
 export const writePlainTextClipboard = (clipboard, value) => {

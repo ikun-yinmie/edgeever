@@ -1995,6 +1995,9 @@ export const enUS = {
       action: "Share as image",
       longImageWarning: "This image is very long. Some social platforms may compress it; keep the downloaded original for best quality.",
     },
+    imageLoading: "Loading image…",
+    imageLoadFailed: "Image failed to load",
+    reloadImage: "Reload image",
     htmlExport: {
       error: "Could not export the note as HTML.",
       imageEmbedPartial:

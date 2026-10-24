@@ -24,6 +24,7 @@ export type ImageMenuTarget = {
   position: ResourceMenuPosition;
   updateAttributes: (attributes: Record<string, unknown>) => void;
   deleteNode: () => void;
+  reloadImage: () => void;
 };
 
 export type ResourceMenuTarget = AttachmentMenuTarget | ImageMenuTarget;

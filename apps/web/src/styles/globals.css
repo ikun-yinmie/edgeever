@@ -1200,39 +1200,56 @@ textarea {
 /* Paragraph formatting is stored as safe data attributes so line-height and
  * indentation survive JSON/HTML/Markdown round trips without clobbering one
  * another's inline style attribute. */
-.ProseMirror [data-line-height="1"] { line-height: 1; }
-.ProseMirror [data-line-height="1.15"] { line-height: 1.15; }
-.ProseMirror [data-line-height="1.5"] { line-height: 1.5; }
-.ProseMirror [data-line-height="1.75"] { line-height: 1.75; }
-.ProseMirror [data-line-height="2"] { line-height: 2; }
-.ProseMirror [data-line-height="2.5"] { line-height: 2.5; }
-.ProseMirror [data-line-height="3"] { line-height: 3; }
-.ProseMirror [data-indent-left="1"] { margin-left: 1em; }
-.ProseMirror [data-indent-left="2"] { margin-left: 2em; }
-.ProseMirror [data-indent-left="3"] { margin-left: 3em; }
-.ProseMirror [data-indent-left="4"] { margin-left: 4em; }
-.ProseMirror [data-indent-left="5"] { margin-left: 5em; }
-.ProseMirror [data-indent-left="6"] { margin-left: 6em; }
-.ProseMirror [data-indent-left="7"] { margin-left: 7em; }
-.ProseMirror [data-indent-left="8"] { margin-left: 8em; }
-.ProseMirror [data-indent-right="1"] { margin-right: 1em; }
-.ProseMirror [data-indent-right="2"] { margin-right: 2em; }
-.ProseMirror [data-indent-right="3"] { margin-right: 3em; }
-.ProseMirror [data-indent-right="4"] { margin-right: 4em; }
-.ProseMirror [data-indent-right="5"] { margin-right: 5em; }
-.ProseMirror [data-indent-right="6"] { margin-right: 6em; }
-.ProseMirror [data-indent-right="7"] { margin-right: 7em; }
-.ProseMirror [data-indent-right="8"] { margin-right: 8em; }
-.ProseMirror [data-first-line-indent="1"] { text-indent: 1em; }
-.ProseMirror [data-first-line-indent="2"] { text-indent: 2em; }
+.ProseMirror [data-line-height="1"] { line-height: 1 !important; }
+.ProseMirror [data-line-height="1.15"] { line-height: 1.15 !important; }
+.ProseMirror [data-line-height="1.5"] { line-height: 1.5 !important; }
+.ProseMirror [data-line-height="1.75"] { line-height: 1.75 !important; }
+.ProseMirror [data-line-height="2"] { line-height: 2 !important; }
+.ProseMirror [data-line-height="2.5"] { line-height: 2.5 !important; }
+.ProseMirror [data-line-height="3"] { line-height: 3 !important; }
+.ProseMirror [data-indent-left="1"] { margin-left: 1em !important; }
+.ProseMirror [data-indent-left="2"] { margin-left: 2em !important; }
+.ProseMirror [data-indent-left="3"] { margin-left: 3em !important; }
+.ProseMirror [data-indent-left="4"] { margin-left: 4em !important; }
+.ProseMirror [data-indent-left="5"] { margin-left: 5em !important; }
+.ProseMirror [data-indent-left="6"] { margin-left: 6em !important; }
+.ProseMirror [data-indent-left="7"] { margin-left: 7em !important; }
+.ProseMirror [data-indent-left="8"] { margin-left: 8em !important; }
+.ProseMirror [data-indent-right="1"] { margin-right: 1em !important; }
+.ProseMirror [data-indent-right="2"] { margin-right: 2em !important; }
+.ProseMirror [data-indent-right="3"] { margin-right: 3em !important; }
+.ProseMirror [data-indent-right="4"] { margin-right: 4em !important; }
+.ProseMirror [data-indent-right="5"] { margin-right: 5em !important; }
+.ProseMirror [data-indent-right="6"] { margin-right: 6em !important; }
+.ProseMirror [data-indent-right="7"] { margin-right: 7em !important; }
+.ProseMirror [data-indent-right="8"] { margin-right: 8em !important; }
+.ProseMirror [data-first-line-indent="1"] { text-indent: 1em !important; }
+.ProseMirror [data-first-line-indent="2"] { text-indent: 2em !important; }
 .edgeever-image-width-input { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 5px; border: 1px solid rgb(226 232 240); border-radius: 6px; background: white; color: rgb(71 85 105); font-size: 11px; }
 .edgeever-image-width-input input { width: 38px; border: 0; background: transparent; color: inherit; font: inherit; outline: none; text-align: right; }
-.ProseMirror[data-heading-numbering] { counter-reset: edgeever-heading-1 edgeever-heading-2 edgeever-heading-3 edgeever-heading-4 edgeever-heading-5 edgeever-heading-6; }
+.ProseMirror { counter-reset: edgeever-heading-1 edgeever-heading-2 edgeever-heading-3 edgeever-heading-4 edgeever-heading-5 edgeever-heading-6; }
 .ProseMirror [data-heading-numbering] { counter-increment: edgeever-heading-1; }
-.ProseMirror [data-heading-numbering]::before { margin-right: 0.45em; color: var(--editor-theme-muted, #64748b); font-weight: 600; }
-.ProseMirror [data-heading-numbering="decimal"]::before { content: counter(edgeever-heading-1) "."; }
-.ProseMirror [data-heading-numbering="chinese"]::before { content: counter(edgeever-heading-1, simp-chinese-informal) "、"; }
-.ProseMirror [data-heading-numbering="circled"]::before { content: counter(edgeever-heading-1, circled-decimal) " "; }
+/* Numbering is content formatting, so it must win over paper-theme ornaments
+ * that also use heading::before/::after. Reset ornament geometry when a
+ * heading explicitly requests a number; otherwise the number can leave only
+ * an empty pseudo-element-sized gap. */
+.ProseMirror [data-heading-numbering]::before {
+  display: inline !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 0.45em 0 0 !important;
+  padding: 0 !important;
+  background: none !important;
+  content: "" !important;
+  -webkit-mask: none !important;
+  mask: none !important;
+  color: var(--editor-theme-muted, #64748b) !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+}
+.ProseMirror [data-heading-numbering="decimal"]::before { content: counter(edgeever-heading-1) "." !important; }
+.ProseMirror [data-heading-numbering="chinese"]::before { content: counter(edgeever-heading-1) "、" !important; }
+.ProseMirror [data-heading-numbering="circled"]::before { content: counter(edgeever-heading-1) " " !important; }
 
 /* The root deliberately disables synthetic font faces for the application UI,
  * but rich-text emphasis must remain visible when a platform fallback font has
@@ -2319,6 +2336,39 @@ textarea {
 .ProseMirror .edgeever-image-node img {
   width: 100%;
   margin: 0;
+}
+
+.ProseMirror .edgeever-image-node img.is-loading {
+  visibility: hidden;
+}
+
+.ProseMirror .edgeever-image-placeholder {
+  display: flex;
+  min-height: 160px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.ProseMirror .edgeever-image-placeholder.is-error {
+  flex-direction: column;
+  color: #b45309;
+}
+
+.ProseMirror .edgeever-image-placeholder button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.375rem;
+  padding: 0.3rem 0.55rem;
+  color: var(--brand-green-text);
+  font-weight: 600;
 }
 
 .ProseMirror .edgeever-image-node.is-selected img {
