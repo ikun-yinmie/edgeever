@@ -572,6 +572,15 @@ const RichEditorPane = ({
   const [memoIdCopyNotice, setMemoIdCopyNotice] = useState<{ status: "copied" | "error"; id: string } | null>(null);
   const [resourceCopyNotice, setResourceCopyNotice] = useState<"copied" | "error" | null>(null);
   const resourceCopyNoticeTimerRef = useRef<number | null>(null);
+  const editorContextMenuPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const onContextMenuPoint = (event: MouseEvent) => {
+      editorContextMenuPointRef.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener("contextmenu", onContextMenuPoint, true);
+    return () => document.removeEventListener("contextmenu", onContextMenuPoint, true);
+  }, []);
   const handledSaveAndSyncTokenRef = useRef(saveAndSyncToken);
   const handledReadingProtectionToggleTokenRef = useRef(readingProtectionToggleToken);
   const handledEditorModeToggleTokenRef = useRef(editorModeToggleToken);
@@ -4797,7 +4806,40 @@ const RichEditorPane = ({
                       <EditorContent editor={editor} />
                     </div>
                   </ContextMenuTrigger>
-                  <ContextMenuContent className="max-h-[min(26rem,70vh)] w-64 overflow-y-auto">
+                  <ContextMenuContent
+                    className="max-h-[min(26rem,70vh)] w-64 overflow-y-auto"
+                    ref={(el) => {
+                      if (!el) return;
+                      const point = editorContextMenuPointRef.current;
+                      if (!point) return;
+                      // Radix lets a flipped-up menu run past the click point;
+                      // re-anchor like a native context menu instead: start at
+                      // the click when there is room below, otherwise end at it.
+                      // Wait for the enter animation to settle (rect stable),
+                      // then disable it so the corrective translate sticks.
+                      let tries = 0;
+                      let lastKey = "";
+                      const align = () => {
+                        const rect = el.getBoundingClientRect();
+                        const key = `${Math.round(rect.top)}:${Math.round(rect.height)}`;
+                        if ((rect.height === 0 || key !== lastKey) && tries < 20) {
+                          lastKey = key;
+                          tries += 1;
+                          requestAnimationFrame(align);
+                          return;
+                        }
+                        if (rect.height === 0) return;
+                        const spaceBelow = window.innerHeight - point.y;
+                        const targetTop = rect.height <= spaceBelow ? point.y : point.y - rect.height;
+                        const dy = targetTop - rect.top;
+                        if (Math.abs(dy) > 2) {
+                          el.style.animation = "none";
+                          el.style.transform = `translateY(${Math.round(dy)}px)`;
+                        }
+                      };
+                      requestAnimationFrame(align);
+                    }}
+                  >
                     <EditorParagraphFormatItems editor={editor} readOnly={effectiveReadOnly} context />
                     <ContextMenuSeparator />
                     <ContextMenuItem onSelect={() => editor?.chain().focus().undo().run()}>{t("editorToolbar.undo")}</ContextMenuItem>
