@@ -1,14 +1,14 @@
 {
-  "version": "1.100.2",
+  "version": "1.100.3",
   "changes": {
     "en-US": [
-      "Improve image loading and recovery, make paragraph formatting and heading numbering independent of article themes, and fix desktop image clipboard copying."
+      "Fix desktop clipboard copying on Electron 44: migrate the native clipboard bridge to the new asynchronous ClipboardItem APIs so copying images, rich text, and plain text works again."
     ],
     "zh-CN": [
-      "改进图片加载与失败重试，确保段落格式和标题编号不受文章主题影响，并修复客户端复制图片。"
+      "修复基于 Electron 44 的客户端剪贴板复制：将原生剪贴板桥接迁移到新的异步 ClipboardItem 接口，恢复图片、富文本与纯文本复制。"
     ],
     "ja": [
-      "画像の読み込みと再試行を改善し、段落書式と見出し番号が記事テーマに影響されないようにし、デスクトップでの画像コピーを修正しました。"
+      "Electron 44 のデスクトップクリップボードコピーを修正：ネイティブクリップボードブリッジを新しい非同期 ClipboardItem API へ移行し、画像・リッチテキスト・プレーンテキストのコピーを復旧しました。"
     ]
   }
 }
