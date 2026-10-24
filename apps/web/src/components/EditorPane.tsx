@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo, lazy, Suspense, type CSSProperties, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
@@ -23,6 +24,7 @@ import {
   LoaderCircle,
   FileDown,
   FileCode2,
+  Save,
   Printer,
   Image as ImageIcon,
   Share2,
@@ -45,8 +47,10 @@ import { MemoTitleInput } from "@/components/MemoTitleInput";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
+  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -227,10 +231,12 @@ import {
   resolveAttachmentMenuFilename,
 } from "./editor/attachment-resource-menu";
 import {
+  IMAGE_CONTEXT_MENU_SHOW_EVENT,
   IMAGE_MENU_HIDE_EVENT,
   IMAGE_MENU_SHOW_EVENT,
   IMAGE_PREVIEW_SHOW_EVENT,
   ResizableImage,
+  type ImageContextMenuRequestDetail,
   type ImageMenuRequestDetail,
   type ImagePreviewRequestDetail,
 } from "./editor/ResizableImage";
@@ -281,6 +287,7 @@ import type { EdgeEverPluginHost, PluginEditorAdapter } from "@/lib/plugins/plug
 import {
   useEditorResourceActions,
   type AttachmentMenuTarget,
+  type ImageMenuTarget,
   type ResourceDialogState,
   type ResourceMenuTarget,
 } from "./editor/useEditorResourceActions";
@@ -485,6 +492,10 @@ const RichEditorPane = ({
   const [editorContentVersion, setEditorContentVersion] = useState(0);
   const [imageUploadState, setImageUploadState] = useState<"idle" | "compressing" | "uploading" | "error">("idle");
   const [imagePreview, setImagePreview] = useState<ImagePreviewRequestDetail | null>(null);
+  const [imageContextMenu, setImageContextMenu] = useState<{
+    target: ImageMenuTarget;
+    point: { x: number; y: number };
+  } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiAssistantAnchor, setAiAssistantAnchor] = useState<AiAssistantAnchor>({ left: 24, placement: "below", top: 96 });
@@ -1817,6 +1828,26 @@ const RichEditorPane = ({
   }, [cancelResourceMenuHide, isMobileViewport, scheduleResourceMenuHide, showResourceMenu]);
 
   useEffect(() => {
+    const showImageContextMenu = (event: Event) => {
+      if (isMobileViewport) return;
+      const detail = (event as CustomEvent<ImageContextMenuRequestDetail>).detail;
+      if (!detail?.element || !detail.point) return;
+      cancelResourceMenuHide();
+      hideResourceMenu();
+      setImageContextMenu({
+        target: {
+          ...detail,
+          kind: "image",
+          position: { left: detail.point.x, top: detail.point.y, placement: "below" },
+        },
+        point: detail.point,
+      });
+    };
+    window.addEventListener(IMAGE_CONTEXT_MENU_SHOW_EVENT, showImageContextMenu);
+    return () => window.removeEventListener(IMAGE_CONTEXT_MENU_SHOW_EVENT, showImageContextMenu);
+  }, [cancelResourceMenuHide, hideResourceMenu, isMobileViewport]);
+
+  useEffect(() => {
     const showImagePreview = (event: Event) => {
       const detail = (event as CustomEvent<ImagePreviewRequestDetail>).detail;
       if (!detail?.url) return;
@@ -1966,6 +1997,7 @@ const RichEditorPane = ({
 
   useEffect(() => {
     setNoteLinkHintPosition(null);
+    setImageContextMenu(null);
     resetResourceActions();
   }, [memo?.id, isMarkdownMode, resetResourceActions]);
 
@@ -3924,6 +3956,19 @@ const RichEditorPane = ({
     delete: t("editor.resourceActions.delete"),
     unavailable: t("editor.resourceActions.unavailable"),
   };
+  const canRenameResource = (target: ResourceMenuTarget) => Boolean(
+    target.resourceId &&
+    !target.resourceId.startsWith("local_resource_") &&
+    editor?.isEditable &&
+    !effectiveReadOnly
+  );
+  const canDeleteResource = (target: ResourceMenuTarget) => Boolean(
+    editor?.isEditable &&
+    !effectiveReadOnly &&
+    (target.kind === "image" || (
+      target.resourceId && !target.resourceId.startsWith("local_resource_")
+    ))
+  );
   const resourceDialogLabels = resourceDialog?.target.kind === "image"
     ? {
         renameTitle: t("editor.imageActions.renameTitle"),
@@ -4754,22 +4799,90 @@ const RichEditorPane = ({
         onClose={() => setImagePreview(null)}
       />
 
+      {imageContextMenu && typeof document !== "undefined" ? createPortal(
+        <div style={{ position: "fixed", left: imageContextMenu.point.x, top: imageContextMenu.point.y, zIndex: 100 }}>
+          <DropdownMenu
+            modal={false}
+            open={true}
+            onOpenChange={(open) => { if (!open) setImageContextMenu(null); }}
+          >
+            <DropdownMenuTrigger asChild>
+              <span className="sr-only" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="w-52"
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  void handleResourceCopyImage(target);
+                }}
+              >
+                <Copy className="h-4 w-4" />
+                {resourceMenuLabels.copy}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  void handleResourceDownload(target);
+                }}
+              >
+                <FileDown className="h-4 w-4" />
+                {resourceMenuLabels.download}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  void handleResourceSaveAs(target);
+                }}
+              >
+                <Save className="h-3.5 w-3.5" />
+                {resourceMenuLabels.saveAs}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                disabled={!canRenameResource(imageContextMenu.target)}
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  openResourceDialog("rename", target);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+                {resourceMenuLabels.rename}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-600 hover:bg-rose-50 cursor-pointer outline-none"
+                disabled={!canDeleteResource(imageContextMenu.target)}
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  openResourceDialog("delete", target);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                {resourceMenuLabels.delete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>,
+        document.body,
+      ) : null}
+
       {resourceMenuTarget && (
         <ResourceActionMenu
           target={resourceMenuTarget}
-          canRename={Boolean(
-            resourceMenuTarget.resourceId &&
-            !resourceMenuTarget.resourceId.startsWith("local_resource_") &&
-            editor?.isEditable &&
-            !effectiveReadOnly
-          )}
-          canDelete={Boolean(
-            editor?.isEditable &&
-            !effectiveReadOnly &&
-            (resourceMenuTarget.kind === "image" || (
-              resourceMenuTarget.resourceId && !resourceMenuTarget.resourceId.startsWith("local_resource_")
-            ))
-          )}
+          canRename={canRenameResource(resourceMenuTarget)}
+          canDelete={canDeleteResource(resourceMenuTarget)}
           labels={resourceMenuLabels}
           showCopy={resourceMenuTarget.kind === "image"}
           onCopy={() => void handleResourceCopyImage(resourceMenuTarget)}

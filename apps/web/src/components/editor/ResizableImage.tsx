@@ -26,6 +26,10 @@ export type ImageMenuRequestDetail = {
   deleteNode: () => void;
 };
 
+export type ImageContextMenuRequestDetail = ImageMenuRequestDetail & {
+  point: { x: number; y: number };
+};
+
 export type ImagePreviewRequestDetail = {
   url: string;
   alt: string;
@@ -33,6 +37,7 @@ export type ImagePreviewRequestDetail = {
 
 export const IMAGE_MENU_SHOW_EVENT = "edgeever:image-menu-show";
 export const IMAGE_MENU_HIDE_EVENT = "edgeever:image-menu-hide";
+export const IMAGE_CONTEXT_MENU_SHOW_EVENT = "edgeever:image-context-menu-show";
 export const IMAGE_PREVIEW_SHOW_EVENT = "edgeever:image-preview-show";
 
 const ResizableImageNodeView = ({
@@ -144,6 +149,26 @@ const ResizableImageNodeView = ({
     window.dispatchEvent(new CustomEvent(IMAGE_MENU_HIDE_EVENT));
   }, []);
 
+  const requestImageContextMenu = useCallback((event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const element = wrapperRef.current;
+    if (!element || !src) return;
+    // A right click opens the full action menu at the pointer, so the hover
+    // toolbar must not stay pinned under the image as well.
+    hideImageMenu();
+    window.dispatchEvent(new CustomEvent<ImageContextMenuRequestDetail>(IMAGE_CONTEXT_MENU_SHOW_EVENT, {
+      detail: {
+        element,
+        url: src,
+        filename: title || alt || getAttachmentResourceId(src) || "image",
+        resourceId: getAttachmentResourceId(src),
+        updateAttributes,
+        deleteNode,
+        point: { x: event.clientX, y: event.clientY },
+      },
+    }));
+  }, [alt, deleteNode, hideImageMenu, src, title, updateAttributes]);
+
   const requestImagePreview = useCallback(() => {
     if (!src) return;
     hideImageMenu();
@@ -226,10 +251,7 @@ const ResizableImageNodeView = ({
       data-width={width}
       onMouseEnter={requestImageMenu}
       onMouseLeave={hideImageMenu}
-      onContextMenu={(event: MouseEvent<HTMLElement>) => {
-        event.preventDefault();
-        requestImageMenu();
-      }}
+      onContextMenu={(event: MouseEvent<HTMLElement>) => requestImageContextMenu(event)}
     >
       <img
         ref={imageRef}

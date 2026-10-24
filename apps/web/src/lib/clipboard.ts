@@ -73,47 +73,78 @@ export const copyHtmlToClipboard = async (html: string, plainText: string) => {
   if (!copied) throw new Error("Clipboard copy was not available");
 };
 
-export const copyImageBlobToClipboard = async (blob: Blob): Promise<boolean> => {
-  if (typeof window === "undefined" || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+const writeImageBlobToNativeClipboard = async (blob: Blob): Promise<boolean> => {
+  if (typeof window === "undefined") return false;
+  const bridge = window.edgeeverDesktop;
+  if (!bridge?.isAvailable || !bridge.copyImage) return false;
+  try {
+    return Boolean(await bridge.copyImage(await blob.arrayBuffer()));
+  } catch {
     return false;
   }
+};
+
+// Canvas re-encodes formats the native clipboard cannot decode (webp, svg,
+// avif) and also covers browsers that only accept PNG through ClipboardItem.
+const convertImageBlobToPng = async (blob: Blob): Promise<Blob | null> => {
+  if (typeof document === "undefined") return null;
+  const url = URL.createObjectURL(blob);
   try {
-    const type = blob.type === "image/jpeg" ? "image/jpeg" : "image/png";
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        [type]: blob,
-      }),
-    ]);
-    return true;
-  } catch (error) {
-    // If writing jpeg directly fails in some browsers (e.g. Safari only supports image/png),
-    // try converting blob to png via an image/canvas in memory
+    const img = document.createElement("img");
+    img.src = url;
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Image load failed for clipboard conversion"));
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    ctx?.drawImage(img, 0, 0);
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
+export const copyImageBlobToClipboard = async (blob: Blob): Promise<boolean> => {
+  if (await writeImageBlobToNativeClipboard(blob)) return true;
+
+  const browserClipboardAvailable = typeof navigator !== "undefined"
+    && Boolean(navigator.clipboard?.write)
+    && typeof ClipboardItem !== "undefined";
+
+  if (browserClipboardAvailable) {
     try {
-      const img = document.createElement("img");
-      const url = URL.createObjectURL(blob);
-      img.src = url;
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Image load failed for clipboard conversion"));
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      ctx?.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-      const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!pngBlob) return false;
+      const type = blob.type === "image/jpeg" ? "image/jpeg" : "image/png";
       await navigator.clipboard.write([
         new ClipboardItem({
-          "image/png": pngBlob,
+          [type]: blob,
         }),
       ]);
       return true;
     } catch {
-      console.warn("Failed to write image blob to clipboard:", error);
-      return false;
+      // Fall through to the PNG conversion below.
     }
+  }
+
+  const pngBlob = await convertImageBlobToPng(blob);
+  if (!pngBlob) return false;
+
+  if (await writeImageBlobToNativeClipboard(pngBlob)) return true;
+  if (!browserClipboardAvailable) return false;
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "image/png": pngBlob,
+      }),
+    ]);
+    return true;
+  } catch (error) {
+    console.warn("Failed to write image blob to clipboard:", error);
+    return false;
   }
 };
 

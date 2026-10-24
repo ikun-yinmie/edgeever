@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyHtmlToClipboard, copyTextToClipboard } from "./clipboard.ts";
+import { copyHtmlToClipboard, copyImageBlobToClipboard, copyTextToClipboard } from "./clipboard.ts";
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
@@ -82,6 +82,43 @@ describe("copyTextToClipboard", () => {
 
     await expect(copyTextToClipboard("browser value")).resolves.toBe(true);
     expect(calls).toEqual(["browser value"]);
+  });
+});
+
+describe("copyImageBlobToClipboard", () => {
+  test("writes image bytes through the native desktop clipboard", async () => {
+    const calls = [];
+    globalThis.window = {
+      edgeeverDesktop: {
+        isAvailable: true,
+        copyImage: async (bytes) => {
+          calls.push(new Uint8Array(bytes));
+          return true;
+        },
+      },
+    };
+
+    const blob = new Blob([new Uint8Array([7, 8, 9])], { type: "image/png" });
+    await expect(copyImageBlobToClipboard(blob)).resolves.toBe(true);
+    expect(calls).toEqual([new Uint8Array([7, 8, 9])]);
+  });
+
+  test("falls through when the native clipboard rejects the image", async () => {
+    globalThis.window = {
+      edgeeverDesktop: {
+        isAvailable: true,
+        copyImage: async () => false,
+      },
+    };
+
+    const blob = new Blob([new Uint8Array([1])], { type: "image/png" });
+    await expect(copyImageBlobToClipboard(blob)).resolves.toBe(false);
+  });
+
+  test("does nothing outside the desktop app without a browser clipboard", async () => {
+    globalThis.window = {};
+    const blob = new Blob([new Uint8Array([1])], { type: "image/png" });
+    await expect(copyImageBlobToClipboard(blob)).resolves.toBe(false);
   });
 });
 

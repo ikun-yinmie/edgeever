@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -24,7 +25,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { canRevealLocalStorage, revealLocalStorage } from "@/lib/desktop-storage";
+import {
+  canRevealMemoMarkdown,
+  isMemoMarkdownAvailable,
+  revealMemoMarkdown,
+} from "@/lib/desktop-note-file";
 import {
   MEMO_TAB_GAP_PX,
   MEMO_TAB_MORE_BUTTON_WIDTH_PX,
@@ -66,7 +71,16 @@ export const MemoTabsBar = ({
   const [dragOverMemoId, setDragOverMemoId] = useState<string | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [overflowQuery, setOverflowQuery] = useState("");
+  const [localMarkdownMemoIds, setLocalMarkdownMemoIds] = useState<Record<string, boolean>>({});
   const overflowSearchRef = useRef<HTMLInputElement | null>(null);
+
+  const refreshLocalMarkdownAvailability = useCallback(async (memoId: string) => {
+    if (!canRevealMemoMarkdown()) return;
+    const available = await isMemoMarkdownAvailable(memoId);
+    setLocalMarkdownMemoIds((current) => (
+      current[memoId] === available ? current : { ...current, [memoId]: available }
+    ));
+  }, []);
 
   const tabsKey = useMemo(
     () => tabs.map((tab) => `${tab.id}\u0000${tab.title}`).join("\u0001"),
@@ -230,7 +244,12 @@ export const MemoTabsBar = ({
       {visibleTabs.map((tab) => {
         const active = tab.id === activeMemoId;
         return (
-          <ContextMenu key={tab.id}>
+          <ContextMenu
+            key={tab.id}
+            onOpenChange={(open) => {
+              if (open) void refreshLocalMarkdownAvailability(tab.id);
+            }}
+          >
             <ContextMenuTrigger asChild>
               <div
                 className={cn(
@@ -325,10 +344,10 @@ export const MemoTabsBar = ({
                 <AppWindow className="h-4 w-4" />
                 {t("memoTabs.openInNewWindow")}
               </ContextMenuItem>
-              {canRevealLocalStorage() && (
+              {localMarkdownMemoIds[tab.id] && (
                 <ContextMenuItem
                   className="flex h-9 cursor-pointer items-center gap-2 px-3 text-sm text-slate-700"
-                  onSelect={() => void revealLocalStorage().catch(() => {})}
+                  onSelect={() => void revealMemoMarkdown(tab.id)}
                 >
                   <FolderOpen className="h-4 w-4" />
                   {t("common.showInFileManager")}

@@ -246,6 +246,8 @@ describe("desktop markdown mirror wiring", () => {
       "resetMarkdownMirrorDirectory",
       "syncMarkdownMirror",
       "openMarkdownMirrorDirectory",
+      "memoMarkdownStatus",
+      "revealMemoMarkdown",
     ]) {
       expect(preloadSource).toContain(`${method}:`);
       expect(mainSource).toContain(`"desktop:${method.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}"`);

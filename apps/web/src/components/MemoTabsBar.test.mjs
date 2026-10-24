@@ -34,9 +34,13 @@ describe("memo tabs bar", () => {
     expect(source).toContain('t("memoTabs.openInNewWindow")');
   });
 
-  test("reveals the local desktop storage from the tab context menu", () => {
-    expect(source).toContain("canRevealLocalStorage()");
-    expect(source).toContain("revealLocalStorage()");
+  test("reveals the note's mirrored Markdown file only when it exists", () => {
+    expect(source).toContain("canRevealMemoMarkdown()");
+    expect(source).toContain("refreshLocalMarkdownAvailability(tab.id)");
+    expect(source).toContain("isMemoMarkdownAvailable(memoId)");
+    expect(source).toContain("revealMemoMarkdown(tab.id)");
+    expect(source).toContain("localMarkdownMemoIds[tab.id]");
+    expect(source).not.toContain("revealLocalStorage()");
     expect(source).toContain('t("common.showInFileManager")');
   });
 

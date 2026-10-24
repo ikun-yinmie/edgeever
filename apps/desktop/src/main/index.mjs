@@ -50,6 +50,7 @@ import {
   MARKDOWN_MIRROR_CONFIG_FILE,
   normalizeMirrorDirectory,
   parseMarkdownMirrorConfig,
+  readMarkdownMirrorManifest,
   removeMarkdownMirrorFiles,
   serializeMarkdownMirrorConfig,
   syncMarkdownMirror,
@@ -64,7 +65,7 @@ import {
 import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
-import { writePlainTextClipboard, writeRichClipboard } from "./clipboard-write.mjs";
+import { writeImageClipboard, writePlainTextClipboard, writeRichClipboard } from "./clipboard-write.mjs";
 import { captureScreenToNote, createScreenshotCaptureGuard, screenshotImportIpcPayload, writeScreenshotTempPath } from "./screenshot-capture.mjs";
 import { LocalDataResetError, scheduleMacLocalDataReset } from "./local-data-reset.mjs";
 import { buildDesktopDiagnosticIssueUrl, normalizeDesktopDiagnostic } from "./desktop-diagnostics.mjs";
@@ -315,6 +316,20 @@ const markdownMirrorStatus = () => ({
   lastError: markdownMirrorConfig.lastError,
   syncing: markdownMirrorSyncInFlight,
 });
+
+// The per-note file-manager action is only meaningful when the Markdown mirror
+// actually wrote this note, so resolve the manifest entry instead of opening the
+// database directory.
+const memoMarkdownFile = async (memoId) => {
+  if (typeof memoId !== "string" || !memoId.trim() || memoId.length > 256) return null;
+  const root = markdownMirrorDirectory();
+  const manifest = await readMarkdownMirrorManifest(root);
+  const relativePath = manifest.files[memoId]?.path;
+  if (typeof relativePath !== "string" || !relativePath) return null;
+  const target = join(root, ...relativePath.split("/"));
+  if (!isPathInside(root, target) || !existsSync(target)) return null;
+  return target;
+};
 
 const runMarkdownMirrorSync = async () => {
   if (!markdownMirrorConfig.enabled || storageMigrationInProgress) return null;
@@ -2000,6 +2015,17 @@ const startApplication = async () => {
     const error = await shell.openPath(directory);
     return { ok: !error };
   });
+  ipcMain.handle("desktop:memo-markdown-status", async (event, memoId) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Local note file access must come from the main window");
+    return { available: Boolean(await memoMarkdownFile(memoId)) };
+  });
+  ipcMain.handle("desktop:reveal-memo-markdown", async (event, memoId) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error("Local note file access must come from the main window");
+    const target = await memoMarkdownFile(memoId);
+    if (!target) return { ok: false };
+    shell.showItemInFolder(target);
+    return { ok: true };
+  });
   ipcMain.handle("desktop:set-account-scope", async (_event, accountId) => {
     if (storageMigrationInProgress) throw new Error("EdgeEver is moving local data to another folder");
     const normalizedAccountId = typeof accountId === "string" && accountId.trim() ? accountId.trim() : null;
@@ -2035,6 +2061,7 @@ const startApplication = async () => {
   ipcMain.on("desktop:recovered-after-abnormal-exit-sync", (event) => { event.returnValue = recoveredAfterAbnormalExit; });
   ipcMain.handle("desktop:copy-text", (_event, value) => writePlainTextClipboard(clipboard, value));
   ipcMain.handle("desktop:copy-html", (_event, input) => writeRichClipboard(clipboard, input));
+  ipcMain.handle("desktop:copy-image", (_event, bytes) => writeImageClipboard(clipboard, nativeImage, bytes));
   ipcMain.handle("desktop:set-session-token", async (_event, value) => {
     await saveDesktopSessionToken(value);
     return { stored: Boolean(desktopSessionToken) };

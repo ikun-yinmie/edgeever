@@ -47,6 +47,7 @@ interface EdgeEverDesktopBridge {
   getSessionToken(): string;
   copyText(value: string): Promise<boolean>;
   copyHtml(html: string, plainText: string): Promise<boolean>;
+  copyImage?(bytes: Uint8Array | ArrayBuffer): Promise<boolean>;
   setSessionToken(value: string): Promise<{ stored: boolean }>;
   clearSessionToken(): Promise<{ stored: false }>;
   publicNetworkFetch(requestId: string, input: import("@edgeever/shared").PluginPublicFetchRequest): Promise<import("@edgeever/shared").PluginPublicFetchResponse>;
@@ -92,6 +93,8 @@ interface EdgeEverDesktopBridge {
   resetMarkdownMirrorDirectory(): Promise<DesktopMarkdownMirrorResult>;
   syncMarkdownMirror(): Promise<DesktopMarkdownMirrorStatus>;
   openMarkdownMirrorDirectory(): Promise<{ ok: boolean }>;
+  memoMarkdownStatus?(memoId: string): Promise<{ available: boolean }>;
+  revealMemoMarkdown?(memoId: string): Promise<{ ok: boolean }>;
   recordRendererError(details: DesktopRendererErrorDetails): Promise<{ recorded: true }>;
   openRendererIssue(details: DesktopRendererErrorDetails): Promise<{ opened: true }>;
   rendererBootstrapReady(): void;
