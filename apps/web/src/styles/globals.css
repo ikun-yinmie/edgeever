@@ -1465,6 +1465,13 @@ textarea {
   margin: 0.25rem 0;
 }
 
+/* List items already carry their own vertical margin; the paragraph inside a
+ * TipTap list node must not stack the body paragraph spacing on top of it or
+ * every list line sits ~1.7x the body line height away from its neighbor. */
+.ProseMirror li > p {
+  margin: 0;
+}
+
 .ProseMirror ul[data-type="taskList"] {
   list-style: none;
   padding-left: 0;

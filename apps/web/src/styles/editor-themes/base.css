@@ -136,6 +136,14 @@
   line-height: var(--editor-body-line-height);
 }
 
+/* Keep list line spacing theme-independent: the li owns the vertical margin,
+ * so the paragraph inside must not re-add the body paragraph spacing. */
+.edgeever-editor[data-editor-theme]:not([data-editor-theme="default"]) .ProseMirror li > p {
+
+  margin: 0;
+  line-height: var(--editor-body-line-height);
+}
+
 .edgeever-editor[data-editor-theme]:not([data-editor-theme="default"]) .ProseMirror strong {
 
   color: var(--editor-theme-accent);
