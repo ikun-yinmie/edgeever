@@ -504,7 +504,10 @@ describe("Cloudflare deployment entrypoints", () => {
       .filter((file) => file !== "sync-edgeever-upstream.yml")
       // Fork (ikun-yinmie): the custom image workflow intentionally publishes
       // this repository's own GHCR image instead of the official one.
-      .filter((file) => file !== "custom-docker-image.yml");
+      .filter((file) => file !== "custom-docker-image.yml")
+      // Fork (ikun-yinmie): the desktop workflow intentionally publishes the
+      // Windows/Linux-only client Release assets for this repository.
+      .filter((file) => file !== "desktop-build.yml");
 
     for (const file of workflowFiles) {
       const workflow = readRepositoryFile(`.github/workflows/${file}`);
