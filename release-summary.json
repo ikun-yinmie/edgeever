@@ -1,14 +1,14 @@
 {
-  "version": "1.100.7",
+  "version": "1.100.8",
   "changes": {
     "en-US": [
-      "Keep the fold toggle and the block handle out of each other's way: hovering a collapsible block now shifts the floating block handle into the left gutter so one click can never grab the block instead of folding it. Oversized context menus (editor paragraph menu, note list menu) are capped at a scrollable height so they stay next to the click point instead of flipping far up the screen."
+      "Anchor the editor context menu like a native one: when there is room below the click the menu starts at the click point, and when there is not it flips up and ends exactly at the click point instead of running past it or being clipped."
     ],
     "zh-CN": [
-      "拉开折叠按钮与块操作手柄的间距：悬停折叠块时，浮动块手柄自动左移到左侧留白区，点击“收起/展开”再也不会误触成拖动整块。同时给超高的右键菜单（正文段落菜单、笔记列表菜单）增加可滚动的高度上限，菜单始终紧贴点击点，不再向上翻转到很远的位置。"
+      "正文右键菜单按原生菜单方式锚定：下方空间充足时菜单顶部贴住点击点，空间不足时翻转到上方且底部精确贴住点击点，不再越过点击点或被视口裁剪。"
     ],
     "ja": [
-      "折りたたみボタンとブロックハンドルの誤操作を防止：折りたたみブロックにホバーすると、フローティングのブロックハンドルが左の余白へ移動し、「開く/閉じる」をクリックするつもりがブロック全体をドラッグしてしまう事故を防ぎます。また、高すぎる右クリックメニュー（本文メニュー・ノート一覧メニュー）にスクロール可能な高さ上限を設け、クリック位置の近くにコンパクトに表示されるようになりました。"
+      "本文の右クリックメニューをネイティブ方式でアンカー：下に余裕があればクリック位置から開き、足りなければ上へ反転して下端をクリック位置に正確に合わせます。クリック位置を越えたりビューポートで切れたりしなくなりました。"
     ]
   }
 }
