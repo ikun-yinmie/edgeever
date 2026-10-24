@@ -266,15 +266,28 @@ export const EditorOutline = ({
     }
 
     if (domElement) {
-      domElement.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+      // Setting the text selection makes ProseMirror run its own instant
+      // scroll-into-view, which races the smooth scroll and leaves the heading
+      // at a random viewport position. Scroll the editor pane explicitly to a
+      // fixed read line instead (same pattern as the phone preview branch),
+      // after the selection update so ProseMirror's scroll lands first.
+      try {
+        const maxPos = editor.state.doc.content.size;
+        const targetPos = Math.min(item.pos + 1, maxPos);
+        editor.chain().focus().setTextSelection(targetPos).run();
+      } catch {
+        // ignore selection positioning error
+      }
 
-    try {
-      const maxPos = editor.state.doc.content.size;
-      const targetPos = Math.min(item.pos + 1, maxPos);
-      editor.chain().focus().setTextSelection(targetPos).run();
-    } catch {
-      // ignore selection positioning error
+      if (scrollContainer instanceof HTMLDivElement) {
+        const delta = domElement.getBoundingClientRect().top
+          - (scrollContainer.getBoundingClientRect().top + EDITOR_READ_LINE_OFFSET);
+        if (Math.abs(delta) >= ALIGN_TOLERANCE_PX) {
+          scrollContainer.scrollTo({ top: scrollContainer.scrollTop + delta, behavior: "smooth" });
+        }
+      } else {
+        domElement.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
   };
 
