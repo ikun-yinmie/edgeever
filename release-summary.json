@@ -1,14 +1,14 @@
 {
-  "version": "1.100.5",
+  "version": "1.100.6",
   "changes": {
     "en-US": [
-      "Rework the document outline: it now lives in its own column beside the article with independent scrolling, gets a Yuque-style card with current-heading highlighting, and offers clear expand/collapse buttons (plus the existing shortcut) instead of the old corner icon."
+      "Fix context menus that open near the bottom of the viewport: menus now use popper positioning so they flip cleanly above the click point and stay fully visible instead of being clipped or jumping away. Outline clicks also land on a fixed reading line instead of a random position."
     ],
     "zh-CN": [
-      "重构文档大纲：大纲改为文章旁的独立栏位并独立滚动，采用语雀风格的卡片式设计与当前章节高亮，并提供清晰的展开/收起按钮（原快捷键保留）。"
+      "修复靠近视口底部时右键菜单位置错乱的问题：菜单改用 popper 定位，下方放不下时干净地翻转到点击点上方并完整显示，不再被裁剪或跳到远处。同时修复大纲点击跳转落点随机的问题，现在标题稳定停在顶部阅读线位置。"
     ],
     "ja": [
-      "ドキュメントアウトラインを刷新：記事の横に独立した列として配置され独立スクロールするようにしました。Yuque 風のカードデザインと現在見出しのハイライトを採用し、開閉ボタンも分かりやすくなりました（既存のショートカットは維持）。"
+      "ビューポート下部で右クリックメニューの位置が乱れる問題を修正：メニューが popper 配置に切り替わり、下に収まらない場合はクリック位置の上へ綺麗に反転して全体が表示されます。アウトラインのジャンプ先もランダムだった位置から固定の読み込み線へ安定するようにしました。"
     ]
   }
 }
