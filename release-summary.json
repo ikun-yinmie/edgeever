@@ -1,14 +1,14 @@
 {
-  "version": "1.100.4",
+  "version": "1.100.5",
   "changes": {
     "en-US": [
-      "Tighten list line spacing: paragraphs inside list items no longer stack the body paragraph spacing on top of the list item margin, and the spacing stays identical across the default look and every article theme."
+      "Rework the document outline: it now lives in its own column beside the article with independent scrolling, gets a Yuque-style card with current-heading highlighting, and offers clear expand/collapse buttons (plus the existing shortcut) instead of the old corner icon."
     ],
     "zh-CN": [
-      "收紧列表行距：列表项内的段落不再与列表项自身间距叠加，列表行距在默认外观与所有文章主题下保持完全一致。"
+      "重构文档大纲：大纲改为文章旁的独立栏位并独立滚动，采用语雀风格的卡片式设计与当前章节高亮，并提供清晰的展开/收起按钮（原快捷键保留）。"
     ],
     "ja": [
-      "リストの行間を調整：リスト項目内の段落が本文の段落余白と二重に積み重ならないようにし、デフォルト外観とすべての記事テーマでリスト行間が完全に一致するようにしました。"
+      "ドキュメントアウトラインを刷新：記事の横に独立した列として配置され独立スクロールするようにしました。Yuque 風のカードデザインと現在見出しのハイライトを採用し、開閉ボタンも分かりやすくなりました（既存のショートカットは維持）。"
     ]
   }
 }
