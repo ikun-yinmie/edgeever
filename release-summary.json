@@ -1,14 +1,14 @@
 {
-  "version": "1.100.3",
+  "version": "1.100.4",
   "changes": {
     "en-US": [
-      "Fix desktop clipboard copying on Electron 44: migrate the native clipboard bridge to the new asynchronous ClipboardItem APIs so copying images, rich text, and plain text works again."
+      "Tighten list line spacing: paragraphs inside list items no longer stack the body paragraph spacing on top of the list item margin, and the spacing stays identical across the default look and every article theme."
     ],
     "zh-CN": [
-      "修复基于 Electron 44 的客户端剪贴板复制：将原生剪贴板桥接迁移到新的异步 ClipboardItem 接口，恢复图片、富文本与纯文本复制。"
+      "收紧列表行距：列表项内的段落不再与列表项自身间距叠加，列表行距在默认外观与所有文章主题下保持完全一致。"
     ],
     "ja": [
-      "Electron 44 のデスクトップクリップボードコピーを修正：ネイティブクリップボードブリッジを新しい非同期 ClipboardItem API へ移行し、画像・リッチテキスト・プレーンテキストのコピーを復旧しました。"
+      "リストの行間を調整：リスト項目内の段落が本文の段落余白と二重に積み重ならないようにし、デフォルト外観とすべての記事テーマでリスト行間が完全に一致するようにしました。"
     ]
   }
 }
