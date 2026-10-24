@@ -117,16 +117,20 @@ export const copyImageBlobToClipboard = async (blob: Blob): Promise<boolean> => 
     && typeof ClipboardItem !== "undefined";
 
   if (browserClipboardAvailable) {
-    try {
-      const type = blob.type === "image/jpeg" ? "image/jpeg" : "image/png";
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          [type]: blob,
-        }),
-      ]);
-      return true;
-    } catch {
-      // Fall through to the PNG conversion below.
+    // Do not label WebP, AVIF, SVG, etc. as image/png without converting the
+    // bytes. Some paste targets save the clipboard item as image.png and then
+    // fail to decode the mismatched payload.
+    if (blob.type === "image/png" || blob.type === "image/jpeg") {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type]: blob,
+          }),
+        ]);
+        return true;
+      } catch {
+        // Fall through to the PNG conversion below.
+      }
     }
   }
 
@@ -147,4 +151,3 @@ export const copyImageBlobToClipboard = async (blob: Blob): Promise<boolean> => 
     return false;
   }
 };
-
