@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ExternalLink, LoaderCircle, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, CloudDownload, CloudUpload, ExternalLink, LoaderCircle, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { buildGitHubFeedbackUrl, type DesktopOutboxItem, type Notebook } from "@edgeever/shared";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,13 @@ import {
   createDesktopSyncDiagnosticText,
   discardDesktopSyncIssue,
   getDesktopSyncIssues,
+  pullEverythingFromServer,
   recoverDesktopMemoUpdate,
   retryDesktopSyncIssue,
+  uploadEverythingToServer,
   type DesktopGlobalSyncIssue,
+  type DesktopMaintenanceProgress,
+  type DesktopUploadAllResult,
 } from "@/lib/desktop-sync";
 import { getClientRuntimeDiagnostics } from "@/lib/system-diagnostics";
 
@@ -46,6 +50,11 @@ export const DesktopSyncIssuesDialog = ({
   const [recovering, setRecovering] = useState<DesktopOutboxItem | null>(null);
   const [discarding, setDiscarding] = useState<DesktopOutboxItem | null>(null);
   const [recoveryNotebookId, setRecoveryNotebookId] = useState("");
+  const [maintenanceBusy, setMaintenanceBusy] = useState<"pull" | "upload" | null>(null);
+  const [maintenanceProgress, setMaintenanceProgress] = useState<DesktopMaintenanceProgress | null>(null);
+  const [pullConfirm, setPullConfirm] = useState(false);
+  const [uploadConfirm, setUploadConfirm] = useState(false);
+  const [uploadResult, setUploadResult] = useState<DesktopUploadAllResult | null>(null);
   const instanceUrl = getConfiguredDesktopApiBaseUrl();
   const healthQuery = useQuery({
     queryKey: ["instance-health", instanceUrl],
@@ -163,9 +172,39 @@ export const DesktopSyncIssuesDialog = ({
     }
   };
 
+  const runPullEverything = async () => {
+    setMaintenanceBusy("pull");
+    setError(null);
+    try {
+      await pullEverythingFromServer();
+      await load();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : String(actionError));
+    } finally {
+      setMaintenanceBusy(null);
+    }
+  };
+
+  const runUploadEverything = async () => {
+    setMaintenanceBusy("upload");
+    setMaintenanceProgress(null);
+    setUploadResult(null);
+    setError(null);
+    try {
+      const result = await uploadEverythingToServer(setMaintenanceProgress);
+      setUploadResult(result);
+      await load();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : String(actionError));
+    } finally {
+      setMaintenanceBusy(null);
+      setMaintenanceProgress(null);
+    }
+  };
+
   return (
     <>
-      <Dialog open={open && !recovering && !discarding} onOpenChange={(nextOpen) => { if (workingId === null && !workingGlobal) onOpenChange(nextOpen); }}>
+      <Dialog open={open && !recovering && !discarding && !pullConfirm && !uploadConfirm} onOpenChange={(nextOpen) => { if (workingId === null && !workingGlobal && maintenanceBusy === null) onOpenChange(nextOpen); }}>
         <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("notebookPane.syncDetails.title")}</DialogTitle>
@@ -241,6 +280,34 @@ export const DesktopSyncIssuesDialog = ({
             })}
           </div>
 
+          <section className="rounded-lg border border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-900">{t("notebookPane.syncDetails.maintenanceTitle")}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{t("notebookPane.syncDetails.maintenanceHint")}</p>
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="outline" disabled={maintenanceBusy !== null} onClick={() => setPullConfirm(true)}>
+                <CloudDownload className="mr-1.5 h-3.5 w-3.5" />
+                {t("notebookPane.syncDetails.pullAll")}
+              </Button>
+              <Button size="sm" variant="outline" disabled={maintenanceBusy !== null} onClick={() => setUploadConfirm(true)}>
+                <CloudUpload className="mr-1.5 h-3.5 w-3.5" />
+                {t("notebookPane.syncDetails.uploadAll")}
+              </Button>
+            </div>
+            {maintenanceBusy ? (
+              <p className="mt-3 flex items-center justify-end gap-2 text-xs text-slate-500">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                {maintenanceBusy === "upload" && maintenanceProgress
+                  ? t("notebookPane.syncDetails.maintenanceProgress", { done: maintenanceProgress.done, total: maintenanceProgress.total })
+                  : t("notebookPane.syncDetails.maintenanceRunning")}
+              </p>
+            ) : null}
+            {uploadResult ? (
+              <p className="mt-3 text-right text-xs text-slate-500">
+                {t("notebookPane.syncDetails.uploadAllResult", { uploaded: uploadResult.uploaded, skipped: uploadResult.skipped, failed: uploadResult.failed })}
+              </p>
+            ) : null}
+          </section>
+
           <DialogFooter className="gap-2 sm:justify-between">
             <Button variant="outline" disabled={!canReportIssue} asChild={canReportIssue}>
               {canReportIssue ? (
@@ -292,6 +359,32 @@ export const DesktopSyncIssuesDialog = ({
           confirmLabel={t("notebookPane.syncDetails.discard")}
           onCancel={() => setDiscarding(null)}
           onConfirm={confirmDiscard}
+        />
+      )}
+
+      {pullConfirm && (
+        <AppConfirmDialog
+          title={t("notebookPane.syncDetails.pullAllTitle")}
+          description={t("notebookPane.syncDetails.pullAllDescription")}
+          confirmLabel={t("notebookPane.syncDetails.pullAll")}
+          onCancel={() => setPullConfirm(false)}
+          onConfirm={() => {
+            setPullConfirm(false);
+            void runPullEverything();
+          }}
+        />
+      )}
+
+      {uploadConfirm && (
+        <AppConfirmDialog
+          title={t("notebookPane.syncDetails.uploadAllTitle")}
+          description={t("notebookPane.syncDetails.uploadAllDescription")}
+          confirmLabel={t("notebookPane.syncDetails.uploadAll")}
+          onCancel={() => setUploadConfirm(false)}
+          onConfirm={() => {
+            setUploadConfirm(false);
+            void runUploadEverything();
+          }}
         />
       )}
     </>

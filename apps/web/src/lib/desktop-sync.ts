@@ -17,7 +17,7 @@ import {
 } from "@edgeever/shared";
 import { api, ApiRequestError } from "@/lib/api";
 import { isDesktopResourceRuntime, mapMarkdownResourceUrls, mapTiptapResourceUrls, toApiResourceUrl } from "@/lib/desktop-resources";
-import { notifyMemoIdRemapped, notifyMemoSyncAcknowledged } from "@/lib/sync-events";
+import { notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifySyncQueueChanged } from "@/lib/sync-events";
 
 type StagedResourceRewrite = { memoId: string; placeholder: string; url: string };
 
@@ -374,6 +374,7 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
       contentJson: payload.contentJson as TiptapDoc,
       contentMarkdown: typeof payload.contentMarkdown === "string" ? payload.contentMarkdown : undefined,
       tags: Array.isArray(payload.tags) ? payload.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      allowDestructiveOverwrite: payload.allowDestructiveOverwrite === true,
     });
     await acknowledge(item, data.memo);
     return data.memo;
@@ -1005,6 +1006,125 @@ export const recoverDesktopMemoUpdate = async (item: DesktopOutboxItem, notebook
   const result = await request("sync.outbox.recoverMemoUpdate", { id: item.id, version: item.version, notebookId });
   window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
   return result.memo;
+};
+
+export type DesktopMaintenanceProgress = {
+  done: number;
+  total: number;
+};
+
+export type DesktopUploadAllResult = {
+  total: number;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  failedMemoIds: string[];
+};
+
+let activeMaintenance: Promise<unknown> | null = null;
+
+const listLocalMemoIds = async () => {
+  const ids: string[] = [];
+  const first = await request("memo.list", { limit: 200 });
+  ids.push(...first.memos.map((memo) => memo.id));
+  let offset = first.memos.length;
+  while (offset < first.totalCount) {
+    const page = await request("memo.list", { limit: 200, offset });
+    if (page.memos.length === 0) break;
+    ids.push(...page.memos.map((memo) => memo.id));
+    offset += page.memos.length;
+  }
+  return ids;
+};
+
+const isUploadAllMemoKind = (item: DesktopOutboxItem) =>
+  item.kind === "memo.update" || item.kind === "memo.create" || item.kind === "memo.delete"
+  || item.kind === "memo.restore" || item.kind === "memo.merge" || item.kind === "memo.move";
+
+/**
+ * WizNote-style "download everything": rebuild the local mirror from the
+ * server. The sidecar reset keeps every note that still has a queued change,
+ * so pending local edits survive and sync afterwards as usual.
+ */
+export const pullEverythingFromServer = (): Promise<void> => {
+  if (activeMaintenance) return activeMaintenance as Promise<void>;
+  const run = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new Error("The server is unreachable");
+    }
+    await bootstrapDesktopMirror(true);
+    await syncSharedSnapshots();
+    notifySyncQueueChanged();
+  };
+  activeMaintenance = run().finally(() => { activeMaintenance = null; });
+  return activeMaintenance as Promise<void>;
+};
+
+/**
+ * WizNote-style "upload everything": force-push the local version of every
+ * note that also exists on the server, using the server's current base and a
+ * destructive-overwrite pass so the server content converges to local.
+ * Notes with queued changes and notes that only exist locally are left to
+ * the regular queue.
+ */
+export const uploadEverythingToServer = (onProgress?: (progress: DesktopMaintenanceProgress) => void): Promise<DesktopUploadAllResult> => {
+  if (activeMaintenance) return activeMaintenance as Promise<DesktopUploadAllResult>;
+  const run = async (): Promise<DesktopUploadAllResult> => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new Error("The server is unreachable");
+    }
+    const queued = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
+    const queuedMemoIds = new Set(
+      queued.items.filter(isUploadAllMemoKind).map((item) => item.entityId),
+    );
+    const ids = (await listLocalMemoIds()).filter((memoId) => !queuedMemoIds.has(memoId));
+    const result: DesktopUploadAllResult = { total: ids.length, uploaded: 0, skipped: 0, failed: 0, failedMemoIds: [] };
+    for (const [index, memoId] of ids.entries()) {
+      try {
+        const local = (await request("memo.get", { memoId, includeDeleted: true })).memo;
+        if (local.isDeleted) {
+          result.skipped += 1;
+        } else {
+          const { editSession } = await api.createMemoEditSession(memoId);
+          const data = await api.updateMemo(memoId, {
+            expectedRevision: editSession.baseRevision,
+            expectedContentHash: editSession.baseContentHash,
+            editSessionId: editSession.id,
+            notebookId: local.notebookId,
+            title: local.title ?? "",
+            contentJson: local.contentJson,
+            contentMarkdown: local.contentMarkdown || undefined,
+            tags: local.tags,
+            isPinned: local.isPinned,
+            theme: local.theme ?? null,
+            allowDestructiveOverwrite: true,
+          });
+          await request("sync.apply", {
+            changes: [{ entityType: "memo", operation: "upsert", entityId: memoId, memo: data.memo }],
+          });
+          notifyMemoSyncAcknowledged(data.memo);
+          result.uploaded += 1;
+        }
+      } catch (error) {
+        // A note that never reached the server is the regular queue's job,
+        // not a maintenance failure.
+        if (error instanceof ApiRequestError && error.status === 404) {
+          result.skipped += 1;
+        } else {
+          result.failed += 1;
+          if (result.failedMemoIds.length < 10) {
+            result.failedMemoIds.push(memoId);
+          }
+          console.error("[desktop-sync] Upload-all failed for memo", memoId, error);
+        }
+      }
+      onProgress?.({ done: index + 1, total: result.total });
+    }
+    notifySyncQueueChanged();
+    return result;
+  };
+  activeMaintenance = run().finally(() => { activeMaintenance = null; });
+  return activeMaintenance as Promise<DesktopUploadAllResult>;
 };
 
 const sanitizeDesktopSyncDiagnosticError = (value: string | null | undefined) => value
