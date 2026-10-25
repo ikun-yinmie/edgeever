@@ -1,14 +1,14 @@
 {
-  "version": "1.100.11",
+  "version": "1.100.12",
   "changes": {
     "en-US": [
-      "Fix the note list right-click menu position: clicking the lower half of the window now flips the menu up so its bottom edge sits on the pointer, and a menu that fits on neither side is capped and scrolls instead of drifting away from the click."
+      "Redesign the workspace sidebar with a soft capsule look: the create-note control becomes a gentle emerald pill, active navigation items float on raised cards, notebook counts turn into compact badges, the idle sync status calms down to a status dot, and the sidebar surface separates from the list and editor in both light and dark themes."
     ],
     "zh-CN": [
-      "修复笔记列表右键菜单位置：点击窗口下半部分时菜单会向上翻转、底边对齐指针；上下都放不下时菜单改为可滚动，不再偏离点击位置。"
+      "重新设计工作区侧栏，采用柔和胶囊风格：「新建笔记」变为浅绿胶囊按钮，选中项以浮起卡片呈现，笔记本计数改为小徽章，空闲同步状态简化为状态圆点，侧栏底色与列表、编辑区在明暗两套主题下都拉开层次。"
     ],
     "ja": [
-      "ノート一覧の右クリックメニューの位置を修正。ウィンドウ下半分をクリックするとメニューが上方向に反転し、下端がポインターに揃います。上下どちらにも収まらない場合は高さを抑えてスクロール表示になり、クリック位置からずれません。"
+      "ワークスペースのサイドバーをソフトなカプセル風に刷新。「新規ノート」は淡い緑のピルボタンになり、選択項目は浮き上がりカードで表示され、ノートブックの件数は小さなバッジに、アイドル時の同期ステータスはドット表示に簡素化されます。サイドバーの背景はライト・ダーク両テーマでリストやエディターと層が分かれます。"
     ]
   }
 }
