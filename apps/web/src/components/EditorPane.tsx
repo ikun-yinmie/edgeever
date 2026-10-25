@@ -173,6 +173,7 @@ import {
 } from "@/lib/memo-save-conflict";
 import { copyImageBlobToClipboard, copyTextToClipboard } from "@/lib/clipboard";
 import { isLocalMemoId, remapLocalDraftMemoId } from "@/lib/local-mirror";
+import { alignContextMenuToPoint } from "@/lib/context-menu-placement";
 import { shouldAcceptRemoteMemoDetail } from "@/lib/memo-detail-freshness";
 import type { EdgeEverRepository } from "@/lib/repository";
 import {
@@ -4835,37 +4836,7 @@ const RichEditorPane = ({
                   </ContextMenuTrigger>
                   <ContextMenuContent
                     className="max-h-[min(26rem,70vh)] w-64 overflow-y-auto"
-                    ref={(el) => {
-                      if (!el) return;
-                      const point = editorContextMenuPointRef.current;
-                      if (!point) return;
-                      // Radix lets a flipped-up menu run past the click point;
-                      // re-anchor like a native context menu instead: start at
-                      // the click when there is room below, otherwise end at it.
-                      // Wait for the enter animation to settle (rect stable),
-                      // then disable it so the corrective translate sticks.
-                      let tries = 0;
-                      let lastKey = "";
-                      const align = () => {
-                        const rect = el.getBoundingClientRect();
-                        const key = `${Math.round(rect.top)}:${Math.round(rect.height)}`;
-                        if ((rect.height === 0 || key !== lastKey) && tries < 20) {
-                          lastKey = key;
-                          tries += 1;
-                          requestAnimationFrame(align);
-                          return;
-                        }
-                        if (rect.height === 0) return;
-                        const spaceBelow = window.innerHeight - point.y;
-                        const targetTop = rect.height <= spaceBelow ? point.y : point.y - rect.height;
-                        const dy = targetTop - rect.top;
-                        if (Math.abs(dy) > 2) {
-                          el.style.animation = "none";
-                          el.style.transform = `translateY(${Math.round(dy)}px)`;
-                        }
-                      };
-                      requestAnimationFrame(align);
-                    }}
+                    ref={(el) => alignContextMenuToPoint(el, editorContextMenuPointRef.current)}
                   >
                     <EditorParagraphFormatItems editor={editor} readOnly={effectiveReadOnly} context />
                     <ContextMenuSeparator />

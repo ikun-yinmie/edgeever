@@ -69,6 +69,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { MemoCard } from "./MemoCard";
 import { ClipboardCopyNotice } from "./ClipboardCopyNotice";
 import { cn } from "@/lib/utils";
+import { alignContextMenuToPoint } from "@/lib/context-menu-placement";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import type { Notebook, MemoSummary } from "@edgeever/shared";
 import { toggleMobileMemoFilterMode } from "@edgeever/shared/mobile-ui";
@@ -915,14 +916,12 @@ export const MemoListPane = ({
 
   const openMemoContextMenuAt = (memo: MemoSummary, clientX: number, clientY: number) => {
     const menuWidth = 224;
-    // Keep enough room for the full action list. Radix can still adjust the
-    // final position, but this prevents the initial placement from starting
-    // below the viewport on short or zoomed desktop viewports.
-    const menuHeight = view === "trash" ? 252 : 392;
+    // Anchor at the real click point and re-align the measured content in
+    // alignContextMenuToPoint: downward from the click when it fits, otherwise
+    // with its bottom edge on the click. Only the horizontal position is clamped.
     const x = Math.min(clientX, Math.max(12, window.innerWidth - menuWidth - 12));
-    const y = Math.min(clientY, Math.max(12, window.innerHeight - menuHeight - 12));
 
-    setMemoContextMenu({ memo, x, y });
+    setMemoContextMenu({ memo, x, y: clientY });
   };
 
   const handleOpenMemoContextMenu = (memo: MemoSummary, event: MouseEvent<HTMLElement>) => {
@@ -1624,6 +1623,7 @@ export const MemoListPane = ({
               <span className="sr-only" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
+              ref={(el) => alignContextMenuToPoint(el, { x: memoContextMenu.x, y: memoContextMenu.y })}
               align="start"
               onCloseAutoFocus={(event) => event.preventDefault()}
               className="max-h-[min(26rem,70vh)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
