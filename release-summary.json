@@ -1,14 +1,14 @@
 {
-  "version": "1.100.10",
+  "version": "1.100.11",
   "changes": {
     "en-US": [
-      "Fix the note list \"Export PDF\" action being blocked by the desktop window policy; the sync details dialog gains \"Sync maintenance\": pull everything from the server to rebuild local data, or re-upload every local note to overwrite the server."
+      "Fix the note list right-click menu position: clicking the lower half of the window now flips the menu up so its bottom edge sits on the pointer, and a menu that fits on neither side is capped and scrolls instead of drifting away from the click."
     ],
     "zh-CN": [
-      "修复笔记列表右键「导出 PDF」被桌面窗口策略误拦的问题；「同步详情」新增「同步维护」：可从服务器拉取全部重建本地数据，或把本地全部笔记重新上传覆盖服务器。"
+      "修复笔记列表右键菜单位置：点击窗口下半部分时菜单会向上翻转、底边对齐指针；上下都放不下时菜单改为可滚动，不再偏离点击位置。"
     ],
     "ja": [
-      "ノート一覧の右クリック「PDF をエクスポート」がデスクトップのウィンドウポリシーでブロックされる問題を修正。同期詳細に「同期メンテナンス」を追加：サーバーから全件取得してローカルを再構築、またはローカルの全ノートをサーバーへ再アップロードして上書きできます。"
+      "ノート一覧の右クリックメニューの位置を修正。ウィンドウ下半分をクリックするとメニューが上方向に反転し、下端がポインターに揃います。上下どちらにも収まらない場合は高さを抑えてスクロール表示になり、クリック位置からずれません。"
     ]
   }
 }
