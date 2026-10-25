@@ -1814,6 +1814,7 @@ export const ja = {
       saveAs: "エクスポート",
       rename: "名前を変更",
       delete: "削除",
+      openInNewWindow: "新しいウィンドウで開く",
       unavailable: "リソースの同期が完了し、ノートが編集可能なときだけ使えます",
     },
     imageActions: {

@@ -31,6 +31,7 @@ import {
   Copy,
   Lock,
   Eye,
+  ExternalLink as ExternalLinkIcon,
   UsersRound,
   CloudOff,
   RefreshCw,
@@ -3440,6 +3441,31 @@ const RichEditorPane = ({
     downloadResourceDirectly(target);
   }, [clearResourceActionError, downloadResourceDirectly, hideResourceMenu]);
 
+  // The in-editor preview zooms on wheel, so a native window (wheel = scroll,
+  // Ctrl+wheel = zoom) is the escape hatch for reading tall screenshots.
+  const handleResourceOpenInNewWindow = useCallback((target: ResourceMenuTarget) => {
+    hideResourceMenu();
+    clearResourceActionError();
+    const url = target.url;
+    if (typeof window !== "undefined" && window.edgeeverDesktop?.isAvailable) {
+      window.open(url, "_blank");
+      return;
+    }
+    void (async () => {
+      try {
+        const direct = /^(?:edgeever-resource:|edgeever-staged:|blob:|data:)/.test(url);
+        const response = direct ? await fetch(url) : await api.getResourceResponse(url);
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        window.open(objectUrl, "_blank");
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } catch {
+        // ignore open failures
+      }
+    })();
+  }, [clearResourceActionError, hideResourceMenu]);
+
   const showResourceCopyNotice = useCallback((status: "copied" | "error") => {
     setResourceCopyNotice(status);
     if (resourceCopyNoticeTimerRef.current !== null) {
@@ -3993,6 +4019,7 @@ const RichEditorPane = ({
     copy: t("editor.resourceActions.copy"),
     download: t("editor.resourceActions.download"),
     saveAs: t("editor.resourceActions.saveAs"),
+    openInNewWindow: t("editor.resourceActions.openInNewWindow"),
     rename: t("editor.resourceActions.rename"),
     delete: t("editor.resourceActions.delete"),
     unavailable: t("editor.resourceActions.unavailable"),
@@ -4938,6 +4965,17 @@ const RichEditorPane = ({
               >
                 <FileDown className="h-4 w-4" />
                 {resourceMenuLabels.download}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                onClick={() => {
+                  const target = imageContextMenu.target;
+                  setImageContextMenu(null);
+                  handleResourceOpenInNewWindow(target);
+                }}
+              >
+                <ExternalLinkIcon className="h-3.5 w-3.5" />
+                {resourceMenuLabels.openInNewWindow}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"

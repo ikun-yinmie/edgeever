@@ -1814,6 +1814,7 @@ export const enUS = {
       saveAs: "Export",
       rename: "Rename",
       delete: "Delete",
+      openInNewWindow: "Open in new window",
       unavailable: "This action is available after the resource has synced and the note is editable",
     },
     imageActions: {

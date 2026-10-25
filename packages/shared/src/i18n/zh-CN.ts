@@ -1814,6 +1814,7 @@ export const zhCN = {
       saveAs: "导出",
       rename: "重命名",
       delete: "删除",
+      openInNewWindow: "在新窗口打开",
       unavailable: "资源同步完成且当前笔记可编辑后才能执行此操作",
     },
     imageActions: {
