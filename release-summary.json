@@ -1,14 +1,14 @@
 {
-  "version": "1.100.9",
+  "version": "1.100.10",
   "changes": {
     "en-US": [
-      "Add \"Open in new window\" to the image context menu: the image opens in its own native window where the wheel scrolls and Ctrl+wheel zooms — the escape hatch for reading tall screenshots that the in-editor preview (wheel-to-zoom) cannot scroll."
+      "Fix the note list \"Export PDF\" action being blocked by the desktop window policy; the sync details dialog gains \"Sync maintenance\": pull everything from the server to rebuild local data, or re-upload every local note to overwrite the server."
     ],
     "zh-CN": [
-      "图片右键菜单新增“在新窗口打开”：图片在独立窗口原生显示，滚轮直接上下滚动、Ctrl+滚轮缩放——解决编辑器内预览只能缩放不能滚动、长截图看不完的问题。"
+      "修复笔记列表右键「导出 PDF」被桌面窗口策略误拦的问题；「同步详情」新增「同步维护」：可从服务器拉取全部重建本地数据，或把本地全部笔记重新上传覆盖服务器。"
     ],
     "ja": [
-      "画像の右クリックメニューに「新しいウィンドウで開く」を追加：画像が独立ウィンドウでネイティブ表示され、ホイールでスクロール、Ctrl+ホイールでズームできます。エディター内プレビュー（ホイール＝ズーム）ではスクロールできない縦長スクリーンショットのための解放策です。"
+      "ノート一覧の右クリック「PDF をエクスポート」がデスクトップのウィンドウポリシーでブロックされる問題を修正。同期詳細に「同期メンテナンス」を追加：サーバーから全件取得してローカルを再構築、またはローカルの全ノートをサーバーへ再アップロードして上書きできます。"
     ]
   }
 }
