@@ -90,4 +90,16 @@ describe("native build timing reports", () => {
     const report = createTimingReport({ jobs: [androidJob] }, "android");
     expect(report.targets[0].packageStep).toBe("Build fast main-branch APK");
   });
+
+  test("reports disabled matrix targets as skipped instead of failing", () => {
+    const linuxJob = job("Linux x64 AppImage Preview", "2026-08-13T00:00:00Z", "2026-08-13T00:12:00Z", 600);
+    const report = createTimingReport({ jobs: [linuxJob] }, "desktop");
+    const macArm = report.targets.find((target) => target.name === "macOS arm64");
+    const linux = report.targets.find((target) => target.name === "Linux x64 Preview");
+
+    expect(macArm.conclusion).toBe("skipped");
+    expect(macArm.totalDurationMs).toBeNull();
+    expect(linux.conclusion).toBe("success");
+    expect(linux.totalDurationMs).toBe(720000);
+  });
 });

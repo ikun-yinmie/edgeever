@@ -73,8 +73,22 @@ export function createTimingReport(payload, platform, metadata = {}) {
   const results = targets.map((target) => {
     const job = payload.jobs.find((candidate) => candidate.name === target.jobName);
     if (!job) {
-      const available = payload.jobs.map((candidate) => candidate.name).join(", ");
-      throw new Error(`Missing Actions job “${target.jobName}”. Available jobs: ${available}`);
+      // Optional matrix jobs (for example the macOS targets, which forks may
+      // disable) simply do not materialize; report them as skipped instead of
+      // failing the whole timings summary.
+      return {
+        name: target.name,
+        jobName: target.jobName,
+        conclusion: "skipped",
+        startedAt: null,
+        completedAt: null,
+        totalDurationMs: null,
+        preparationDurationMs: null,
+        packageDurationMs: null,
+        finalizationDurationMs: null,
+        packageStep: null,
+        steps: [],
+      };
     }
 
     const steps = (job.steps ?? []).map(normalizeStep);
