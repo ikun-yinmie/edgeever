@@ -24,6 +24,18 @@ export const isInternalAppWindowUrl = (targetUrl, appUrl) => {
   }
 };
 
+// The note list opens `about:blank` synchronously inside the context-menu
+// click so a later async navigation to the print preview keeps the user
+// activation. The blank shell carries no content; the real navigation is
+// still gated by the will-navigate allowlist.
+export const isAllowedBlankWindowUrl = (targetUrl) => {
+  try {
+    return new URL(targetUrl).protocol === "about:";
+  } catch {
+    return false;
+  }
+};
+
 export const isAllowedPrintPreviewUrl = (targetUrl, appUrl) => {
   try {
     const target = new URL(targetUrl);

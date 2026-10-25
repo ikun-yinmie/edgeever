@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
+import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 
 describe("desktop window open policy", () => {
+  test("allows the blank shell window the note list pre-opens before printing", () => {
+    expect(isAllowedBlankWindowUrl("about:blank")).toBe(true);
+    expect(isAllowedBlankWindowUrl("edgeever-app://app/note-print.html")).toBe(false);
+    expect(isAllowedBlankWindowUrl("https://example.com")).toBe(false);
+    expect(isAllowedBlankWindowUrl("not a url")).toBe(false);
+  });
+
   test("allows only the packaged print preview beside the app entry", () => {
     const appUrl = "file:///Applications/EdgeEver.app/Contents/Resources/web/index.html";
 

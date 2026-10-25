@@ -62,7 +62,7 @@ import {
   serializeUpdatePreferences,
   shouldAutoUpdateNow,
 } from "./update-preferences.mjs";
-import { isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
+import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
 import { writeImageClipboard, writePlainTextClipboard, writeRichClipboard } from "./clipboard-write.mjs";
@@ -1680,6 +1680,18 @@ const installWindowOpenPolicy = (contents) => {
   contents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("edgeever-resource://") || url.startsWith("edgeever-staged://")) return { action: "allow" };
     const currentUrl = contents.getURL() || mainWindow?.webContents.getURL() || "";
+    if (isAllowedBlankWindowUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        },
+      };
+    }
     if (isAllowedPrintPreviewUrl(url, currentUrl)) {
       return {
         action: "allow",
