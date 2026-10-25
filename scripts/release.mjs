@@ -631,6 +631,7 @@ export const waitForRun = async ({
   repository,
   runId,
   label,
+  tolerateSkipped = false,
   viewRun = () => ghJson([
     "run",
     "view",
@@ -667,7 +668,7 @@ export const waitForRun = async ({
       lastStatus = statusLabel;
     }
     if (runView.status === "completed") {
-      if (runView.conclusion !== "success") {
+      if (runView.conclusion !== "success" && !(tolerateSkipped && runView.conclusion === "skipped")) {
         throw new Error(`${label} failed: ${runView.url}`);
       }
       return runView;
@@ -1676,6 +1677,9 @@ const releaseMain = async (options) => {
       repository: options.repository,
       runId: dockerRunId,
       label: "Draft Docker image",
+      // The Docker workflow is guarded to the upstream repository, so on forks
+      // the dispatched run completes as "skipped" without building anything.
+      tolerateSkipped: true,
     }),
   ]);
 
@@ -1787,6 +1791,7 @@ const releaseMain = async (options) => {
         repository: options.repository,
         runId: dockerAudit.databaseId,
         label: "Published Docker image audit",
+        tolerateSkipped: true,
       }),
     ]);
   } catch (error) {

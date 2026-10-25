@@ -262,6 +262,26 @@ describe("release automation", () => {
     expect(polls).toBe(2);
   });
 
+  test("tolerates skipped runs only when the caller opts in", async () => {
+    const result = await waitForRun({
+      repository: "ikun-yinmie/edgeever",
+      runId: 456,
+      label: "Draft Docker image",
+      tolerateSkipped: true,
+      viewRun: () => ({ status: "completed", conclusion: "skipped", url: "https://example.test/run" }),
+      waitForNextPoll: async () => {},
+    });
+
+    expect(result.conclusion).toBe("skipped");
+    await expect(waitForRun({
+      repository: "ikun-yinmie/edgeever",
+      runId: 789,
+      label: "Draft desktop assets",
+      viewRun: () => ({ status: "completed", conclusion: "skipped", url: "https://example.test/run" }),
+      waitForNextPoll: async () => {},
+    })).rejects.toThrow("Draft desktop assets failed");
+  });
+
   test("parses paired bilingual changes and labels", () => {
     expect(
       parseReleaseArgs([
