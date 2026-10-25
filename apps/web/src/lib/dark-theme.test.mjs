@@ -78,7 +78,7 @@ describe("dark theme contracts", () => {
     const css = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
 
     expect(css).toContain("--workspace-canvas: #101311;");
-    expect(css).toContain("--workspace-sidebar: #121612;");
+    expect(css).toContain("--workspace-sidebar: #0f1310;");
     expect(css).toContain("--workspace-memo-list: #151a17;");
     expect(css).toContain("--workspace-editor: #191e1b;");
     expect(css).toContain(':not([data-editor-theme="custom"])');

@@ -26,7 +26,6 @@ import {
   CloudOff,
   AlertTriangle,
   RefreshCw,
-  CheckCircle2,
   CircleUserRound,
   Download,
   ExternalLink,
@@ -145,12 +144,12 @@ const SidebarNavButton = ({
 }) => (
   <button
     className={cn(
-      "flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium leading-none transition-all duration-200",
+      "flex h-9 w-full items-center gap-2.5 rounded-full px-3 text-left text-sm font-medium leading-none transition-all duration-200",
       tone === "warning"
         ? "text-amber-700 hover:bg-amber-50/70 hover:text-amber-800"
         : active
-          ? "edgeever-workspace-selection text-slate-950 font-medium"
-          : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+          ? "edgeever-sidebar-row-active"
+          : "text-slate-600 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950"
     )}
     type="button"
     aria-current={active ? "page" : undefined}
@@ -177,8 +176,8 @@ const SidebarShortcutButton = ({
   const button = (
     <button
       className={cn(
-        "flex h-9 min-w-0 w-full items-center justify-center rounded-md px-0 text-xs font-medium transition-colors duration-200",
-        active ? "edgeever-workspace-selection text-emerald-600 " : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        "flex h-9 min-w-0 w-full items-center justify-center rounded-lg px-0 text-xs font-medium transition-colors duration-200",
+        active ? "edgeever-sidebar-row-active text-emerald-600" : "text-slate-600 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950"
       )}
       type="button"
       aria-current={active ? "page" : undefined}
@@ -258,7 +257,7 @@ const SidebarCollapseButton = ({
           <button
             type="button"
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70",
+              "flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70",
               className
             )}
             aria-label={label}
@@ -297,8 +296,8 @@ const SidebarRailButton = ({
         aria-label={label}
         onClick={onClick}
         className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:cursor-not-allowed disabled:opacity-50",
-          active && "bg-emerald-50 text-emerald-600"
+          "flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50",
+          active && "edgeever-sidebar-row-active text-emerald-600"
         )}
       >
         {icon}
@@ -377,16 +376,16 @@ const SyncStatusBar = ({
   const hasQueuedWork = summary.total > 0;
   const label = getSyncStatusLabel(summary, isOnline, isSyncing, t);
   const statusClassName = !isOnline
-    ? "border-slate-200 bg-slate-50 text-slate-600"
+    ? "bg-slate-100 text-slate-600"
     : summary.conflict > 0
-      ? "border-amber-200 bg-amber-50 text-amber-800"
+      ? "bg-amber-50 text-amber-800"
       : hasQueuedWork
-        ? "border-slate-200 bg-slate-50 text-slate-700"
-        : "border-slate-200 bg-card text-slate-500";
+        ? "bg-slate-100 text-slate-700"
+        : "bg-transparent text-slate-400 hover:bg-[var(--sidebar-row-hover)]";
 
   return (
     <div
-      className={cn("flex h-8 items-center gap-2 rounded-md border px-3 transition-all duration-200", statusClassName)}
+      className={cn("flex h-8 items-center gap-2 rounded-full px-3 transition-all duration-200", statusClassName)}
       role="status"
       aria-live="polite"
     >
@@ -403,7 +402,7 @@ const SyncStatusBar = ({
         ) : hasQueuedWork || isSyncing ? (
           <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
         ) : (
-          <CheckCircle2 className="h-4 w-4" />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
         )}
       </m.span>
       <button
@@ -745,7 +744,7 @@ export const NotebookPane = ({
             host={pluginHost}
             onManage={onOpenPluginManager}
             align="start"
-            className="h-9 w-full rounded-md px-0 text-slate-600"
+            className="h-9 w-full rounded-lg px-0 text-slate-600"
           />
           <SidebarTrashShortcut active={view === "trash"} onOpenTrash={onOpenTrash} onEmptyTrash={onEmptyTrash} />
         </nav>
@@ -765,31 +764,35 @@ export const NotebookPane = ({
       )}
 
       <div className="hidden shrink-0 px-3 pb-2 pt-2 lg:block">
-        <div className="edgeever-create-memo-split flex overflow-hidden rounded-2xl border border-slate-200/90 bg-card shadow-[0_5px_16px_rgba(15,23,42,0.06)] transition-shadow duration-200 hover:shadow-[0_7px_20px_rgba(15,23,42,0.09)]">
+        <div className="edgeever-create-memo-split flex h-10 items-center rounded-full bg-emerald-100 pr-1 text-emerald-700">
           <button
-            className="group flex h-12 max-w-[calc(100%-2.25rem)] shrink-0 items-center gap-2 px-2.5 text-left transition-colors duration-150 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-full pl-3.5 pr-2 text-left text-sm font-medium transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
             type="button"
             aria-label={t("notebookPane.newMemo")}
             onClick={() => onCreateMemo()}
             disabled={!canCreateMemo || isCreatingMemo}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_5px_12px_rgb(var(--brand-green-rgb)/0.22)] transition-transform duration-150 group-hover:scale-[1.03] group-focus-visible:ring-2 group-focus-visible:ring-emerald-500/70 group-focus-visible:ring-offset-2">
-              <Plus className="h-5 w-5" />
-            </span>
-            <span className="whitespace-nowrap text-sm font-semibold text-slate-950">{t("notebookPane.newMemo")}</span>
+            <Plus className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{t("notebookPane.newMemo")}</span>
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="group relative flex h-12 min-w-9 flex-1 items-center justify-center gap-0.5 px-1.5 text-xs font-medium text-slate-600 transition-colors before:absolute before:inset-y-2.5 before:left-0 before:w-px before:bg-slate-200 hover:bg-emerald-50/70 hover:text-emerald-700 focus-visible:bg-emerald-50/70 focus-visible:text-emerald-700 focus-visible:outline-none data-[state=open]:bg-emerald-50 data-[state=open]:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                aria-label={t("diagram.createType")}
-                disabled={!canCreateMemo || isCreatingMemo}
-              >
-                <span className="edgeever-create-memo-split__more-label min-w-0 truncate">{t("diagram.moreTypes")}</span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-180" aria-hidden="true" />
-              </button>
-            </DropdownMenuTrigger>
+            <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="flex h-full w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 data-[state=open]:bg-emerald-200/60 disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      aria-label={t("diagram.createType")}
+                      disabled={!canCreateMemo || isCreatingMemo}
+                    >
+                      <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("diagram.moreTypes")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <DropdownMenuContent align="start" sideOffset={8} className="w-52">
               <CreateMemoTypeItems onCreateMemo={onCreateMemo} />
             </DropdownMenuContent>
@@ -811,7 +814,7 @@ export const NotebookPane = ({
       >
         {showTemplateEntry && (
           <button
-            className="mb-1 hidden h-8 w-full items-center justify-start gap-2 rounded-md px-3 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 lg:flex"
+            className="mb-1 hidden h-8 w-full items-center justify-start gap-2 rounded-full px-3 text-xs font-medium text-slate-500 transition-colors hover:bg-[var(--sidebar-row-hover)] hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 lg:flex"
             type="button"
             title={t("templates.useTemplate")}
             onClick={onOpenTemplates}
@@ -849,7 +852,7 @@ export const NotebookPane = ({
           <SidebarSectionLabel icon={<NotebookIcon className="h-4 w-4" />} label={t("notebookPane.notebooks")} />
           <div className="flex items-center gap-1 opacity-100 transition-opacity duration-200 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
             <button
-              className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
               type="button"
               title={t("notebookPane.newNotebook")}
               aria-label={t("notebookPane.newNotebook")}
@@ -863,7 +866,7 @@ export const NotebookPane = ({
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
                         type="button"
                         aria-label={t("notebookPane.sortTitle", { label: activeNotebookSortLabel })}
                       >
@@ -921,7 +924,7 @@ export const NotebookPane = ({
         {showMemberDirectory ? (
           <div className="mb-4" data-member-notes-section>
             <button
-              className="group mb-1 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+              className="group mb-1 flex w-full items-center justify-between gap-2 rounded-full py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-[var(--sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
               type="button"
               aria-expanded={memberDirectoryOpen}
               onClick={() => setMemberDirectoryOpen((open) => !open)}
@@ -940,10 +943,10 @@ export const NotebookPane = ({
                   return (
                     <button
                       className={cn(
-                        "flex h-9 w-full items-center gap-2 rounded-md px-2 text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]",
+                        "flex h-9 w-full items-center gap-2 rounded-full px-2 text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]",
                         active
-                          ? "edgeever-workspace-selection text-slate-950"
-                          : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
+                          ? "edgeever-sidebar-row-active"
+                          : "text-slate-700 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950",
                       )}
                       type="button"
                       key={member.id}
@@ -968,7 +971,7 @@ export const NotebookPane = ({
           {sharedGroups.length > 0 ? (
             <>
               <button
-                className="group mb-1 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                className="group mb-1 flex w-full items-center justify-between gap-2 rounded-full py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-[var(--sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                 type="button"
                 aria-expanded={groupSectionOpen}
                 onClick={() => setGroupSectionOpen((open) => !open)}
@@ -984,7 +987,7 @@ export const NotebookPane = ({
                 <div className="space-y-1">
                   {sharedGroups.map((group) => (
                                           <button
-                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        className="flex h-9 w-full items-center gap-1 rounded-full px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
                         onClick={() => onOpenShared?.({ groupId: group.id })}
                       >
@@ -1005,7 +1008,7 @@ export const NotebookPane = ({
           {onOpenShared ? (
             <>
               <button
-                className="group mb-1 mt-3 flex w-full items-center justify-between gap-2 rounded-md py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                className="group mb-1 mt-3 flex w-full items-center justify-between gap-2 rounded-full py-0.5 pl-2 pr-1 text-left transition-colors hover:bg-[var(--sidebar-row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                 type="button"
                 aria-expanded={mySharesSectionOpen}
                 onClick={() => setMySharesSectionOpen((open) => !open)}
@@ -1021,7 +1024,7 @@ export const NotebookPane = ({
                 <div className="space-y-1">
                   {linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length ? (
                                           <button
-                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        className="flex h-9 w-full items-center gap-1 rounded-full px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
                         onClick={() => onOpenShared?.("link")}
                       >
@@ -1035,7 +1038,7 @@ export const NotebookPane = ({
                   ) : null}
                   {sharedWithMeQuery.data?.sharedByMe.length ? (
                                           <button
-                        className="flex h-9 w-full items-center gap-1 rounded-md px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
+                        className="flex h-9 w-full items-center gap-1 rounded-full px-2 text-sm text-slate-700 transition-all duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 lg:text-[13px]"
                         type="button"
                         onClick={() => onOpenShared?.("group")}
                       >
@@ -1068,7 +1071,7 @@ export const NotebookPane = ({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_3px_8px_rgb(var(--brand-green-rgb)/0.24)] transition-transform duration-150 hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors duration-150 hover:bg-emerald-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={t("notebookPane.newMemo")}
                     onClick={() => onCreateMemo()}
                     disabled={!canCreateMemo || isCreatingMemo}
@@ -1084,7 +1087,7 @@ export const NotebookPane = ({
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-[var(--sidebar-row-hover)] hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label={t("diagram.createType")}
                         disabled={!canCreateMemo || isCreatingMemo}
                       >
@@ -1169,7 +1172,7 @@ export const NotebookPane = ({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="flex h-8 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium leading-none text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 data-[state=open]:bg-slate-100 data-[state=open]:text-slate-950    "
+                className="flex h-8 w-full items-center gap-3 rounded-full px-3 text-left text-sm font-medium leading-none text-slate-700 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 data-[state=open]:bg-[var(--sidebar-row-hover)] data-[state=open]:text-slate-950"
                 type="button"
                 aria-label={t("pwa.sidebarDownloadsTitle") || "下载 EdgeEver 客户端与浏览器插件"}
               >
@@ -1379,7 +1382,7 @@ export const NotebookPane = ({
           <div className="flex items-center gap-1">
             <button
               onClick={onOpenSettings}
-              className="flex h-8 min-w-0 flex-1 items-center gap-3 rounded-md px-3 text-left text-sm font-medium leading-none text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+              className="flex h-8 min-w-0 flex-1 items-center gap-3 rounded-full px-3 text-left text-sm font-medium leading-none text-slate-700 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
               type="button"
               aria-label={t("notebookPane.profile")}
             >
@@ -1391,7 +1394,7 @@ export const NotebookPane = ({
             {onOpenShared ? (
               <button
                 onClick={() => onOpenShared()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-700 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
                 type="button"
                 aria-label={t("sharedPane.title")}
                 title={t("sharedPane.title")}
@@ -1402,7 +1405,7 @@ export const NotebookPane = ({
             {isOwner && onOpenAdmin ? (
               <button
                 onClick={onOpenAdmin}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-700 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-700 transition-colors duration-200 hover:bg-[var(--sidebar-row-hover)] hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
                 type="button"
                 aria-label={t("adminConsole.pageTitle")}
                 title={t("adminConsole.pageTitle")}

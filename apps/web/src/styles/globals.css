@@ -132,12 +132,17 @@ html.dark[data-edgeever-environment="demo"] body::after {
     --brand-green-900-rgb: 15 68 50;
     --brand-green-950-rgb: 7 37 28;
     --workspace-canvas: #f8f9fa;
-    --workspace-sidebar: #f8f9fa;
+    --workspace-sidebar: #f1f2f3;
     --workspace-memo-list: #fafafa;
     --workspace-editor: #ffffff;
     --workspace-divider: #e9ebed;
     --workspace-memo-divider: #edf0f2;
     --workspace-selection: #edf0f2;
+    --sidebar-row-hover: rgb(255 255 255 / 0.75);
+    --sidebar-row-active-bg: #ffffff;
+    --sidebar-row-active-ring: rgb(var(--slate-300-rgb) / 0.7);
+    --sidebar-row-active-shadow: rgb(15 23 42 / 0.06);
+    --sidebar-count-bg: rgb(var(--slate-300-rgb) / 0.35);
     --tooltip-bg: #1a1f1c;
     --tooltip-fg: #f4f7f5;
     --scrollbar-thumb: rgb(115 115 115 / 0.28);
@@ -241,12 +246,17 @@ html.dark[data-edgeever-environment="demo"] body::after {
   --input: 150 10% 23%;
   --ring: 160 76% 36%;
   --workspace-canvas: #101311;
-  --workspace-sidebar: #121612;
+  --workspace-sidebar: #0f1310;
   --workspace-memo-list: #151a17;
   --workspace-editor: #191e1b;
   --workspace-divider: #2a312d;
   --workspace-memo-divider: #3b4540;
   --workspace-selection: #1d3028;
+  --sidebar-row-hover: rgb(var(--slate-100-rgb) / 0.6);
+  --sidebar-row-active-bg: #1b211d;
+  --sidebar-row-active-ring: rgb(var(--slate-300-rgb) / 0.4);
+  --sidebar-row-active-shadow: rgb(0 0 0 / 0.28);
+  --sidebar-count-bg: rgb(var(--slate-200-rgb) / 0.45);
   --tooltip-bg: #252c28;
   --tooltip-fg: #e9efeb;
   --scrollbar-thumb: rgb(137 150 142 / 0.38);
@@ -444,18 +454,10 @@ html[data-edgeever-extension-theme] kbd {
   background: var(--workspace-sidebar);
 }
 
-.edgeever-create-memo-split {
-  container-type: inline-size;
-}
-
-.edgeever-create-memo-split__more-label {
-  display: inline;
-}
-
-@container (max-width: 11.749rem) {
-  .edgeever-create-memo-split__more-label {
-    display: none;
-  }
+.edgeever-sidebar-row-active {
+  background: var(--sidebar-row-active-bg);
+  color: rgb(var(--slate-900-rgb));
+  box-shadow: inset 0 0 0 1px var(--sidebar-row-active-ring), 0 1px 2px var(--sidebar-row-active-shadow);
 }
 
 .edgeever-workspace-memo-list {

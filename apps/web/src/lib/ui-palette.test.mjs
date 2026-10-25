@@ -19,10 +19,11 @@ describe("application color system", () => {
 
   test("keeps the light workspace achromatic while preserving text hierarchy", () => {
     expect(globals).toContain("--workspace-canvas: #f8f9fa;");
-    expect(globals).toContain("--workspace-sidebar: #f8f9fa;");
+    expect(globals).toContain("--workspace-sidebar: #f1f2f3;");
     expect(globals).toContain("--workspace-memo-list: #fafafa;");
     expect(globals).toContain("--workspace-editor: #ffffff;");
     expect(globals).toContain("--workspace-selection: #edf0f2;");
+    expect(globals).toContain("--sidebar-row-active-bg: #ffffff;");
     expect(globals).toContain("--slate-500-rgb: 115 115 115;");
     expect(globals).toContain("--slate-950-rgb: 10 10 10;");
     expect(globals).toContain("--amber-50-rgb: 255 251 235;");
@@ -34,9 +35,10 @@ describe("application color system", () => {
 
   test("keeps dark workspace surfaces distinct without blue-black color casts", () => {
     expect(globals).toContain("--workspace-canvas: #101311;");
-    expect(globals).toContain("--workspace-sidebar: #121612;");
+    expect(globals).toContain("--workspace-sidebar: #0f1310;");
     expect(globals).toContain("--workspace-memo-list: #151a17;");
     expect(globals).toContain("--workspace-editor: #191e1b;");
+    expect(globals).toContain("--sidebar-row-active-bg: #1b211d;");
     expect(globals).not.toContain("scrollbar-color: rgba(100, 116, 139, 0.18)");
     expect(contrastRatio("#cad4ce", "#191e1b")).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio("#9aa9a0", "#191e1b")).toBeGreaterThanOrEqual(4.5);

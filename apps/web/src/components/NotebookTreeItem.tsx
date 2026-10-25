@@ -178,12 +178,12 @@ export const NotebookTreeItem = ({
           <div
             data-notebook-id={node.id}
             className={cn(
-              "group relative flex h-9 items-center gap-1 rounded-md px-2 text-sm lg:text-[13px] transition-all duration-200 select-none",
+              "group relative flex h-9 items-center gap-1 rounded-full px-2 text-sm lg:text-[13px] transition-all duration-200 select-none",
               selected
-                ? "edgeever-workspace-selection font-medium text-slate-950"
+                ? "edgeever-sidebar-row-active font-medium"
                 : hasSelectedDescendant
-                  ? "bg-slate-50 text-slate-900 hover:bg-slate-100"
-                  : "text-slate-700 hover:bg-slate-50",
+                  ? "bg-[var(--sidebar-row-hover)] text-slate-900"
+                  : "text-slate-700 hover:bg-[var(--sidebar-row-hover)]",
               dropPosition === "inside" && "ring-2 ring-slate-300",
               dropPosition === "inside" && hasChildren && !open && "bg-slate-100"
             )}
@@ -205,7 +205,7 @@ export const NotebookTreeItem = ({
           >
             {hasChildren ? (
               <button
-                className="flex h-6 w-5 items-center justify-center rounded hover:bg-slate-100/50 transition-colors"
+                className="flex h-6 w-5 items-center justify-center rounded-full hover:bg-[var(--sidebar-row-hover)] transition-colors"
                 type="button"
                 onClick={() => onOpenChange(node.id, !open)}
                 title={t("notebookTree.expandCollapse")}
@@ -277,8 +277,8 @@ export const NotebookTreeItem = ({
               </span>
               <span
                 className={cn(
-                  "shrink-0 tabular-nums text-xs font-normal transition-colors duration-200",
-                  selected ? "text-slate-600 font-medium" : "text-slate-400 group-hover:text-slate-500"
+                  "shrink-0 rounded-full bg-[var(--sidebar-count-bg)] px-1.5 py-0.5 text-xs font-normal leading-none tabular-nums transition-colors duration-200",
+                  selected ? "font-medium text-slate-600" : "text-slate-500"
                 )}
                 aria-hidden="true"
               >
@@ -288,8 +288,8 @@ export const NotebookTreeItem = ({
             <div ref={actionsRef} className="relative shrink-0">
                 <button
                   className={cn(
-                    "hidden h-6 w-6 items-center justify-center rounded-md group-focus-within:flex group-hover:flex transition-colors duration-150",
-                    selected ? "hover:bg-slate-200" : "hover:bg-slate-100"
+                    "hidden h-6 w-6 items-center justify-center rounded-full group-focus-within:flex group-hover:flex transition-colors duration-150",
+                    selected ? "hover:bg-emerald-200/60" : "hover:bg-[var(--sidebar-row-hover)]"
                   )}
                   type="button"
                   title={t("notebookTree.actions")}
