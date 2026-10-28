@@ -68,6 +68,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
 import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import { EditorOutline } from "./EditorOutline";
+import { ScrollToEdgeButtons } from "./ScrollToEdgeButtons";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
 import {
   createEditorInstanceMemoIdentity,
@@ -4648,6 +4649,7 @@ const RichEditorPane = ({
       {/* The outline column sits beside the article scroller (not inside it)
        * so the outline keeps its own fixed height and independent scroll. */}
       <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 min-w-0 flex-1">
       <div
         ref={setEditorScrollContainerRef}
         data-editor-theme={isNamedEditorTheme(resolvedEditorTheme) ? resolvedEditorTheme : "custom"}
@@ -4858,12 +4860,21 @@ const RichEditorPane = ({
           )}
         </div>
       </div>
+      {!useMobilePlainTextEditor && !useMarkdownSourceEditor && (
+        <ScrollToEdgeButtons
+          scrollContainer={editorScrollContainer}
+          contentKey={memo?.id}
+          className="absolute bottom-5 right-5 z-10"
+        />
+      )}
+      </div>
       {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
         <EditorOutline
           editor={editor}
           scrollContainer={editorScrollContainer}
           previewContainer={phonePreviewOpen && phonePreviewStageVisible ? phonePreviewScroller : null}
           collapsed={editorOutlineCollapsed}
+          documentKey={memo?.id}
           shortcutLabel={formatShortcutBinding(shortcutSettings.toggleOutline)}
           docked
           onCollapsedChange={handleEditorOutlineCollapsedChange}

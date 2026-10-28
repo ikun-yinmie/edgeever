@@ -554,6 +554,7 @@ export const NotebookPane = ({
   const notebookDragScrollFrameRef = useRef<number | null>(null);
   const [expandSiblingsRequest, setExpandSiblingsRequest] = useState<{ parentId: string | null; token: number } | null>(null);
   const expandedPathNotebookIdRef = useRef<string | null>(null);
+  const scrolledSelectionRef = useRef<string | null>(null);
   const [notebookSortMode, setNotebookSortMode] = useState<NotebookSortMode>(readNotebookSortPreference);
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
   const [groupSectionOpen, setGroupSectionOpen] = useState(false);
@@ -688,6 +689,12 @@ export const NotebookPane = ({
   }, [selectedNotebookId, tree]);
 
   const handleNotebookOpenChange = useCallback((notebookId: string, open: boolean) => {
+    if (!open) {
+      // Re-selecting a notebook later should reveal its path again instead of
+      // leaving the selected row hidden inside a manually collapsed branch.
+      expandedPathNotebookIdRef.current = null;
+    }
+
     setExpandedNotebookIds((current) => {
       if (current.has(notebookId) === open) {
         return current;
@@ -705,15 +712,32 @@ export const NotebookPane = ({
 
   useEffect(() => {
     if (!selectedNotebookId) {
+      scrolledSelectionRef.current = null;
       return;
     }
 
+    if (scrolledSelectionRef.current === selectedNotebookId) {
+      return;
+    }
+
+    // Only follow the selection itself. Expanding or collapsing an unrelated
+    // branch must keep the tree where the user left it instead of scrolling
+    // back to the selected notebook.
     window.setTimeout(() => {
+      if (scrolledSelectionRef.current === selectedNotebookId) {
+        return;
+      }
+
       const selectedNode = notebookScrollRef.current?.querySelector<HTMLElement>(
         `[data-notebook-id="${CSS.escape(selectedNotebookId)}"]`
       );
 
-      selectedNode?.scrollIntoView({ block: "nearest" });
+      if (!selectedNode) {
+        return;
+      }
+
+      scrolledSelectionRef.current = selectedNotebookId;
+      selectedNode.scrollIntoView({ block: "nearest" });
     }, 0);
   }, [expandedNotebookIds, selectedNotebookId, tree]);
 

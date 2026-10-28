@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildOutlineTree,
   getOutlineDisplaySegments,
+  getOutlineParentPositions,
   trimOutlineSegments,
 } from "./editor-outline";
 
@@ -32,6 +33,18 @@ describe("editor outline hierarchy", () => {
 
     expect(tree.map((item) => item.text)).toEqual(["Standalone", "Next section"]);
     expect(tree[0]?.children.map((item) => item.text)).toEqual(["Detail", "Sibling detail"]);
+  });
+
+  test("reports every heading that owns nested headings", () => {
+    const tree = buildOutlineTree([
+      heading(1, 0, "Project"),
+      heading(2, 10, "Plan"),
+      heading(3, 20, "Draft"),
+      heading(2, 30, "Review"),
+      heading(1, 40, "Archive"),
+    ]);
+
+    expect(getOutlineParentPositions(tree)).toEqual([0, 10]);
   });
 });
 

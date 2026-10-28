@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("./PublicSharePage.tsx", import.meta.url), "utf8");
+const scrollButtonsSource = readFileSync(new URL("./ScrollToEdgeButtons.tsx", import.meta.url), "utf8");
 
 describe("PublicSharePage header", () => {
   test("shows who shared the note with a generic icon instead of brand marks", () => {
@@ -27,11 +28,24 @@ describe("PublicSharePage image preview", () => {
 });
 
 describe("PublicSharePage outline", () => {
-  test("shows the document outline beside shared rich notes", () => {
+  test("keeps the shared article and outline in independent scroll columns", () => {
     expect(source).toContain("<EditorOutline");
-    expect(source).toContain("trackWindowScroll");
+    expect(source).toContain("docked");
+    expect(source).toContain("scrollContainer={articleScroller}");
+    expect(source).not.toContain("trackWindowScroll");
     expect(source).toContain("onEditorReady={setShareEditor}");
     expect(source).toContain("const [outlineCollapsed, setOutlineCollapsed] = useState(false)");
     expect(source).toContain("className=\"max-lg:hidden\"");
+    expect(source).toContain("lg:h-[100dvh] lg:overflow-hidden");
+    expect(source).toContain("lg:min-h-0 lg:overflow-y-auto");
+  });
+
+  test("offers scroll-to-edge controls for the article scroller", () => {
+    expect(source).toContain("<ScrollToEdgeButtons");
+    expect(source).toContain("scrollContainer={articleScroller}");
+    expect(scrollButtonsSource).toContain('data-scroll-to-edge="top"');
+    expect(scrollButtonsSource).toContain('data-scroll-to-edge="bottom"');
+    expect(scrollButtonsSource).toContain('t("editor.scrollToTop")');
+    expect(scrollButtonsSource).toContain('t("editor.scrollToBottom")');
   });
 });

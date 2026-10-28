@@ -113,3 +113,20 @@ export const buildOutlineTree = (items: OutlineItem[]): OutlineTreeItem[] => {
 
   return roots;
 };
+
+/** Positions of headings that own nested headings, in document order. */
+export const getOutlineParentPositions = (tree: OutlineTreeItem[]): number[] => {
+  const positions: number[] = [];
+
+  const walk = (nodes: OutlineTreeItem[]) => {
+    for (const node of nodes) {
+      if (node.children.length > 0) {
+        positions.push(node.pos);
+        walk(node.children);
+      }
+    }
+  };
+
+  walk(tree);
+  return positions;
+};

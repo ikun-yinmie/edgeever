@@ -49,3 +49,24 @@ describe("editor outline floating toggle", () => {
     expect(outlineSource).toContain('window.removeEventListener("scroll", updateFromScroll)');
   });
 });
+
+describe("editor outline collapsing", () => {
+  test("starts each note with nested headings collapsed", () => {
+    expect(outlineSource).toContain("getOutlineParentPositions");
+    expect(outlineSource).toContain("documentKey?: string");
+    expect(outlineSource).toContain("initializedDocumentKeyRef");
+    expect(outlineSource).toContain("setCollapsedPositions(new Set(getOutlineParentPositions(nextTree)))");
+  });
+
+  test("offers one-click collapse-all and expand-all in both header layouts", () => {
+    expect(outlineSource).toContain('t(allCollapsed ? "editor.expandAllOutline" : "editor.collapseAllOutline")');
+    expect(outlineSource).toContain("<ChevronsUp");
+    expect(outlineSource).toContain("<ChevronsDown");
+    expect(outlineSource).toContain("aria-pressed={allCollapsed}");
+    expect(outlineSource.match(/\{collapseAllButton\}/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  test("passes the open note id so switching notes resets the collapse state", () => {
+    expect(editorPaneSource).toContain("documentKey={memo?.id}");
+  });
+});

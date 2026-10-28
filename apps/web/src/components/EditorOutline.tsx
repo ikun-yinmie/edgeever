@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { ChevronDown, ChevronRight, ListTree, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ListTree, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   buildOutlineTree,
   getOutlineDisplaySegments,
+  getOutlineParentPositions,
   trimOutlineSegments,
   type OutlineItem,
   type OutlineTextSegment,
@@ -16,10 +17,13 @@ import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 
 type EditorOutlineProps = {
   editor: Editor | null;
-  scrollContainer?: HTMLDivElement | null;
+  scrollContainer?: HTMLElement | null;
   previewContainer?: HTMLDivElement | null;
   collapsed: boolean;
   shortcutLabel?: string;
+  /** Identifies the open document so a new note starts with its nested
+   * headings collapsed again. */
+  documentKey?: string;
   /** Public share pages scroll with the window instead of an editor pane. */
   trackWindowScroll?: boolean;
   /** Docked mode: the outline lives as an independent column beside the
@@ -108,6 +112,7 @@ export const EditorOutline = ({
   previewContainer = null,
   collapsed,
   shortcutLabel = "",
+  documentKey,
   trackWindowScroll = false,
   docked = false,
   className,
@@ -118,7 +123,49 @@ export const EditorOutline = ({
   const [activePos, setActivePos] = useState<number | null>(null);
   const [collapsedPositions, setCollapsedPositions] = useState<Set<number>>(() => new Set());
   const scrollTrackingPausedUntilRef = useRef(0);
+  const initializedDocumentKeyRef = useRef<string | null>(null);
   const tree = useMemo(() => buildOutlineTree(items), [items]);
+  const parentPositions = useMemo(() => getOutlineParentPositions(tree), [tree]);
+  const allCollapsed = parentPositions.length > 0
+    && parentPositions.every((pos) => collapsedPositions.has(pos));
+  const activeChain = useMemo(() => {
+    if (activePos === null) {
+      return [] as OutlineTreeItem[];
+    }
+
+    const chain: OutlineTreeItem[] = [];
+    const find = (nodes: OutlineTreeItem[], trail: OutlineTreeItem[]): boolean => {
+      for (const node of nodes) {
+        const nextTrail = [...trail, node];
+        if (node.pos === activePos) {
+          chain.push(...nextTrail);
+          return true;
+        }
+        if (node.children.length > 0 && find(node.children, nextTrail)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    find(tree, []);
+    return chain;
+  }, [activePos, tree]);
+  // Keep a highlight visible when the active heading sits inside a collapsed
+  // branch: the nearest expanded ancestor represents it in the outline.
+  const visibleActivePos = useMemo(() => {
+    let visible: number | null = null;
+
+    for (let index = 0; index < activeChain.length; index += 1) {
+      const node = activeChain[index]!;
+      visible = node.pos;
+      if (collapsedPositions.has(node.pos) && index < activeChain.length - 1) {
+        break;
+      }
+    }
+
+    return visible;
+  }, [activeChain, collapsedPositions]);
 
   const refresh = useCallback(() => {
     if (!editor || editor.isDestroyed) {
@@ -170,6 +217,36 @@ export const EditorOutline = ({
       return next.size === current.size ? current : next;
     });
   }, [items]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      return;
+    }
+
+    const key = documentKey ?? "editor";
+    if (initializedDocumentKeyRef.current === key) {
+      return;
+    }
+
+    // Defer a tick so a note switch has swapped in the new document before the
+    // default collapse set is derived from its headings.
+    const frame = window.setTimeout(() => {
+      if (!editor || editor.isDestroyed) {
+        return;
+      }
+
+      const nextTree = buildOutlineTree(getOutlineItems(editor));
+      if (nextTree.length === 0) {
+        // Empty or still-hydrating document: retry when headings arrive.
+        return;
+      }
+
+      initializedDocumentKeyRef.current = key;
+      setCollapsedPositions(new Set(getOutlineParentPositions(nextTree)));
+    }, 0);
+
+    return () => window.clearTimeout(frame);
+  }, [documentKey, editor, items.length]);
 
   const resolveHeadingElement = useCallback((item: OutlineItem): HTMLElement | null => {
     if (previewContainer) {
@@ -270,16 +347,20 @@ export const EditorOutline = ({
       // scroll-into-view, which races the smooth scroll and leaves the heading
       // at a random viewport position. Scroll the editor pane explicitly to a
       // fixed read line instead (same pattern as the phone preview branch),
-      // after the selection update so ProseMirror's scroll lands first.
-      try {
-        const maxPos = editor.state.doc.content.size;
-        const targetPos = Math.min(item.pos + 1, maxPos);
-        editor.chain().focus().setTextSelection(targetPos).run();
-      } catch {
-        // ignore selection positioning error
+      // after the selection update so ProseMirror's scroll lands first. In a
+      // read-only document (public share) there is no caret to move, and the
+      // selection's scroll-into-view would override the explicit scroll.
+      if (editor.isEditable) {
+        try {
+          const maxPos = editor.state.doc.content.size;
+          const targetPos = Math.min(item.pos + 1, maxPos);
+          editor.chain().focus().setTextSelection(targetPos).run();
+        } catch {
+          // ignore selection positioning error
+        }
       }
 
-      if (scrollContainer instanceof HTMLDivElement) {
+      if (scrollContainer instanceof HTMLElement) {
         const delta = domElement.getBoundingClientRect().top
           - (scrollContainer.getBoundingClientRect().top + EDITOR_READ_LINE_OFFSET);
         if (Math.abs(delta) >= ALIGN_TOLERANCE_PX) {
@@ -303,10 +384,36 @@ export const EditorOutline = ({
     });
   };
 
+  const toggleAllCollapsed = () => {
+    setCollapsedPositions(allCollapsed ? new Set() : new Set(parentPositions));
+  };
+
+  const collapseAllLabel = t(allCollapsed ? "editor.expandAllOutline" : "editor.collapseAllOutline");
+  const collapseAllButton = parentPositions.length > 0 ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+          onClick={toggleAllCollapsed}
+          aria-pressed={allCollapsed}
+          aria-label={collapseAllLabel}
+        >
+          {allCollapsed ? (
+            <ChevronsDown className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronsUp className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left">{collapseAllLabel}</TooltipContent>
+    </Tooltip>
+  ) : null;
+
   const renderItems = (treeItems: OutlineTreeItem[], depth = 0) => (
     <ol className={cn("space-y-0.5", depth > 0 && "py-0.5")}>
       {treeItems.map((item) => {
-        const isActive = activePos === item.pos;
+        const isActive = visibleActivePos === item.pos;
         const hasChildren = item.children.length > 0;
         const itemCollapsed = collapsedPositions.has(item.pos);
         const displaySegments = getOutlineDisplaySegments(item);
@@ -429,20 +536,23 @@ export const EditorOutline = ({
                   <ListTree className="h-3.5 w-3.5" aria-hidden="true" />
                   {t("editor.outline")}
                 </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
-                      onClick={() => onCollapsedChange(true)}
-                      aria-expanded
-                      aria-label={outlineToggleLabel}
-                    >
-                      <PanelRightClose className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">{outlineToggleLabel}</TooltipContent>
-                </Tooltip>
+                <div className="flex items-center gap-0.5">
+                  {collapseAllButton}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                        onClick={() => onCollapsedChange(true)}
+                        aria-expanded
+                        aria-label={outlineToggleLabel}
+                      >
+                        <PanelRightClose className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">{outlineToggleLabel}</TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
               <nav
                 className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/70 [&::-webkit-scrollbar-thumb]:hover:bg-slate-400/70"
@@ -473,7 +583,7 @@ export const EditorOutline = ({
         }}
         aria-label={t("editor.outline")}
       >
-        <div className={cn("flex", collapsed ? "absolute right-0 top-0 h-8 w-8 justify-center" : "mb-3 justify-between px-1")}>
+        <div className={cn("flex", collapsed ? "absolute right-0 top-0 h-8 w-8 justify-center" : "mb-3 items-center justify-between px-1")}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -498,6 +608,9 @@ export const EditorOutline = ({
             </TooltipTrigger>
             <TooltipContent side="left">{outlineToggleLabel}</TooltipContent>
           </Tooltip>
+          {!collapsed && collapseAllButton ? (
+            <div className="flex items-center">{collapseAllButton}</div>
+          ) : null}
         </div>
 
         {!collapsed && (

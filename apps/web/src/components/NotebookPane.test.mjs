@@ -117,11 +117,18 @@ describe("NotebookPane tree expansion", () => {
   });
 
   test("exposes the recent-notes home from both the nav list and the collapsed rail", () => {
-    const rail = source.split("data-notebook-sidebar-rail")[1]?.split(") : (")[0];
+    const rail = source.split('data-notebook-sidebar-rail')[1]?.split(") : (")[0];
 
     expect(source).toContain('label={t("recentMemos.title")}');
     expect(source).toContain("onClick={onOpenRecent}");
     expect(rail).toContain('label={t("recentMemos.title")}');
+  });
+
+  test("keeps the tree scroll anchored while expanding unrelated branches", () => {
+    expect(source).toContain("const scrolledSelectionRef = useRef<string | null>(null);");
+    expect(source).toContain("if (scrolledSelectionRef.current === selectedNotebookId)");
+    expect(source).toContain("expandedPathNotebookIdRef.current = null;");
+    expect(source).toContain("scrolledSelectionRef.current = selectedNotebookId;");
   });
 });
 
