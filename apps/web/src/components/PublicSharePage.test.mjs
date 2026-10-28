@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("./PublicSharePage.tsx", import.meta.url), "utf8");
 const scrollButtonsSource = readFileSync(new URL("./ScrollToEdgeButtons.tsx", import.meta.url), "utf8");
+const mobileOutlineSource = readFileSync(new URL("./MobileOutlineSheet.tsx", import.meta.url), "utf8");
 
 describe("PublicSharePage header", () => {
   test("shows who shared the note with a generic icon instead of brand marks", () => {
@@ -47,5 +48,15 @@ describe("PublicSharePage outline", () => {
     expect(scrollButtonsSource).toContain('data-scroll-to-edge="bottom"');
     expect(scrollButtonsSource).toContain('t("editor.scrollToTop")');
     expect(scrollButtonsSource).toContain('t("editor.scrollToBottom")');
+  });
+
+  test("shows a mobile outline sheet with tappable headings", () => {
+    expect(source).toContain("<MobileOutlineSheet");
+    expect(source).toContain("editor={shareEditor}");
+    expect(mobileOutlineSource).toContain('data-mobile-outline-trigger="true"');
+    expect(mobileOutlineSource).toContain('data-mobile-outline-sheet="true"');
+    expect(mobileOutlineSource).toContain("getEditorOutlineItems");
+    expect(mobileOutlineSource).toContain("window.scrollTo");
+    expect(mobileOutlineSource).toContain('t("editor.outlineShort")');
   });
 });

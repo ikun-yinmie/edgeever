@@ -10,6 +10,7 @@ import {
   Code2,
   List,
   ListTodo,
+  ListChecks,
   ListOrdered,
   Quote,
   SquareCode,
@@ -159,6 +160,20 @@ const toggleListAtSelection = (editor: Editor, listType: "bulletList" | "ordered
   }
 };
 
+const toggleNumberedTaskList = (editor: Editor) => {
+  editor.commands.focus();
+  if (editor.isActive("taskList")) {
+    const numbered = Boolean(editor.getAttributes("taskList").numbered);
+    editor.chain().updateAttributes("taskList", { numbered: !numbered }).run();
+    return;
+  }
+
+  if (!wrapIndentedParagraphInList(editor.state, editor.view.dispatch, "taskList")) {
+    editor.commands.toggleTaskList();
+  }
+  editor.chain().updateAttributes("taskList", { numbered: true }).run();
+};
+
 export const EditorToolbar = ({
   editor,
   readOnly,
@@ -225,6 +240,9 @@ export const EditorToolbar = ({
   const codeBlockLanguage = editorReady
     ? getCodeBlockLanguageValue(editor.getAttributes("codeBlock").language)
     : "plaintext";
+  const numberedTaskListActive = editorReady
+    ? isActive("taskList") && Boolean(editor.getAttributes("taskList").numbered)
+    : false;
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -544,6 +562,14 @@ export const EditorToolbar = ({
             onClick={() => run((current) => toggleListAtSelection(current, "taskList"))}
           >
             <ListTodo className="h-4 w-4" />
+          </EditorToolbarButton>
+          <EditorToolbarButton
+            title={`${t("editorToolbar.numberedTaskList")} · ${t("editorToolbar.listIndentHint")}`}
+            active={numberedTaskListActive}
+            disabled={!editorReady || readOnly}
+            onClick={() => run(toggleNumberedTaskList)}
+          >
+            <ListChecks className="h-4 w-4" />
           </EditorToolbarButton>
           <EditorToolbarButton
             title={`${t("editorToolbar.orderedList")} · ${t("editorToolbar.listIndentHint")}`}

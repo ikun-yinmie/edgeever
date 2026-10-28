@@ -177,6 +177,7 @@ export const NotebookTreeItem = ({
         <ContextMenuTrigger asChild>
           <div
             data-notebook-id={node.id}
+            data-notebook-depth={depth}
             className={cn(
               "group relative flex h-9 items-center gap-1 rounded-full px-2 text-sm lg:text-[13px] transition-all duration-200 select-none",
               selected
@@ -266,7 +267,7 @@ export const NotebookTreeItem = ({
                 }
               }}
             >
-              <NotebookIcon className={cn("h-4 w-4 shrink-0 transition-colors duration-200", selected ? "text-emerald-600 " : hasSelectedDescendant ? "text-slate-700" : "text-slate-500")} />
+              <NotebookIcon className={cn("h-4 w-4 shrink-0 transition-colors duration-200", selected ? "text-[var(--sidebar-active-accent)]" : hasSelectedDescendant ? "text-slate-700" : "text-slate-500")} />
               <span
                 className={cn(
                   "truncate font-medium transition-colors duration-200",

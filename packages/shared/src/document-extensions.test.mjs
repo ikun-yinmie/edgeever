@@ -41,6 +41,12 @@ describe("shared document extensions", () => {
     expect(names).toContain("markdown");
   });
 
+  test("keeps the stock task list schema and adds an optional numbered flag", () => {
+    expect(factorySource).toContain("export const EdgeEverTaskList = TaskList.extend");
+    expect(factorySource).toContain('"data-task-numbered": "true"');
+    expect(factorySource).toContain("withOptional(options.taskList, EdgeEverTaskList)");
+  });
+
   test("round-trips merge dividers and formulas through the codec factory", () => {
     const markdown = `alpha\n\n${MERGE_DIVIDER_MARKDOWN_MARKER}\n\n---\n\nEuler: $e^{i\\pi}+1=0$.`;
     const doc = markdownToDoc(markdown);

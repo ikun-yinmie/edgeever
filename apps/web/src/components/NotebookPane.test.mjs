@@ -130,6 +130,17 @@ describe("NotebookPane tree expansion", () => {
     expect(source).toContain("expandedPathNotebookIdRef.current = null;");
     expect(source).toContain("scrolledSelectionRef.current = selectedNotebookId;");
   });
+
+  test("tints the selected notebook by tree depth", () => {
+    const treeItemSource = readFileSync(new URL("./NotebookTreeItem.tsx", import.meta.url), "utf8");
+    const css = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
+
+    expect(treeItemSource).toContain("data-notebook-depth={depth}");
+    expect(treeItemSource).toContain("text-[var(--sidebar-active-accent)]");
+    expect(css).toContain(".edgeever-sidebar-row-active[data-notebook-depth=\"1\"]");
+    expect(css).toContain("--sidebar-active-accent");
+    expect(css).toContain(":root.dark .edgeever-sidebar-row-active[data-notebook-depth=\"1\"]");
+  });
 });
 
 describe("NotebookPane client downloads", () => {

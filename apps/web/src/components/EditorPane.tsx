@@ -68,6 +68,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
 import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import { EditorOutline } from "./EditorOutline";
+import { MobileOutlineSheet } from "./MobileOutlineSheet";
 import { ScrollToEdgeButtons } from "./ScrollToEdgeButtons";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
 import {
@@ -758,6 +759,7 @@ const RichEditorPane = ({
       "bullet-list": "",
       "ordered-list": "",
       "task-list": "",
+      "numbered-task-list": "",
       blockquote: "",
       "code-block": "",
       divider: "",
@@ -800,6 +802,7 @@ const RichEditorPane = ({
       "bullet-list": t("editorToolbar.bulletList"),
       "ordered-list": t("editorToolbar.orderedList"),
       "task-list": t("editorToolbar.taskList"),
+      "numbered-task-list": t("editorToolbar.numberedTaskList"),
       blockquote: t("editorToolbar.quote"),
       "code-block": t("editorToolbar.codeBlock"),
       divider: t("editorToolbar.horizontalRule"),
@@ -1894,7 +1897,7 @@ const RichEditorPane = ({
   useEffect(() => {
     const showImagePreview = (event: Event) => {
       const detail = (event as CustomEvent<ImagePreviewRequestDetail>).detail;
-      if (!detail?.url) return;
+      if (!detail?.slides?.length) return;
       setImagePreview(detail);
     };
     window.addEventListener(IMAGE_PREVIEW_SHOW_EVENT, showImagePreview);
@@ -4867,6 +4870,14 @@ const RichEditorPane = ({
           className="absolute bottom-5 right-5 z-10"
         />
       )}
+      {isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
+        <MobileOutlineSheet
+          editor={editor}
+          scrollContainer={editorScrollContainer}
+          documentKey={memo?.id}
+          className="bottom-20"
+        />
+      )}
       </div>
       {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (
         <EditorOutline
@@ -4890,13 +4901,13 @@ const RichEditorPane = ({
       )}
 
       <ImageViewer
-        alt={imagePreview?.alt ?? ""}
         closeLabel={t("editor.closeImagePreview")}
-        open={Boolean(imagePreview)}
-        src={imagePreview?.url ?? ""}
+        open={imagePreview}
         viewerLabel={t("editor.imageViewer")}
         zoomInLabel={t("editor.imageZoomIn")}
         zoomOutLabel={t("editor.imageZoomOut")}
+        previousLabel={t("editor.imagePrevious")}
+        nextLabel={t("editor.imageNext")}
         onClose={() => setImagePreview(null)}
       />
 

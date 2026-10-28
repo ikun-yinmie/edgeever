@@ -22,6 +22,7 @@ import {
   Images,
   Link,
   List,
+  ListChecks,
   ListOrdered,
   ListTodo,
   MessageCircle,
@@ -54,6 +55,7 @@ export type SlashCommandId =
   | "bullet-list"
   | "ordered-list"
   | "task-list"
+  | "numbered-task-list"
   | "blockquote"
   | "code-block"
   | "divider"
@@ -132,6 +134,7 @@ export const createSlashCommandItems = (labels: SlashCommandLabels): SlashComman
   { id: "bullet-list", command: "bullet", group: "basic", icon: List, label: labels.items["bullet-list"], keywords: ["list", "无序", "列表"] },
   { id: "ordered-list", command: "numbered", group: "basic", icon: ListOrdered, label: labels.items["ordered-list"], keywords: ["ordered", "list", "有序", "编号"] },
   { id: "task-list", command: "task", group: "basic", icon: ListTodo, label: labels.items["task-list"], keywords: ["todo", "check", "任务", "待办"] },
+  { id: "numbered-task-list", command: "numberedtodo", group: "basic", icon: ListChecks, label: labels.items["numbered-task-list"], keywords: ["numbered", "todo", "check", "编号", "数字", "待办"] },
   { id: "blockquote", command: "quote", group: "basic", icon: Quote, label: labels.items.blockquote, keywords: ["引用"] },
   { id: "code-block", command: "code", group: "basic", icon: Braces, label: labels.items["code-block"], keywords: ["代码"] },
   { id: "divider", command: "divider", group: "insert", icon: BetweenHorizontalStart, label: labels.items.divider, keywords: ["rule", "分割", "分隔"] },
@@ -268,6 +271,7 @@ const runSlashCommand = ({
     case "bullet-list": chain.toggleBulletList().run(); break;
     case "ordered-list": chain.toggleOrderedList().run(); break;
     case "task-list": chain.toggleTaskList().run(); break;
+    case "numbered-task-list": chain.toggleTaskList().updateAttributes("taskList", { numbered: true }).run(); break;
     case "blockquote": chain.toggleBlockquote().run(); break;
     case "code-block": chain.setCodeBlock().run(); break;
     case "divider": chain.setHorizontalRule().run(); break;

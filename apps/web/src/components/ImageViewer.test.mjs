@@ -10,6 +10,17 @@ describe("ImageViewer", () => {
     expect(source).toContain("pinchZoomV4: true");
     expect(source).toContain('toolbar={{ buttons: ["zoom", resetButton, "close"] }}');
     expect(source).toContain("closeOnBackdropClick: true");
-    expect(source).toContain("imageFit: \"contain\"");
+    expect(source).toContain('imageFit: "contain"');
+  });
+
+  test("steps through adjacent images and hides arrows for a lone image", () => {
+    expect(source).toContain("slides={open.slides.map");
+    expect(source).toContain("index={Math.min(open.index, open.slides.length - 1)}");
+    expect(source).toContain("const hasMultipleSlides = open.slides.length > 1;");
+    expect(source).toContain("disableSwipeNavigation: !hasMultipleSlides");
+    expect(source).toContain("buttonPrev: hasMultipleSlides ? undefined : () => null");
+    expect(source).toContain("buttonNext: hasMultipleSlides ? undefined : () => null");
+    expect(source).toContain("Previous: previousLabel");
+    expect(source).toContain("Next: nextLabel");
   });
 });

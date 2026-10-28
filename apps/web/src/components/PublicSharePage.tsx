@@ -24,7 +24,13 @@ import { PdfAttachment } from "@/components/editor/PdfAttachment";
 import { FileAttachment } from "@/components/editor/FileAttachment";
 import { EditorOutline } from "@/components/EditorOutline";
 import { ScrollToEdgeButtons } from "@/components/ScrollToEdgeButtons";
-import { ImageViewer, type ImageViewerSlide } from "@/components/ImageViewer";
+import { ImageViewer } from "@/components/ImageViewer";
+import { MobileOutlineSheet } from "@/components/MobileOutlineSheet";
+import {
+  getImagePreviewGroup,
+  getImagePreviewGroupFromDom,
+  type ImagePreviewGroup,
+} from "@/lib/image-preview-group";
 import { resolveMemoEditorTheme } from "@/components/ThemeProvider";
 import { isPaperEditorTheme, publishEditorCssVars, resolvePaperEditorTheme } from "@/lib/publish-layout";
 
@@ -88,7 +94,7 @@ const SharedRichText = ({
   onEditorReady?: (editor: Editor | null) => void;
 }) => {
   const { t } = useTranslation();
-  const [viewerImage, setViewerImage] = useState<ImageViewerSlide | null>(null);
+  const [viewerImage, setViewerImage] = useState<ImagePreviewGroup | null>(null);
   const editor = useEditor({
     extensions: [
       ...createEdgeEverDocumentExtensions({
@@ -109,14 +115,16 @@ const SharedRichText = ({
         class: "prose prose-slate max-w-none focus:outline-none",
         "aria-label": "Shared note content",
       },
-      handleDoubleClick: (_view, _pos, event) => {
+      handleDoubleClick: (view, pos, event) => {
         const target = event.target;
         if (target instanceof HTMLImageElement && target.src) {
-          setViewerImage({
-            src: target.currentSrc || target.src,
-            alt: target.alt || undefined,
-            width: target.naturalWidth || undefined,
-            height: target.naturalHeight || undefined,
+          const group = getImagePreviewGroup(view, pos) ?? getImagePreviewGroupFromDom(view, target);
+          setViewerImage(group ?? {
+            slides: [{
+              src: target.currentSrc || target.src,
+              alt: target.alt || undefined,
+            }],
+            index: 0,
           });
           return true;
         }
@@ -140,6 +148,8 @@ const SharedRichText = ({
         viewerLabel={t("sharing.imageViewer")}
         zoomInLabel={t("sharing.imageZoomIn")}
         zoomOutLabel={t("sharing.imageZoomOut")}
+        previousLabel={t("editor.imagePrevious")}
+        nextLabel={t("editor.imageNext")}
         onClose={() => setViewerImage(null)}
       />
     </>
@@ -356,6 +366,11 @@ export const PublicSharePage = () => {
           <ScrollToEdgeButtons
             contentKey={token}
             className="fixed bottom-6 right-4 z-30 lg:hidden"
+          />
+          <MobileOutlineSheet
+            editor={shareEditor}
+            scrollContainer={articleScroller}
+            documentKey={token}
           />
         </div>
         <EditorOutline

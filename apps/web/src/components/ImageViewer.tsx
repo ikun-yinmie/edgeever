@@ -4,21 +4,20 @@ import Lightbox, { type ZoomRef } from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ImagePreviewGroup, ImagePreviewSlide } from "@/lib/image-preview-group";
 
-export interface ImageViewerSlide {
-  src: string;
-  alt?: string;
-  width?: number;
-  height?: number;
-}
+export type ImageViewerSlide = ImagePreviewSlide;
+export type ImageViewerState = ImagePreviewGroup;
 
 interface ImageViewerProps {
   closeLabel: string;
-  open: ImageViewerSlide | null;
+  open: ImageViewerState | null;
   resetZoomLabel: string;
   viewerLabel: string;
   zoomInLabel: string;
   zoomOutLabel: string;
+  previousLabel: string;
+  nextLabel: string;
   onClose: () => void;
 }
 
@@ -29,6 +28,8 @@ export const ImageViewer = ({
   viewerLabel,
   zoomInLabel,
   zoomOutLabel,
+  previousLabel,
+  nextLabel,
   onClose,
 }: ImageViewerProps) => {
   const zoomRef = useRef<ZoomRef | null>(null);
@@ -38,8 +39,9 @@ export const ImageViewer = ({
     if (!open) setZoom(1);
   }, [open]);
 
-  if (!open) return null;
+  if (!open || open.slides.length === 0) return null;
 
+  const hasMultipleSlides = open.slides.length > 1;
   const resetButton = (
     <TooltipProvider key="reset-image-zoom" delayDuration={0} skipDelayDuration={0}>
       <Tooltip>
@@ -64,20 +66,20 @@ export const ImageViewer = ({
       className="edgeever-image-viewer"
       open
       close={onClose}
-      index={0}
-      slides={[{
-        src: open.src,
-        alt: open.alt ?? viewerLabel,
-        width: open.width,
-        height: open.height,
+      index={Math.min(open.index, open.slides.length - 1)}
+      slides={open.slides.map((slide) => ({
+        src: slide.src,
+        alt: slide.alt ?? viewerLabel,
         imageFit: "contain",
-      }]}
+      }))}
       plugins={[Zoom]}
       labels={{
         Close: closeLabel,
         "Photo gallery": viewerLabel,
         "Zoom in": zoomInLabel,
         "Zoom out": zoomOutLabel,
+        Previous: previousLabel,
+        Next: nextLabel,
       }}
       toolbar={{ buttons: ["zoom", resetButton, "close"] }}
       carousel={{ finite: true, padding: 24, imageFit: "contain" }}
@@ -85,7 +87,7 @@ export const ImageViewer = ({
         closeOnBackdropClick: true,
         closeOnPullDown: false,
         closeOnPullUp: false,
-        disableSwipeNavigation: true,
+        disableSwipeNavigation: !hasMultipleSlides,
       }}
       zoom={{
         ref: zoomRef,
@@ -98,8 +100,8 @@ export const ImageViewer = ({
       animation={{ fade: 160, zoom: 180 }}
       on={{ zoom: ({ zoom: nextZoom }) => setZoom(nextZoom) }}
       render={{
-        buttonPrev: () => null,
-        buttonNext: () => null,
+        buttonPrev: hasMultipleSlides ? undefined : () => null,
+        buttonNext: hasMultipleSlides ? undefined : () => null,
       }}
     />
   );

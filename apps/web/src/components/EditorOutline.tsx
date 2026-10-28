@@ -7,11 +7,11 @@ import {
   buildOutlineTree,
   getOutlineDisplaySegments,
   getOutlineParentPositions,
-  trimOutlineSegments,
   type OutlineItem,
   type OutlineTextSegment,
   type OutlineTreeItem,
 } from "@/lib/editor-outline";
+import { getEditorOutlineItems } from "@/lib/editor-outline-editor";
 import { cn } from "@/lib/utils";
 import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 
@@ -46,44 +46,6 @@ const getPreviewHeadingElements = (container: HTMLDivElement | null) => {
   return [...container.querySelectorAll<HTMLElement>(PREVIEW_HEADING_SELECTOR)].filter(
     (element) => (element.textContent ?? "").trim().length > 0
   );
-};
-
-const getOutlineItems = (editor: Editor): OutlineItem[] => {
-  const items: OutlineItem[] = [];
-
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "heading") {
-      return;
-    }
-
-    const rawSegments: OutlineTextSegment[] = [];
-    node.forEach((child) => {
-      if (!child.isText || !child.text) {
-        return;
-      }
-
-      const strike = child.marks.some((mark) => mark.type.name === "strike");
-      const previous = rawSegments[rawSegments.length - 1];
-      if (previous && previous.strike === strike) {
-        previous.text += child.text;
-      } else {
-        rawSegments.push({ text: child.text, strike });
-      }
-    });
-
-    const segments = trimOutlineSegments(rawSegments);
-    const text = segments.map((segment) => segment.text).join("");
-    if (text) {
-      items.push({
-        level: Number(node.attrs.level) || 1,
-        pos,
-        text,
-        segments,
-      });
-    }
-  });
-
-  return items;
 };
 
 const sameOutlineSegments = (left: OutlineTextSegment[] | undefined, right: OutlineTextSegment[] | undefined) => {
@@ -173,7 +135,7 @@ export const EditorOutline = ({
       return;
     }
 
-    const nextItems = getOutlineItems(editor);
+    const nextItems = getEditorOutlineItems(editor);
     setItems((currentItems) => (sameOutlineItems(currentItems, nextItems) ? currentItems : nextItems));
   }, [editor]);
 
@@ -235,7 +197,7 @@ export const EditorOutline = ({
         return;
       }
 
-      const nextTree = buildOutlineTree(getOutlineItems(editor));
+      const nextTree = buildOutlineTree(getEditorOutlineItems(editor));
       if (nextTree.length === 0) {
         // Empty or still-hydrating document: retry when headings arrive.
         return;

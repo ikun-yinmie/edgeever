@@ -455,9 +455,77 @@ html[data-edgeever-extension-theme] kbd {
 }
 
 .edgeever-sidebar-row-active {
+  --sidebar-active-accent: #11694a;
   background: var(--sidebar-row-active-bg);
   color: rgb(var(--slate-900-rgb));
   box-shadow: inset 0 0 0 1px var(--sidebar-row-active-ring), 0 1px 2px var(--sidebar-row-active-shadow);
+}
+
+/* Each notebook depth owns a soft accent so a selected child is visually
+ * distinct from its parent. Backgrounds stay pale; only the icon and ring
+ * carry the hue. */
+.edgeever-sidebar-row-active[data-notebook-depth="0"] {
+  --sidebar-active-accent: #11694a;
+  --sidebar-row-active-bg: #f0f8f4;
+  --sidebar-row-active-ring: rgb(22 160 110 / 0.22);
+}
+
+.edgeever-sidebar-row-active[data-notebook-depth="1"] {
+  --sidebar-active-accent: #1d5fa8;
+  --sidebar-row-active-bg: #f1f7fd;
+  --sidebar-row-active-ring: rgb(59 130 246 / 0.2);
+}
+
+.edgeever-sidebar-row-active[data-notebook-depth="2"] {
+  --sidebar-active-accent: #a16207;
+  --sidebar-row-active-bg: #fdf8ee;
+  --sidebar-row-active-ring: rgb(217 119 6 / 0.2);
+}
+
+.edgeever-sidebar-row-active[data-notebook-depth="3"] {
+  --sidebar-active-accent: #6d28d9;
+  --sidebar-row-active-bg: #f6f4fd;
+  --sidebar-row-active-ring: rgb(139 92 246 / 0.2);
+}
+
+.edgeever-sidebar-row-active[data-notebook-depth="4"] {
+  --sidebar-active-accent: #be123c;
+  --sidebar-row-active-bg: #fdf2f5;
+  --sidebar-row-active-ring: rgb(244 63 94 / 0.18);
+}
+
+:root.dark .edgeever-sidebar-row-active {
+  --sidebar-active-accent: #6ee7b7;
+}
+
+:root.dark .edgeever-sidebar-row-active[data-notebook-depth="0"] {
+  --sidebar-active-accent: #6ee7b7;
+  --sidebar-row-active-bg: #16241d;
+  --sidebar-row-active-ring: rgb(52 211 153 / 0.28);
+}
+
+:root.dark .edgeever-sidebar-row-active[data-notebook-depth="1"] {
+  --sidebar-active-accent: #93c5fd;
+  --sidebar-row-active-bg: #15202b;
+  --sidebar-row-active-ring: rgb(96 165 250 / 0.26);
+}
+
+:root.dark .edgeever-sidebar-row-active[data-notebook-depth="2"] {
+  --sidebar-active-accent: #fcd34d;
+  --sidebar-row-active-bg: #241f14;
+  --sidebar-row-active-ring: rgb(245 158 11 / 0.26);
+}
+
+:root.dark .edgeever-sidebar-row-active[data-notebook-depth="3"] {
+  --sidebar-active-accent: #c4b5fd;
+  --sidebar-row-active-bg: #1f1a2b;
+  --sidebar-row-active-ring: rgb(167 139 250 / 0.26);
+}
+
+:root.dark .edgeever-sidebar-row-active[data-notebook-depth="4"] {
+  --sidebar-active-accent: #fda4af;
+  --sidebar-row-active-bg: #28181d;
+  --sidebar-row-active-ring: rgb(251 113 133 / 0.24);
 }
 
 .edgeever-workspace-memo-list {
@@ -1529,6 +1597,26 @@ textarea {
 .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
   margin: 0.25rem 0 0;
   padding-left: 1.5rem;
+}
+
+/* Numbered task lists keep the same checkbox layout and add an ordered prefix. */
+.ProseMirror ul[data-type="taskList"][data-task-numbered="true"] {
+  counter-reset: edgeever-task-number;
+}
+
+.ProseMirror ul[data-type="taskList"][data-task-numbered="true"] > li[data-checked] {
+  counter-increment: edgeever-task-number;
+}
+
+.ProseMirror ul[data-type="taskList"][data-task-numbered="true"] > li[data-checked]::before {
+  content: counter(edgeever-task-number) ".";
+  flex: 0 0 auto;
+  min-width: 1.15rem;
+  margin-top: 0.15rem;
+  color: rgb(var(--slate-500-rgb));
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 
 .ProseMirror .edgeever-task-toggle {

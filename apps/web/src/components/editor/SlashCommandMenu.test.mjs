@@ -24,6 +24,7 @@ const labels = {
     "bullet-list": "无序列表",
     "ordered-list": "有序列表",
     "task-list": "任务清单",
+    "numbered-task-list": "编号待办",
     blockquote: "引用",
     "code-block": "代码块",
     divider: "分割线",
@@ -53,7 +54,7 @@ describe("slash command menu", () => {
     const unfilteredItems = filterSlashCommandItems(items, "");
     const heading6Index = unfilteredItems.findIndex((item) => item.id === "heading-6");
 
-    expect(unfilteredItems).toHaveLength(30);
+    expect(unfilteredItems).toHaveLength(31);
     expect(unfilteredItems.slice(heading6Index + 1, heading6Index + 4).map((item) => item.id)).toEqual([
       "current-date",
       "current-time",
@@ -63,7 +64,7 @@ describe("slash command menu", () => {
 
   test("searches localized labels and aliases", () => {
     expect(filterSlashCommandItems(items, "AI").map((item) => item.id)).toEqual(["ai"]);
-    expect(filterSlashCommandItems(items, "待办").map((item) => item.id)).toEqual(["task-list"]);
+    expect(filterSlashCommandItems(items, "待办").map((item) => item.id)).toEqual(["task-list", "numbered-task-list"]);
     expect(filterSlashCommandItems(items, "h2").map((item) => item.id)).toEqual(["heading-2"]);
     expect(filterSlashCommandItems(items, "h5").map((item) => item.id)).toEqual(["heading-5"]);
     expect(filterSlashCommandItems(items, "今天").map((item) => item.id)).toEqual(["current-date"]);
@@ -86,6 +87,7 @@ describe("slash command menu", () => {
       "bullet",
       "numbered",
       "task",
+      "numberedtodo",
       "quote",
       "code",
       "divider",
@@ -108,7 +110,7 @@ describe("slash command menu", () => {
     expect(filterSlashCommandItems(items, "折叠").map((item) => item.id)).toEqual(["fold"]);
     expect(filterSlashCommandItems(items, "collapse").map((item) => item.id)).toEqual(["fold"]);
     expect(filterSlashCommandItems(items, "table").map((item) => item.id)).toEqual(["table"]);
-    expect(filterSlashCommandItems(items, "task").map((item) => item.id)).toEqual(["task-list"]);
+    expect(filterSlashCommandItems(items, "task").map((item) => item.id)).toEqual(["task-list", "numbered-task-list"]);
     expect(filterSlashCommandItems(items, "公式").map((item) => item.id)).toEqual(["inline-math", "block-math"]);
     expect(filterSlashCommandItems(items, "equation").map((item) => item.id)).toEqual(["block-math"]);
     expect(filterSlashCommandItems(items, "B站").map((item) => item.id)).toEqual(["video-embed"]);

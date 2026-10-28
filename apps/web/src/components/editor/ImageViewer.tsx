@@ -1,42 +1,51 @@
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
+import type { ImagePreviewGroup } from "@/lib/image-preview-group";
 
 type ImageViewerProps = {
-  alt: string;
   closeLabel: string;
-  open: boolean;
-  src: string;
+  open: ImagePreviewGroup | null;
   viewerLabel: string;
   zoomInLabel: string;
   zoomOutLabel: string;
+  previousLabel: string;
+  nextLabel: string;
   onClose: () => void;
 };
 
 export const ImageViewer = ({
-  alt,
   closeLabel,
   open,
-  src,
   viewerLabel,
   zoomInLabel,
   zoomOutLabel,
+  previousLabel,
+  nextLabel,
   onClose,
 }: ImageViewerProps) => {
-  if (!open || !src) return null;
+  if (!open || open.slides.length === 0) return null;
+
+  const hasMultipleSlides = open.slides.length > 1;
 
   return (
     <Lightbox
       open
       close={onClose}
-      index={0}
-      slides={[{ src, alt: alt || viewerLabel, imageFit: "contain" }]}
+      index={Math.min(open.index, open.slides.length - 1)}
+      slides={open.slides.map((slide) => ({
+        src: slide.src,
+        alt: slide.alt ?? viewerLabel,
+        imageFit: "contain",
+      }))}
       plugins={[Zoom]}
       labels={{
         Close: closeLabel,
         "Photo gallery": viewerLabel,
         "Zoom in": zoomInLabel,
         "Zoom out": zoomOutLabel,
+        Previous: previousLabel,
+        Next: nextLabel,
       }}
       toolbar={{ buttons: ["zoom", "close"] }}
       carousel={{ finite: true, padding: 24, imageFit: "contain" }}
@@ -44,7 +53,7 @@ export const ImageViewer = ({
         closeOnBackdropClick: true,
         closeOnPullDown: false,
         closeOnPullUp: false,
-        disableSwipeNavigation: true,
+        disableSwipeNavigation: !hasMultipleSlides,
       }}
       zoom={{
         maxZoomPixelRatio: 6,
@@ -55,8 +64,8 @@ export const ImageViewer = ({
       }}
       animation={{ fade: 160, zoom: 180 }}
       render={{
-        buttonPrev: () => null,
-        buttonNext: () => null,
+        buttonPrev: hasMultipleSlides ? undefined : () => null,
+        buttonNext: hasMultipleSlides ? undefined : () => null,
       }}
     />
   );

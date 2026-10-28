@@ -12,6 +12,7 @@ import {
   parseImageWidth,
 } from "@edgeever/shared/image-display";
 import { getAttachmentResourceId } from "@/lib/attachment-links";
+import { getImagePreviewGroup, type ImagePreviewGroup } from "@/lib/image-preview-group";
 import { createMarkdownImagePasteRule } from "@/lib/markdown-image-paste";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -31,10 +32,7 @@ export type ImageContextMenuRequestDetail = ImageMenuRequestDetail & {
   point: { x: number; y: number };
 };
 
-export type ImagePreviewRequestDetail = {
-  url: string;
-  alt: string;
-};
+export type ImagePreviewRequestDetail = ImagePreviewGroup;
 
 export const IMAGE_MENU_SHOW_EVENT = "edgeever:image-menu-show";
 export const IMAGE_MENU_HIDE_EVENT = "edgeever:image-menu-hide";
@@ -181,13 +179,16 @@ const ResizableImageNodeView = ({
   const requestImagePreview = useCallback(() => {
     if (!src) return;
     hideImageMenu();
+    const position = getPos();
+    const group = typeof position === "number" ? getImagePreviewGroup(editor.view, position) : null;
+    const detail: ImagePreviewRequestDetail = group ?? {
+      slides: [{ src, ...(title || alt ? { alt: title || alt } : {}) }],
+      index: 0,
+    };
     window.dispatchEvent(new CustomEvent<ImagePreviewRequestDetail>(IMAGE_PREVIEW_SHOW_EVENT, {
-      detail: {
-        url: src,
-        alt: title || alt,
-      },
+      detail,
     }));
-  }, [alt, hideImageMenu, src, title]);
+  }, [alt, editor, getPos, hideImageMenu, src, title]);
 
   const updateWidth = useCallback((nextWidth: number) => {
     if (!editor.isEditable || isImageInGallery(editor.state.doc, getPos())) return;

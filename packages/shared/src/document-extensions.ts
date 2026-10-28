@@ -21,6 +21,7 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
   mathematics: AnyExtension[];
   starterKit?: Parameters<typeof StarterKit.configure>[0];
   image?: AnyExtension | false;
+  taskList?: AnyExtension | false;
   taskItem?: AnyExtension | false;
   gallery?: AnyExtension | false;
   pdf?: AnyExtension | false;
@@ -32,6 +33,26 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
   headingCollapse?: HeadingCollapseOptions | false;
   markdown?: boolean;
 };
+
+/**
+ * Task lists keep the stock schema and add an optional numbered rendering.
+ * The flag lives on the list node so one note can mix numbered and plain
+ * checklists; the web layer renders the numbers with CSS counters.
+ */
+export const EdgeEverTaskList = TaskList.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      numbered: {
+        default: false,
+        keepOnSplit: false,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-task-numbered") === "true",
+        renderHTML: (attributes: { numbered?: unknown }) =>
+          attributes.numbered ? { "data-task-numbered": "true" } : {},
+      },
+    };
+  },
+});
 
 const withOptional = (value: AnyExtension | false | undefined, fallback: AnyExtension) => {
   if (value === false) return [];
@@ -56,7 +77,7 @@ export const createEdgeEverDocumentExtensions = (
     StarterKit.configure(starterKitConfig),
     EdgeEverTextStyle,
     ParagraphFormat,
-    TaskList,
+    ...withOptional(options.taskList, EdgeEverTaskList),
     ...withOptional(options.taskItem, TaskItem.configure({ nested: true })),
     options.table === undefined ? TableKit : TableKit.configure(options.table),
     ...withOptional(options.image, Image),

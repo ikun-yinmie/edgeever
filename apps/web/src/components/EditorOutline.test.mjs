@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 const outlineSource = readFileSync(new URL("./EditorOutline.tsx", import.meta.url), "utf8");
+const outlineItemsSource = readFileSync(new URL("../lib/editor-outline-editor.ts", import.meta.url), "utf8");
 const editorPaneSource = readFileSync(new URL("./EditorPane.tsx", import.meta.url), "utf8");
 const phonePreviewSource = readFileSync(new URL("./EditorPhonePreview.tsx", import.meta.url), "utf8");
 const helpersSource = readFileSync(new URL("./editor/editor-pane-helpers.ts", import.meta.url), "utf8");
@@ -15,7 +16,7 @@ describe("editor outline floating toggle", () => {
 
   test("renders strikethrough runs from heading marks in the outline", () => {
     expect(outlineSource).toContain("getOutlineDisplaySegments");
-    expect(outlineSource).toContain('mark.type.name === "strike"');
+    expect(outlineItemsSource).toContain('mark.type.name === "strike"');
     expect(outlineSource).toContain('segment.strike ? "line-through" : undefined');
   });
 
