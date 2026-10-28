@@ -1,23 +1,23 @@
 {
-  "version": "1.101.0",
+  "version": "1.102.0",
   "changes": {
     "en-US": [
-      "The editor and public share pages gain floating Back to top / Scroll to bottom controls that appear whenever the article is away from that edge.",
-      "Expanding or collapsing a notebook branch no longer scrolls the sidebar back to the current notebook; clicking a notebook locates it and lists notes from that notebook and all of its sub-notebooks.",
-      "The document outline now starts with nested headings collapsed, supports per-section folding, and adds one-click Collapse all / Expand all. The active section highlight rolls up to the nearest visible parent while its branch is collapsed.",
-      "Public share pages now scroll the article independently while the outline stays docked beside it with its own scrollbar and remains in the viewport, matching the editor experience."
+      "Adjacent images in the same note can now be stepped through with Previous / Next in the lightbox; images separated by other content still open on their own.",
+      "Task lists gain a numbered style that renders 1. 2. 3. prefixes, while the existing plain checklist stays unchanged in the editor and public shares.",
+      "Public share pages on mobile now expose an Outline button with a bottom sheet of all headings that jumps to the tapped section; narrow rich-editor layouts get the same control.",
+      "Selected notebooks in the sidebar now use a different soft tint per tree depth (green, blue, amber, violet, rose) in both light and dark themes, keeping the palette light."
     ],
     "zh-CN": [
-      "编辑器与公开分享页的正文右下角新增「回到顶部 / 滚到底部」浮动按钮：离开顶部或底部时出现，一键平滑滚动到对应边缘。",
-      "左侧笔记本树展开或收起分支时不再把侧栏滚回当前笔记本；点击任意笔记本会定位到该项，并在右侧列出该笔记本及其全部子笔记本的笔记。",
-      "文档大纲默认收起子级标题，支持逐级展开/收起，并新增一键「全部收起 / 全部展开」；当前章节位于折叠分支时，高亮会显示在最近的可见父级上。",
-      "公开分享页改为文章独立滚动、大纲常驻右侧并可独立滚动，始终留在可视窗口内，阅读体验与编辑器一致。"
+      "同一篇笔记中紧挨着的多张图片，双击打开后可以用「上一张 / 下一张」切换；被文字隔开的图片仍然单独查看。",
+      "任务清单新增「编号待办」样式，可直接显示 1. 2. 3. 序号；原有不加编号的待办保留不变，编辑器和分享页都支持。",
+      "手机端公开分享页新增「大纲」入口，底部抽屉列出全部标题，点击即可跳转；窄屏富文本编辑器同样可用。",
+      "左侧笔记本分类的选中样式按层级使用不同的浅色（浅绿、浅蓝、浅琥珀、浅紫、浅玫红），明暗主题均已适配，颜色保持轻柔。"
     ],
     "ja": [
-      "エディタと公開共有ページの本文右下に「先頭へ戻る／最下部へスクロール」ボタンを追加しました。端にいないときだけ表示され、ワンクリックでスムーズに移動します。",
-      "ノートブックツリーの分岐を開閉してもサイドバーが現在のノートブックへ戻らなくなりました。クリックしたノートブックを基準に、その配下すべてのノートを一覧表示します。",
-      "文書アウトラインは子見出しを折りたたんだ状態で開始し、見出しごとの開閉と「すべて折りたたむ／すべて展開する」を追加しました。折りたたまれた分岐内の現在位置は、最も近い表示中の親見出しでハイライトされます。",
-      "公開共有ページでは本文が独立してスクロールし、アウトラインは右側に固定されて独自のスクロールバーを持ち、常に表示されます。エディタと同じ読書体験です。"
+      "同じノート内で隣り合う画像は、拡大表示で「前の画像／次の画像」に切り替えられます。文章で区切られた画像は単独で開きます。",
+      "タスクリストに「番号付き」スタイルを追加し、1. 2. 3. の番号を表示できます。従来の番号なしチェックリストはそのまま利用できます。",
+      "モバイルの公開共有ページに「目次」ボタンを追加し、ボトムシートから見出しを選んで移動できます。狭い画面のリッチエディタでも利用できます。",
+      "サイドバーで選択中のノートブックは階層ごとに淡い色（緑・青・琥珀・紫・ローズ）で区別され、ライト／ダーク両テーマに対応します。"
     ]
   }
 }
