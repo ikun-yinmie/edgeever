@@ -1,23 +1,17 @@
 {
-  "version": "1.102.0",
+  "version": "1.103.0",
   "changes": {
     "en-US": [
-      "Adjacent images in the same note can now be stepped through with Previous / Next in the lightbox; images separated by other content still open on their own.",
-      "Task lists gain a numbered style that renders 1. 2. 3. prefixes, while the existing plain checklist stays unchanged in the editor and public shares.",
-      "Public share pages on mobile now expose an Outline button with a bottom sheet of all headings that jumps to the tapped section; narrow rich-editor layouts get the same control.",
-      "Selected notebooks in the sidebar now use a different soft tint per tree depth (green, blue, amber, violet, rose) in both light and dark themes, keeping the palette light."
+      "Edits now save locally and upload automatically within about three seconds instead of waiting for Ctrl+S; Ctrl+S still forces an immediate sync.",
+      "Returning to a note after switching away restores the previous caret and scroll position in the rich-text editor, so writing can continue where it left off."
     ],
     "zh-CN": [
-      "同一篇笔记中紧挨着的多张图片，双击打开后可以用「上一张 / 下一张」切换；被文字隔开的图片仍然单独查看。",
-      "任务清单新增「编号待办」样式，可直接显示 1. 2. 3. 序号；原有不加编号的待办保留不变，编辑器和分享页都支持。",
-      "手机端公开分享页新增「大纲」入口，底部抽屉列出全部标题，点击即可跳转；窄屏富文本编辑器同样可用。",
-      "左侧笔记本分类的选中样式按层级使用不同的浅色（浅绿、浅蓝、浅琥珀、浅紫、浅玫红），明暗主题均已适配，颜色保持轻柔。"
+      "编辑停止后先自动保存再自动上传，通常约 3 秒内从「待同步」变为「已同步」，无需再按 Ctrl+S；Ctrl+S 仍可立即同步。",
+      "切换笔记后再回到之前的笔记时，会恢复上一次的光标位置和滚动位置，富文本编辑可以直接接着写。"
     ],
     "ja": [
-      "同じノート内で隣り合う画像は、拡大表示で「前の画像／次の画像」に切り替えられます。文章で区切られた画像は単独で開きます。",
-      "タスクリストに「番号付き」スタイルを追加し、1. 2. 3. の番号を表示できます。従来の番号なしチェックリストはそのまま利用できます。",
-      "モバイルの公開共有ページに「目次」ボタンを追加し、ボトムシートから見出しを選んで移動できます。狭い画面のリッチエディタでも利用できます。",
-      "サイドバーで選択中のノートブックは階層ごとに淡い色（緑・青・琥珀・紫・ローズ）で区別され、ライト／ダーク両テーマに対応します。"
+      "編集を止めるとローカル保存後に自動でアップロードされ、通常約3秒で「同期済み」になります。Ctrl+S は引き続き即時同期に使えます。",
+      "別のノートに移動してから戻ると、前回のカーソル位置とスクロール位置が復元され、リッチテキスト編集をそのまま続けられます。"
     ]
   }
 }
