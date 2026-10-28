@@ -1,14 +1,23 @@
 {
-  "version": "1.100.12",
+  "version": "1.101.0",
   "changes": {
     "en-US": [
-      "Redesign the workspace sidebar with a soft capsule look: the create-note control becomes a gentle emerald pill, active navigation items float on raised cards, notebook counts turn into compact badges, the idle sync status calms down to a status dot, and the sidebar surface separates from the list and editor in both light and dark themes."
+      "The editor and public share pages gain floating Back to top / Scroll to bottom controls that appear whenever the article is away from that edge.",
+      "Expanding or collapsing a notebook branch no longer scrolls the sidebar back to the current notebook; clicking a notebook locates it and lists notes from that notebook and all of its sub-notebooks.",
+      "The document outline now starts with nested headings collapsed, supports per-section folding, and adds one-click Collapse all / Expand all. The active section highlight rolls up to the nearest visible parent while its branch is collapsed.",
+      "Public share pages now scroll the article independently while the outline stays docked beside it with its own scrollbar and remains in the viewport, matching the editor experience."
     ],
     "zh-CN": [
-      "重新设计工作区侧栏，采用柔和胶囊风格：「新建笔记」变为浅绿胶囊按钮，选中项以浮起卡片呈现，笔记本计数改为小徽章，空闲同步状态简化为状态圆点，侧栏底色与列表、编辑区在明暗两套主题下都拉开层次。"
+      "编辑器与公开分享页的正文右下角新增「回到顶部 / 滚到底部」浮动按钮：离开顶部或底部时出现，一键平滑滚动到对应边缘。",
+      "左侧笔记本树展开或收起分支时不再把侧栏滚回当前笔记本；点击任意笔记本会定位到该项，并在右侧列出该笔记本及其全部子笔记本的笔记。",
+      "文档大纲默认收起子级标题，支持逐级展开/收起，并新增一键「全部收起 / 全部展开」；当前章节位于折叠分支时，高亮会显示在最近的可见父级上。",
+      "公开分享页改为文章独立滚动、大纲常驻右侧并可独立滚动，始终留在可视窗口内，阅读体验与编辑器一致。"
     ],
     "ja": [
-      "ワークスペースのサイドバーをソフトなカプセル風に刷新。「新規ノート」は淡い緑のピルボタンになり、選択項目は浮き上がりカードで表示され、ノートブックの件数は小さなバッジに、アイドル時の同期ステータスはドット表示に簡素化されます。サイドバーの背景はライト・ダーク両テーマでリストやエディターと層が分かれます。"
+      "エディタと公開共有ページの本文右下に「先頭へ戻る／最下部へスクロール」ボタンを追加しました。端にいないときだけ表示され、ワンクリックでスムーズに移動します。",
+      "ノートブックツリーの分岐を開閉してもサイドバーが現在のノートブックへ戻らなくなりました。クリックしたノートブックを基準に、その配下すべてのノートを一覧表示します。",
+      "文書アウトラインは子見出しを折りたたんだ状態で開始し、見出しごとの開閉と「すべて折りたたむ／すべて展開する」を追加しました。折りたたまれた分岐内の現在位置は、最も近い表示中の親見出しでハイライトされます。",
+      "公開共有ページでは本文が独立してスクロールし、アウトラインは右側に固定されて独自のスクロールバーを持ち、常に表示されます。エディタと同じ読書体験です。"
     ]
   }
 }
