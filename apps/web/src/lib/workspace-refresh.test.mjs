@@ -15,8 +15,8 @@ import {
 } from "./workspace-refresh.ts";
 
 describe("refreshWorkspaceData", () => {
-  it("uses a fixed 30-second delay for uploading memo edits", () => {
-    assert.equal(DEFERRED_MEMO_SYNC_DELAY_MS, 30_000);
+  it("flushes queued memo edits right after the local autosave", () => {
+    assert.equal(DEFERRED_MEMO_SYNC_DELAY_MS, 500);
   });
 
   it("uses a shared five-minute background refresh interval", () => {

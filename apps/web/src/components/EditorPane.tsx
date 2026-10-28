@@ -67,6 +67,7 @@ import { isSharedAccessReadOnly } from "@/lib/shared-with-me";
 import { EditorToolbar } from "./EditorToolbar";
 import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
 import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
+import { readEditorCursor, writeEditorCursor } from "@/lib/editor-cursor-memory";
 import { EditorOutline } from "./EditorOutline";
 import { MobileOutlineSheet } from "./MobileOutlineSheet";
 import { ScrollToEdgeButtons } from "./ScrollToEdgeButtons";
@@ -2179,6 +2180,29 @@ const RichEditorPane = ({
     };
   }, [editor]);
 
+  useEffect(() => {
+    if (!isEditorReady(editor)) {
+      return;
+    }
+
+    // Remember where the user's caret actually was. Programmatic document
+    // swaps also emit selectionUpdate, so only capture focused selections.
+    const rememberCursor = () => {
+      const memoId = memoRef.current?.id;
+      if (!memoId || !editor.isEditable || !editor.view.hasFocus()) {
+        return;
+      }
+
+      const { from, to } = editor.state.selection;
+      writeEditorCursor(memoId, from, to);
+    };
+
+    editor.on("selectionUpdate", rememberCursor);
+    return () => {
+      editor.off("selectionUpdate", rememberCursor);
+    };
+  }, [editor]);
+
   const getMobilePlainTextValue = useCallback(
     () => (mobileTextAreaRef.current ? getMobilePlainTextElementValue(mobileTextAreaRef.current) : mobilePlainText),
     [mobilePlainText]
@@ -2526,6 +2550,12 @@ const RichEditorPane = ({
       hydratedMemoIdRef.current = null;
       appliedEditorSourceKeyRef.current = null;
       clearMarkdownSnapshot();
+      const outgoingMemo = previousMemo && previousMemo.id !== memo.id ? previousMemo : null;
+      if (outgoingMemo && isEditorReady(currentEditor) && currentEditor.isEditable) {
+        const { from, to } = currentEditor.state.selection;
+        writeEditorCursor(outgoingMemo.id, from, to);
+      }
+      const savedCursor = readEditorCursor(memo.id);
       const immediateDraft = resolveEditorDraftState({ memo, draft: null, queuedUpdate: null });
       editingMemoIdRef.current = memo.id;
       setImagePreview(null);
@@ -2543,6 +2573,53 @@ const RichEditorPane = ({
         } catch (err) {
           console.error("Failed to reset TipTap document, falling back to setContent:", err);
           currentEditor.commands.setContent(immediateDraft.contentJson);
+        }
+
+        // A note reopened later should put the caret back where the user last
+        // left it instead of at the beginning/end of the document.
+        if (savedCursor && !effectiveReadOnly) {
+          const maxPos = Math.max(1, currentEditor.state.doc.content.size);
+          const from = Math.min(Math.max(1, savedCursor.from), maxPos);
+          const to = Math.min(Math.max(from, savedCursor.to), maxPos);
+          currentEditor.commands.setTextSelection({ from, to });
+
+          // The editor is usually unfocused after clicking the note list, so
+          // ProseMirror does not push the restored selection into the DOM.
+          // Mirror it there as well; focusing the editor later (Tab, shortcut)
+          // then continues at the saved caret instead of the document start.
+          try {
+            const start = currentEditor.view.domAtPos(from);
+            const end = currentEditor.view.domAtPos(to);
+            window.getSelection()?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+          } catch {
+            // Ignore DOM selection failures; the ProseMirror state is still set.
+          }
+
+          // ProseMirror's scrollIntoView is unreliable while the editor is
+          // unfocused, and a note switch should also restore the previous
+          // reading position. Restore the saved scroll first, then nudge the
+          // pane only when the restored caret sits outside the viewport.
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              const container = editorScrollContainerRef.current;
+              if (!container || !container.isConnected) {
+                return;
+              }
+
+              const scrollEntry = readEditorScrollMemory(memo.id);
+              if (scrollEntry) {
+                restoreEditorScrollMemory(container, scrollEntry);
+              }
+
+              const caret = currentEditor.view.coordsAtPos(from);
+              const containerRect = container.getBoundingClientRect();
+              const outside = caret.top < containerRect.top + 24 || caret.top > containerRect.bottom - 24;
+              if (!scrollEntry || outside) {
+                const delta = caret.top - (containerRect.top + 120);
+                container.scrollTo({ top: Math.max(0, container.scrollTop + delta), behavior: "auto" });
+              }
+            });
+          });
         }
       }
       appliedEditorSourceKeyRef.current = immediateDraft.sourceKey;

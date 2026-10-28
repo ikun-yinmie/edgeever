@@ -4,7 +4,11 @@ import type { MemoDetail } from "@edgeever/shared";
 export type WorkspaceRefreshMode = "background" | "manual";
 export type WorkspaceMemoView = "notebook" | "trash";
 
-export const DEFERRED_MEMO_SYNC_DELAY_MS = 30_000;
+// Local autosave already waits for a typing pause before queueing an edit, so
+// the queue only needs a short coalescing window before uploading it. A long
+// delay leaves the editor stuck on "pending sync" even though the note is saved
+// locally; Ctrl+S still forces an immediate flush.
+export const DEFERRED_MEMO_SYNC_DELAY_MS = 500;
 export const BACKGROUND_WORKSPACE_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const BACKGROUND_WORKSPACE_REFRESH_LEASE_MS = BACKGROUND_WORKSPACE_REFRESH_INTERVAL_MS * 2;
 export const BACKGROUND_WORKSPACE_REFRESH_COALESCE_MS = 1_000;
