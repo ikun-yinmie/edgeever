@@ -333,6 +333,19 @@ describe("release automation", () => {
     ])).toMatchObject({ installDesktop: true });
   });
 
+  test("can ship only the Windows and Linux desktop clients", () => {
+    expect(parseReleaseArgs([
+      "--issue-title", "Desktop release",
+      "--bump", "minor",
+      "--label", "enhancement",
+      "--change-en", "Ship a desktop release.",
+      "--change-zh", "发布桌面版。",
+      "--change-locale", "ja:デスクトップ版をリリースします。",
+      "--change-commit", "abc1234",
+      "--desktop-only",
+    ])).toMatchObject({ desktopOnly: true });
+  });
+
   test("requires Japanese App Store What's New", () => {
     expect(() =>
       parseReleaseArgs([

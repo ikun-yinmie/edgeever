@@ -84,6 +84,7 @@ Options:
   --change-locale <tag:text> Required Japanese bullet as ja: or ja-JP:; other locales optional
   --change-commit <sha,...>  Commits covered by the corresponding bilingual bullet
   --ignore-commit <sha:why>  Explicitly exclude a non-user-facing commit; may be repeated
+  --desktop-only            Release only the Windows and Linux desktop clients; skip Android/iOS store delivery
   --install-desktop          Install and launch the final DMG after publication
   --dry-run                  Print the plan and generated notes without mutations
   --help                     Show this help
@@ -100,6 +101,7 @@ export const parseReleaseArgs = (argv) => {
     localizedChanges: [],
     changeCommits: [],
     ignoredCommits: [],
+    desktopOnly: false,
     installDesktop: false,
     dryRun: false,
     help: false,
@@ -121,6 +123,10 @@ export const parseReleaseArgs = (argv) => {
     const argument = argv[index];
     if (argument === "--install-desktop") {
       options.installDesktop = true;
+      continue;
+    }
+    if (argument === "--desktop-only") {
+      options.desktopOnly = true;
       continue;
     }
     if (argument === "--dry-run") {
@@ -1483,13 +1489,21 @@ const releaseMain = async (options) => {
   });
   printReleaseCoverageAudit({ audit: commitCoverageAudit, changesEn: options.changesEn });
   const desktopPlan = planNativeRelease("desktop", changedFiles);
-  const mobilePlan = planNativeRelease("mobile", changedFiles);
-  const iosPlan = planNativeRelease("ios", changedFiles);
+  const plannedMobilePlan = planNativeRelease("mobile", changedFiles);
+  const plannedIosPlan = planNativeRelease("ios", changedFiles);
+  // This fork ships Windows and Linux desktop clients only. Store delivery
+  // needs the mobile/iOS pipelines, which are absent here, so desktop-only
+  // releases must not treat shared-package changes as a mobile rebuild.
+  const mobilePlan = options.desktopOnly ? { ...plannedMobilePlan, rebuild: false } : plannedMobilePlan;
+  const iosPlan = options.desktopOnly ? { ...plannedIosPlan, rebuild: false } : plannedIosPlan;
 
   console.log(`[release] ${releaseBaseTag} -> ${tag}`);
   console.log(`[release] desktop: ${desktopPlan.rebuild ? "rebuild" : "reuse"}`);
   console.log(`[release] Android: ${mobilePlan.rebuild ? "rebuild" : "reuse"}`);
   console.log(`[release] iOS: ${iosPlan.rebuild ? "rebuild" : "reuse"}`);
+  if (options.desktopOnly) {
+    console.log("[release] desktop-only: skipping Android and iOS store delivery");
+  }
 
   if (options.dryRun) {
     console.log(buildReleaseNotes({
