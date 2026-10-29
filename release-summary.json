@@ -1,17 +1,14 @@
 {
-  "version": "1.103.1",
+  "version": "1.103.2",
   "changes": {
     "en-US": [
-      "The notebook sidebar now has a search box: typing filters the category tree, and Enter or a click jumps to the matching notebook.",
-      "Safe startup mode now opens the recent-notes home with a dismissible notice instead of a blocking safe-mode screen; picking any note returns to normal mode."
+      "Notes now have a locate button next to the notebook selector that reveals the note's notebook in the sidebar; switching tabs keeps the sidebar where you left it instead of moving it on every tab change."
     ],
     "zh-CN": [
-      "侧栏新增笔记本搜索：输入即过滤分类树，回车或点击可直接定位到匹配的分类并打开其笔记。",
-      "安全启动模式改为直接进入「近期笔记」并显示可关闭的提示，不再整页停在安全模式提示页；选择任意笔记即恢复正常。"
+      "笔记的笔记本选择器旁新增「定位」按钮：点一下即可在左侧定位到该笔记所在的笔记本；切换页签时侧栏保持不动，不会自动跳转，也不会额外触发笔记本列表请求。"
     ],
     "ja": [
-      "サイドバーにノートブック検索を追加しました。入力すると分類ツリーが絞り込まれ、Enter またはクリックで一致するノートブックに移動できます。",
-      "セーフスタートモードはブロックする画面の代わりに「最近のノート」を開き、閉じられる通知を表示します。ノートを選ぶと通常モードに戻ります。"
+      "ノートブック選択の横に「サイドバーで表示」ボタンを追加しました。クリックすると左側でそのノートのノートブックに移動します。タブを切り替えてもサイドバーは自動で移動しません。"
     ]
   }
 }
