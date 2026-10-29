@@ -44,10 +44,22 @@ describe("RecentMemosHome timeline", () => {
 });
 
 describe("RecentMemosHome workspace wiring", () => {
-  test("renders the home view from the right pane and keeps no note selection while open", () => {
+  test("renders the home view from the right pane without auto-selecting a note while open", () => {
     expect(workspaceSource).toContain('rightView === "recent"');
     expect(workspaceSource).toContain("<RecentMemosHome");
     expect(workspaceSource).toContain('if (rightView === "recent") {');
+  });
+
+  test("keeps open tabs and the selected note through the recent-notes home", () => {
+    const recentHandler = workspaceSource.split("const handleOpenRecentMemos = () => {")[1]?.split("const handleMobileHome")[0] ?? "";
+    const allMemosHandler = workspaceSource.split("const handleSelectAllMemos = () => {")[1]?.split("const handleOpenMemberNotes")[0] ?? "";
+
+    expect(recentHandler.length).toBeGreaterThan(0);
+    expect(recentHandler).not.toContain("setOpenMemoTabs([])");
+    expect(recentHandler).not.toContain("setSelectedMemoId(null)");
+    expect(allMemosHandler.length).toBeGreaterThan(0);
+    expect(allMemosHandler).not.toContain("setOpenMemoTabs([])");
+    expect(allMemosHandler).not.toContain("setSelectedMemoId(null)");
   });
 
   test("lands on the recent-notes home when no workspace snapshot exists", () => {

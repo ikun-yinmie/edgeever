@@ -2616,12 +2616,12 @@ export const WorkspaceApp = ({
     setSelectedNotebookId(null);
     setRightView("editor");
     setMemberNotesView(null);
-    setOpenMemoTabs([]);
+    // Browsing the list must not throw away the open tabs or the note the
+    // user came from; the list keeps that note selected when it is present.
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
-    setSelectedMemoId(null);
     setMobileNotebookPickerOpen(false);
     setActivePane("memos");
   };
@@ -2656,12 +2656,12 @@ export const WorkspaceApp = ({
     setSelectedTag(null);
     setRightView("recent");
     setMemberNotesView(null);
-    setOpenMemoTabs([]);
+    // The recent-notes home is a detour: keep the open tabs and the selected
+    // note so coming back lands on the same workspace instead of an empty one.
     setMobileBottomNavActive("home");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
-    setSelectedMemoId(null);
     setActivePane("editor");
   };
 
