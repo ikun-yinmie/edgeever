@@ -1,14 +1,14 @@
 {
-  "version": "1.103.2",
+  "version": "1.103.3",
   "changes": {
     "en-US": [
-      "Notes now have a locate button next to the notebook selector that reveals the note's notebook in the sidebar; switching tabs keeps the sidebar where you left it instead of moving it on every tab change."
+      "The recent-notes home no longer clears open tabs or the current note: coming back restores the previous tabs, and browsing all notes keeps them open."
     ],
     "zh-CN": [
-      "笔记的笔记本选择器旁新增「定位」按钮：点一下即可在左侧定位到该笔记所在的笔记本；切换页签时侧栏保持不动，不会自动跳转，也不会额外触发笔记本列表请求。"
+      "「近期笔记」不再清空已打开的页签和当前笔记：进入近期笔记再返回时，原来的页签和笔记都会恢复；浏览「全部笔记」也不会再丢掉打开中的页签。"
     ],
     "ja": [
-      "ノートブック選択の横に「サイドバーで表示」ボタンを追加しました。クリックすると左側でそのノートのノートブックに移動します。タブを切り替えてもサイドバーは自動で移動しません。"
+      "「最近のノート」を開いても、開いているタブと現在のノートは維持されます。戻ると以前のタブがそのまま復元され、「すべてのノート」を閲覧してもタブは閉じません。"
     ]
   }
 }
