@@ -17,6 +17,7 @@ describe("note editor failure containment", () => {
     expect(rootBoundarySource).toContain("markRendererRecoveryRequired()");
     expect(workspaceSource).toContain("rendererRecoveryMode ? null : selectedMemoId ?? memos[0]?.id ?? null");
     expect(workspaceSource).toContain("if (rendererRecoveryMode) {");
-    expect(workspaceSource).toContain("<EditorRecoveryPane />");
+    expect(workspaceSource).toContain("safeModeNotice={rendererRecoveryMode}");
+    expect(workspaceSource).not.toContain("<EditorRecoveryPane />");
   });
 });

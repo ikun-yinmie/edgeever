@@ -565,6 +565,9 @@ export const enUS = {
     prevMonth: "Previous month",
     nextMonth: "Next month",
     nextYear: "Next year",
+    safeModeTitle: "Safe startup mode is active",
+    safeModeDescription: "EdgeEver did not reopen the notes from your last session after an abnormal exit. Choose any note to return to normal mode.",
+    safeModeDismiss: "Got it",
   },
   notebookPane: {
     notebooks: "Notebooks",
@@ -576,6 +579,7 @@ export const enUS = {
     allMemos: "All notes",
     sortTitle: "Notebook sort: {{label}}",
     loading: "Loading",
+    searchEmpty: "No matching notebooks",
     secondaryEntries: "Secondary entries",
     profile: "Profile",
     collapseSidebar: "Collapse notebook pane",

@@ -565,6 +565,9 @@ export const ja = {
     prevMonth: "前月",
     nextMonth: "翌月",
     nextYear: "翌年",
+    safeModeTitle: "安全な起動モードが有効です",
+    safeModeDescription: "前回の異常終了後、EdgeEver は前回のノートを自動で開きませんでした。ノートを選ぶと通常モードに戻ります。",
+    safeModeDismiss: "了解",
   },
   notebookPane: {
     notebooks: "ノートブック",
@@ -576,6 +579,7 @@ export const ja = {
     allMemos: "すべてのノート",
     sortTitle: "ノートブックの並び：{{label}}",
     loading: "読み込み中",
+    searchEmpty: "一致するノートブックはありません",
     secondaryEntries: "補助入口",
     profile: "プロフィール",
     collapseSidebar: "ノートブック欄を閉じる",

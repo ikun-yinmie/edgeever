@@ -151,7 +151,7 @@ import {
   writeDesktopWorkspaceRestoreState,
 } from "@/lib/desktop-workspace-restore";
 import { readWebWorkspaceRestoreState, writeWebWorkspaceRestoreState } from "@/lib/web-workspace-restore";
-import { EditorPaneErrorBoundary, EditorRecoveryPane } from "./EditorPaneErrorBoundary";
+import { EditorPaneErrorBoundary } from "./EditorPaneErrorBoundary";
 import { isMarkdownFile, readMarkdownFile } from "@/lib/markdown-file-import";
 import { compressImageForUpload } from "@/lib/image-compression";
 import { createScreenshotMemo, screenshotFileFromImportPayload, screenshotImportDedupeKey, screenshotImportGate } from "@/lib/screenshot-import";
@@ -597,15 +597,17 @@ export const WorkspaceApp = ({
       ? "settings"
       : isInitialPluginsRoute
         ? "plugins"
-      : isInitialTemplatesRoute
-        ? "templates"
-        : isInitialAiPromptsRoute
-          ? "ai-prompts"
-          : isInitialExecutionCenterRoute
-            ? "execution-center"
-            : !isTrashRoute && !isInitialMobileEditorReturn && !workspaceRestore && !rendererRecoveryMode
-              ? "recent"
-              : "editor"
+        : isInitialTemplatesRoute
+          ? "templates"
+          : isInitialAiPromptsRoute
+            ? "ai-prompts"
+            : isInitialExecutionCenterRoute
+              ? "execution-center"
+              : !isTrashRoute
+                && !isInitialMobileEditorReturn
+                && (!workspaceRestore || rendererRecoveryMode)
+                ? "recent"
+                : "editor"
   );
   useEffect(() => {
     if (!memberNotesView) return;
@@ -655,6 +657,7 @@ export const WorkspaceApp = ({
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const isPullRefreshingRef = useRef(false);
   const skipNextHomeRouteSyncRef = useRef(false);
+  const routeSyncSignatureRef = useRef<string | null>(null);
 
   const [mobileListActionsOpen, setMobileListActionsOpen] = useState(false);
   const [mobileMoveOpen, setMobileMoveOpen] = useState(false);
@@ -958,6 +961,27 @@ export const WorkspaceApp = ({
   }, []);
 
   useEffect(() => {
+    // The initial view is decided by the rightView/route initialisers above.
+    // Reacting to the first render here would stomp a recent-notes landing
+    // with the editor before the user ever navigated. Compare the route
+    // signature instead of a first-run flag so React StrictMode's double
+    // effect pass in dev keeps the same landing view.
+    const routeSignature = [
+      isTrashRoute,
+      route.isSettings,
+      route.isPlugins,
+      route.isTemplates,
+      route.isAiPrompts,
+      route.isExecutionCenter,
+    ].join("|");
+
+    const previousRouteSignature = routeSyncSignatureRef.current;
+    routeSyncSignatureRef.current = routeSignature;
+
+    if (previousRouteSignature === null || previousRouteSignature === routeSignature) {
+      return;
+    }
+
     if (route.isSettings) {
       skipNextHomeRouteSyncRef.current = false;
       setRightView("settings");
@@ -3805,6 +3829,7 @@ export const WorkspaceApp = ({
                   ) : rightView === "recent" ? (
                     <RecentMemosHome
                       repository={repository}
+                      safeModeNotice={rendererRecoveryMode}
                       onClose={() => {
                         setRightView("editor");
                         setActivePane("memos");
@@ -3831,8 +3856,6 @@ export const WorkspaceApp = ({
                         setActivePane("editor");
                       }}
                     />
-                  ) : rendererRecoveryMode ? (
-                    <EditorRecoveryPane />
                   ) : memoSelectionModeActive ? (
                     <div className="flex h-full min-w-0 flex-col bg-card">
                       {memoSelectionActionBar}

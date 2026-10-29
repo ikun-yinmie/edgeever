@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import type { MemoSummary } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ type RecentMemosHomeProps = {
   onOpenMemo: (memo: MemoSummary) => void;
   onCreateMemo: () => void;
   onClose: () => void;
+  safeModeNotice?: boolean;
 };
 
 export const RecentMemosHome = ({
@@ -34,6 +36,7 @@ export const RecentMemosHome = ({
   onOpenMemo,
   onCreateMemo,
   onClose,
+  safeModeNotice = false,
 }: RecentMemosHomeProps) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "zh-CN";
@@ -42,6 +45,8 @@ export const RecentMemosHome = ({
     return { year: now.getFullYear(), monthIndex: now.getMonth() };
   });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [safeModeNoticeDismissed, setSafeModeNoticeDismissed] = useState(false);
+  const showSafeModeNotice = safeModeNotice && !safeModeNoticeDismissed;
 
   const memosQuery = useInfiniteQuery({
     queryKey: ["recent-memos-home"],
@@ -185,6 +190,27 @@ export const RecentMemosHome = ({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl items-start gap-10 px-6 py-6">
           <div className="min-w-0 flex-1">
+            {showSafeModeNotice ? (
+              <div
+                className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-amber-900"
+                role="status"
+                data-safe-mode-notice
+              >
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{t("recentMemos.safeModeTitle")}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-amber-800">{t("recentMemos.safeModeDescription")}</p>
+                </div>
+                <Button
+                  className="shrink-0 text-amber-900 hover:bg-amber-100"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSafeModeNoticeDismissed(true)}
+                >
+                  {t("recentMemos.safeModeDismiss")}
+                </Button>
+              </div>
+            ) : null}
             {memosQuery.isPending ? (
               <div className="flex items-center justify-center gap-2 py-20 text-sm text-slate-500" role="status">
                 <LoaderCircle className="h-4 w-4 animate-spin" />

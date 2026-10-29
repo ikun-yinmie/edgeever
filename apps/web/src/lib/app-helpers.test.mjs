@@ -51,6 +51,7 @@ import {
   clampNotebookSidebarWidth,
   readNotebookSidebarWidthPreference,
   writeNotebookSidebarWidthPreference,
+  findFirstNotebookSearchMatchId,
 } from "./app-helpers.ts";
 import {
   resolveShortcutSettings,
@@ -506,6 +507,54 @@ describe("editor content alignment preference", () => {
       },
     };
     expect(readEditorContentAlignmentPreference()).toBe("start");
+  });
+});
+
+describe("notebook search focus", () => {
+  const base = {
+    parentId: null,
+    slug: null,
+    icon: null,
+    color: null,
+    memoCount: 0,
+    sortOrder: 0,
+    lastMemoUpdatedAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+  const tree = [
+    {
+      ...base,
+      id: "work",
+      name: "工作",
+      children: [
+        { ...base, id: "work-2026", name: "2026 计划", parentId: "work", children: [] },
+      ],
+    },
+    {
+      ...base,
+      id: "life",
+      name: "生活",
+      children: [
+        { ...base, id: "life-work", name: "生活与工作", parentId: "life", children: [] },
+      ],
+    },
+  ];
+
+  test("returns the first notebook whose name matches the query", () => {
+    expect(findFirstNotebookSearchMatchId(tree, "生活")).toBe("life");
+    expect(findFirstNotebookSearchMatchId(tree, "2026")).toBe("work-2026");
+  });
+
+  test("finds nested matches that only appear through a parent branch", () => {
+    expect(findFirstNotebookSearchMatchId(tree, "计划")).toBe("work-2026");
+    expect(findFirstNotebookSearchMatchId(tree, "工作")).toBe("work");
+  });
+
+  test("returns null for blank or unmatched queries", () => {
+    expect(findFirstNotebookSearchMatchId(tree, "")).toBeNull();
+    expect(findFirstNotebookSearchMatchId(tree, "   ")).toBeNull();
+    expect(findFirstNotebookSearchMatchId(tree, "不存在")).toBeNull();
   });
 });
 

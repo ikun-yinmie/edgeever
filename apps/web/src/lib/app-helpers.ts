@@ -125,6 +125,30 @@ export const filterNotebookTree = (nodes: NotebookNode[], search: string): Noteb
   return walk(nodes);
 };
 
+export const findFirstNotebookSearchMatchId = (nodes: NotebookNode[], search: string): string | null => {
+  const query = search.trim().toLocaleLowerCase("zh-CN");
+  if (!query) {
+    return null;
+  }
+
+  const walk = (items: NotebookNode[]): string | null => {
+    for (const node of items) {
+      if (node.name.toLocaleLowerCase("zh-CN").includes(query)) {
+        return node.id;
+      }
+
+      const matchId = walk(node.children);
+      if (matchId) {
+        return matchId;
+      }
+    }
+
+    return null;
+  };
+
+  return walk(nodes);
+};
+
 export { buildNotebookTree, type NotebookNode };
 export { DEFAULT_MEMO_TITLE };
 

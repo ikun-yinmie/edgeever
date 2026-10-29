@@ -34,6 +34,8 @@ import {
   Network,
   Workflow,
   ShieldCheck,
+  Search,
+  X,
   Users,
   Share2,
   Link2,
@@ -59,6 +61,9 @@ import type { NotebookNode, NotebookDropPosition, NotebookSortMode } from "@/lib
 import type { SyncQueueSummary } from "@/lib/sync-queue";
 import {
   buildNotebookTree,
+  filterNotebookTree,
+  findFirstNotebookSearchMatchId,
+  getExpandableNotebookIds,
   getNotebookAncestorIds,
   getNotebookSortOptions,
   getNotebookSortComparator,
@@ -557,6 +562,7 @@ export const NotebookPane = ({
   const scrolledSelectionRef = useRef<string | null>(null);
   const [notebookSortMode, setNotebookSortMode] = useState<NotebookSortMode>(readNotebookSortPreference);
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
+  const [notebookSearch, setNotebookSearch] = useState("");
   const [groupSectionOpen, setGroupSectionOpen] = useState(false);
   const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);
   const [memberDirectoryOpen, setMemberDirectoryOpen] = useState(true);
@@ -659,6 +665,15 @@ export const NotebookPane = ({
   const tree = useMemo(() => buildNotebookTree(notebooks, getNotebookSortComparator(notebookSortMode)), [notebooks, notebookSortMode]);
   const isLoading = notebooksQuery.isLoading;
   const activeNotebookSortLabel = notebookSortOptions.find((option) => option.value === notebookSortMode)?.label ?? t("options.notebookSort.nameAsc");
+  const notebookSearchQuery = notebookSearch.trim();
+  const notebookSearchActive = notebookSearchQuery.length > 0;
+  const visibleTree = useMemo(() => filterNotebookTree(tree, notebookSearchQuery), [notebookSearchQuery, tree]);
+  // A search narrows the tree to matching paths; force those branches open so
+  // every hit is actually reachable without hunting for collapsed parents.
+  const treeExpandedNotebookIds = useMemo(
+    () => (notebookSearchActive ? new Set(getExpandableNotebookIds(visibleTree)) : expandedNotebookIds),
+    [expandedNotebookIds, notebookSearchActive, visibleTree],
+  );
 
   useEffect(() => {
     writeNotebookSortPreference(notebookSortMode);
@@ -709,6 +724,36 @@ export const NotebookPane = ({
       return next;
     });
   }, []);
+
+  const handleSelectNotebookFromSearch = useCallback((notebookId: string) => {
+    onSelect(notebookId);
+    // Drop the filter so the row is shown inside its real branch, where the
+    // tree expands the selected path and scrolls it into view.
+    setNotebookSearch("");
+  }, [onSelect]);
+
+  const handleNotebookSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      if (!notebookSearch) {
+        return;
+      }
+      event.preventDefault();
+      setNotebookSearch("");
+      return;
+    }
+
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    const matchId = findFirstNotebookSearchMatchId(visibleTree, notebookSearchQuery);
+    if (!matchId) {
+      return;
+    }
+
+    event.preventDefault();
+    handleSelectNotebookFromSearch(matchId);
+  };
 
   useEffect(() => {
     if (!selectedNotebookId) {
@@ -857,7 +902,7 @@ export const NotebookPane = ({
             onClick={onOpenRecent}
           />
           <SidebarNavButton
-            active={view === "notebook" && selectedNotebookId === null}
+            active={!recentActive && view === "notebook" && selectedNotebookId === null}
             icon={<LayoutList className="h-4 w-4" />}
             label={t("notebookPane.allMemos")}
             onClick={onBackToList}
@@ -918,17 +963,59 @@ export const NotebookPane = ({
           </div>
         </div>
 
+        {!isLoading && notebooks.length > 0 ? (
+          <div
+            className={cn(
+              "mb-2 flex h-8 w-full items-center gap-2 rounded-full border px-3 text-xs transition-all duration-200 focus-within:ring-2",
+              notebookSearchActive
+                ? "border-emerald-400 bg-emerald-50/80 text-emerald-700 ring-1 ring-emerald-200 focus-within:ring-emerald-300/50"
+                : "border-slate-200 bg-slate-100/70 text-slate-500 hover:border-slate-300 focus-within:border-emerald-400/90 focus-within:bg-card focus-within:ring-emerald-200/60",
+            )}
+            data-notebook-search
+          >
+            <Search className={cn("h-3.5 w-3.5 shrink-0", notebookSearchActive && "text-emerald-600")} />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 lg:text-[13px]"
+              type="text"
+              role="searchbox"
+              value={notebookSearch}
+              autoCapitalize="none"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder={t("mobileNotebookPicker.searchPlaceholder")}
+              aria-label={t("mobileNotebookPicker.searchPlaceholder")}
+              onChange={(event) => setNotebookSearch(event.target.value)}
+              onKeyDown={handleNotebookSearchKeyDown}
+            />
+            {notebookSearch ? (
+              <button
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-card hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                type="button"
+                title={t("mobileNotebookPicker.clearSearch")}
+                aria-label={t("mobileNotebookPicker.clearSearch")}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setNotebookSearch("")}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {isLoading ? (
           <div className="mb-4 px-2 py-3 text-sm text-slate-500">{t("notebookPane.loading")}</div>
+        ) : notebookSearchActive && visibleTree.length === 0 ? (
+          <p className="mb-4 px-2 py-2 text-xs text-slate-400" data-notebook-search-empty>{t("notebookPane.searchEmpty")}</p>
         ) : (
           <div className="mb-4 space-y-1" data-notebook-tree>
-            {tree.map((node) => (
+            {visibleTree.map((node) => (
               <NotebookTreeItem
                 key={node.id}
                 node={node}
                 depth={0}
                 selectedNotebookId={selectedNotebookId}
-                onSelect={onSelect}
+                onSelect={handleSelectNotebookFromSearch}
                 onCreateNotebook={onCreateNotebook}
                 onCreateMemo={onCreateMemoInNotebook}
                 onRenameNotebook={onRenameNotebook}
@@ -936,7 +1023,7 @@ export const NotebookPane = ({
                 onMoveNotebook={handleMoveNotebook}
                 onMoveMemos={onMoveMemos}
                 onDragScroll={handleNotebookScrollDragOver}
-                expandedNotebookIds={expandedNotebookIds}
+                expandedNotebookIds={treeExpandedNotebookIds}
                 onOpenChange={handleNotebookOpenChange}
                 expandSiblingsRequest={expandSiblingsRequest}
                 onExpandSiblings={handleExpandNotebookSiblings}
@@ -1135,7 +1222,7 @@ export const NotebookPane = ({
                 onClick={onOpenRecent}
               />
               <SidebarRailButton
-                active={view === "notebook" && selectedNotebookId === null}
+                active={!recentActive && view === "notebook" && selectedNotebookId === null}
                 icon={<LayoutList className="h-4 w-4" />}
                 label={t("notebookPane.allMemos")}
                 onClick={onBackToList}

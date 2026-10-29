@@ -565,6 +565,9 @@ export const zhCN = {
     prevMonth: "上一月",
     nextMonth: "下一月",
     nextYear: "下一年",
+    safeModeTitle: "已进入安全启动模式",
+    safeModeDescription: "上次异常退出后，EdgeEver 没有自动重新打开之前的笔记。选择任意笔记后会恢复正常。",
+    safeModeDismiss: "知道了",
   },
   notebookPane: {
     notebooks: "笔记本",
@@ -576,6 +579,7 @@ export const zhCN = {
     allMemos: "全部笔记",
     sortTitle: "笔记本排序：{{label}}",
     loading: "加载中",
+    searchEmpty: "没有匹配的笔记本",
     secondaryEntries: "辅助入口",
     profile: "个人中心",
     collapseSidebar: "收起笔记本栏",

@@ -108,7 +108,8 @@ describe("NotebookPane tree expansion", () => {
     const treeItemSource = readFileSync(new URL("./NotebookTreeItem.tsx", import.meta.url), "utf8");
 
     expect(source).toContain("const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());");
-    expect(source).toContain("expandedNotebookIds={expandedNotebookIds}");
+    expect(source).toContain("expandedNotebookIds={treeExpandedNotebookIds}");
+    expect(source).toContain("const [notebookSearch, setNotebookSearch] = useState(\"\");");
     expect(source).toContain("getNotebookAncestorIds(tree, selectedNotebookId)");
     expect(source).not.toContain("readNotebookTreeCollapsedIdsPreference");
     expect(treeItemSource).toContain("const open = expandedNotebookIds.has(node.id)");
@@ -122,6 +123,10 @@ describe("NotebookPane tree expansion", () => {
     expect(source).toContain('label={t("recentMemos.title")}');
     expect(source).toContain("onClick={onOpenRecent}");
     expect(rail).toContain('label={t("recentMemos.title")}');
+  });
+
+  test("keeps the all-notes shortcut inactive while the recent-notes home is open", () => {
+    expect(source.match(/active=\{!recentActive && view === "notebook" && selectedNotebookId === null\}/g)?.length ?? 0).toBe(2);
   });
 
   test("keeps the tree scroll anchored while expanding unrelated branches", () => {
@@ -140,6 +145,25 @@ describe("NotebookPane tree expansion", () => {
     expect(css).toContain(".edgeever-sidebar-row-active[data-notebook-depth=\"1\"]");
     expect(css).toContain("--sidebar-active-accent");
     expect(css).toContain(":root.dark .edgeever-sidebar-row-active[data-notebook-depth=\"1\"]");
+  });
+});
+
+describe("NotebookPane notebook search", () => {
+  test("filters the notebook tree and marks matching branches as expanded", () => {
+    expect(source).toContain("filterNotebookTree(tree, notebookSearchQuery)");
+    expect(source).toContain("new Set(getExpandableNotebookIds(visibleTree))");
+    expect(source).toContain("{visibleTree.map((node) => (");
+    expect(source).toContain('t("notebookPane.searchEmpty")');
+    expect(source).toContain("data-notebook-search");
+  });
+
+  test("locates the first match on Enter and clears the filter on selection", () => {
+    expect(source).toContain("findFirstNotebookSearchMatchId(visibleTree, notebookSearchQuery)");
+    expect(source).toContain("const handleSelectNotebookFromSearch = useCallback((notebookId: string) => {");
+    expect(source).toContain("onSelect={handleSelectNotebookFromSearch}");
+    expect(source).toContain("setNotebookSearch(\"\");");
+    expect(source).toContain('placeholder={t("mobileNotebookPicker.searchPlaceholder")}');
+    expect(source).toContain('t("mobileNotebookPicker.clearSearch")');
   });
 });
 

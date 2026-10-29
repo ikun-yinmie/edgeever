@@ -51,9 +51,24 @@ describe("RecentMemosHome workspace wiring", () => {
   });
 
   test("lands on the recent-notes home when no workspace snapshot exists", () => {
-    expect(workspaceSource).toContain("!isTrashRoute && !isInitialMobileEditorReturn && !workspaceRestore && !rendererRecoveryMode");
+    expect(workspaceSource).toContain("&& (!workspaceRestore || rendererRecoveryMode)");
     expect(workspaceSource).toContain("readWebWorkspaceRestoreState");
     expect(workspaceSource).toContain("writeWebWorkspaceRestoreState");
+  });
+
+  test("keeps safe startup mode on the recent-notes home instead of a recovery splash", () => {
+    expect(workspaceSource).toContain("safeModeNotice={rendererRecoveryMode}");
+    expect(workspaceSource).not.toContain("<EditorRecoveryPane />");
+    expect(source).toContain("safeModeNotice?: boolean;");
+    expect(source).toContain("data-safe-mode-notice");
+    expect(source).toContain('t("recentMemos.safeModeDismiss")');
+    expect(source).not.toContain("title={");
+  });
+
+  test("keeps the landing view instead of syncing the untouched initial route to the editor", () => {
+    expect(workspaceSource).toContain("const routeSyncSignatureRef = useRef<string | null>(null);");
+    expect(workspaceSource).toContain("const previousRouteSignature = routeSyncSignatureRef.current;");
+    expect(workspaceSource).toContain("if (previousRouteSignature === null || previousRouteSignature === routeSignature) {");
   });
 
   test("opens the picked note in its notebook and keeps the selection through list normalisation", () => {
