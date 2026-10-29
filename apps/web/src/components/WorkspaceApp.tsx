@@ -274,6 +274,8 @@ export const WorkspaceApp = ({
     setSelectionMoveTargetNotebookId,
   } = useWorkspaceSelection(workspaceRestore);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [notebookRevealRequest, setNotebookRevealRequest] = useState<{ notebookId: string; token: number } | null>(null);
+  const notebookRevealTokenRef = useRef(0);
   const autoSelectedDemoNotebookRef = useRef(false);
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
@@ -2765,6 +2767,31 @@ export const WorkspaceApp = ({
 
   useEffect(() => pluginHost.setNavigationAdapter({ openNote: handleOpenPluginNote }), [handleOpenPluginNote, pluginHost]);
 
+  const handleRevealSelectedMemoNotebook = useCallback(() => {
+    const notebookId = selectedMemo?.notebookId ?? null;
+    if (!notebookId || memberNotesView) {
+      return;
+    }
+
+    if (!notebooks.some((notebook) => notebook.id === notebookId)) {
+      return;
+    }
+
+    // Locating is explicit and on demand: switching tabs never moves the
+    // sidebar by itself, so no extra list queries run unless the user asks.
+    notebookRevealTokenRef.current += 1;
+    setNotebookRevealRequest({ notebookId, token: notebookRevealTokenRef.current });
+    pendingQuickSwitcherMemoIdRef.current = selectedMemo?.id ?? null;
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setSelectedTag(null);
+    setSelectedNotebookId(notebookId);
+    setMemberNotesView(null);
+    setMobileBottomNavActive("home");
+    setSearch("");
+    setMemoFilterMode("all");
+  }, [memberNotesView, navigateWorkspaceHome, notebooks, selectedMemo?.id, selectedMemo?.notebookId, setSelectedNotebookId]);
+
   useEffect(() => {
     if (shouldDiscardPluginNoteSearchRequest(pluginNavigationRequest, selectedMemoId)) {
       setPluginNavigationRequest(null);
@@ -3517,6 +3544,7 @@ export const WorkspaceApp = ({
                   authRequired={authRequired}
                   user={user}
                   selectedNotebookId={selectedNotebookId}
+                  revealRequest={notebookRevealRequest}
                   view={memoView}
                   canCreateMemo={canCreateMemo}
                   isCreatingMemo={createMemoMutation.isPending}
@@ -3874,6 +3902,7 @@ export const WorkspaceApp = ({
                           memo={selectedMemo}
                           notebooks={notebooks}
                           repository={repository}
+                          onRevealNotebook={isDesktop ? handleRevealSelectedMemoNotebook : undefined}
                           readOnly={
                             memberNotesActive
                             || memoView === "trash"
@@ -3911,6 +3940,7 @@ export const WorkspaceApp = ({
                       ) : (
                       <EditorPane
                       onOpenExecutionCenter={handleOpenExecutionCenter}
+                      onRevealNotebook={isDesktop ? handleRevealSelectedMemoNotebook : undefined}
                       memo={selectedMemo}
                       repository={repository}
                       pluginHost={pluginHost}

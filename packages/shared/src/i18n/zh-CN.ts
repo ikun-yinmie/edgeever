@@ -1846,6 +1846,7 @@ export const zhCN = {
     noNotebookFound: "没有找到笔记本",
     currentNotebookAria: "当前所在笔记本：{{name}}",
     switchToNotebook: "切换到 {{name}}",
+    revealNotebook: "在侧栏定位所在笔记本",
     attachmentLabel: "附件：{{filename}}",
     attachmentInsertText: "附件：{{filename}} {{url}}",
     attachmentActions: {

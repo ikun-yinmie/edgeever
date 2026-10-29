@@ -1846,6 +1846,7 @@ export const ja = {
     noNotebookFound: "ノートブックが見つかりません",
     currentNotebookAria: "現在のノートブック：{{name}}",
     switchToNotebook: "{{name}} に切り替え",
+    revealNotebook: "サイドバーでノートブックを表示",
     attachmentLabel: "添付：{{filename}}",
     attachmentInsertText: "添付：{{filename}} {{url}}",
     attachmentActions: {

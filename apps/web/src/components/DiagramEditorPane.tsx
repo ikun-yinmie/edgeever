@@ -198,6 +198,7 @@ type DiagramEditorPaneProps = {
   onSaveAsTemplate: (memo: MemoDetail, name: string) => Promise<void>;
   onToggleDesktopFocusMode: () => void;
   onOpenExecutionCenter: () => void;
+  onRevealNotebook?: () => void;
 };
 
 type NodeData = { label: string; shape: DiagramNodeShape; parentId?: string; resourceIcon?: ArchitectureResourceIcon };
@@ -1633,6 +1634,7 @@ export const DiagramEditorPane = ({
   onSaveAsTemplate,
   onToggleDesktopFocusMode,
   onOpenExecutionCenter,
+  onRevealNotebook,
 }: DiagramEditorPaneProps) => {
   const { t } = useTranslation();
   const { resolvedTheme } = useAppearanceTheme();
@@ -3198,6 +3200,13 @@ export const DiagramEditorPane = ({
             title={title}
             onMobileNotebookPickerOpenChange={setMobileNotebookSheetOpen}
             onNotebookChange={handleNotebookChange}
+            onRevealNotebook={
+              !readOnly
+              && !memo.isDeleted
+              && notebooks.some((notebook) => notebook.id === memo.notebookId)
+                ? onRevealNotebook
+                : undefined
+            }
             onTagsChange={(nextTagsText) => {
               tagsRef.current = nextTagsText;
               setTagsText(nextTagsText);

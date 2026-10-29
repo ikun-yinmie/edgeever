@@ -505,11 +505,13 @@ export const NotebookPane = ({
   isResettingDemo = false,
   collapsed = false,
   onToggleCollapsed,
+  revealRequest = null,
 }: {
   repository: EdgeEverRepository;
   user: AuthUser | null;
   view: string;
   selectedNotebookId: string | null;
+  revealRequest?: { notebookId: string; token: number } | null;
   onSelect: (notebookId: string) => void;
   onCreateNotebook: (parentId?: string | null) => void;
   onRenameNotebook: (notebook: Notebook) => void;
@@ -680,6 +682,17 @@ export const NotebookPane = ({
   }, [notebookSortMode]);
 
   useEffect(() => {
+    if (!selectedNotebookId) {
+      return;
+    }
+
+    // Selecting a notebook from outside the tree (revealing the open note, a
+    // fresh create, a restored session) must not stay hidden behind an active
+    // search filter.
+    setNotebookSearch((current) => (current ? "" : current));
+  }, [selectedNotebookId]);
+
+  useEffect(() => {
     if (!selectedNotebookId || tree.length === 0) {
       return;
     }
@@ -785,6 +798,33 @@ export const NotebookPane = ({
       selectedNode.scrollIntoView({ block: "nearest" });
     }, 0);
   }, [expandedNotebookIds, selectedNotebookId, tree]);
+
+  useEffect(() => {
+    if (!revealRequest) {
+      return;
+    }
+
+    setNotebookSearch("");
+    setExpandedNotebookIds((current) => {
+      const ancestorIds = getNotebookAncestorIds(tree, revealRequest.notebookId);
+      if (ancestorIds.every((notebookId) => current.has(notebookId))) {
+        return current;
+      }
+
+      const next = new Set(current);
+      for (const notebookId of ancestorIds) {
+        next.add(notebookId);
+      }
+      return next;
+    });
+
+    window.setTimeout(() => {
+      const targetNode = notebookScrollRef.current?.querySelector<HTMLElement>(
+        `[data-notebook-id="${CSS.escape(revealRequest.notebookId)}"]`
+      );
+      targetNode?.scrollIntoView({ block: "nearest" });
+    }, 0);
+  }, [revealRequest, tree]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden" data-notebook-sidebar-collapsed={collapsed ? "true" : "false"}>

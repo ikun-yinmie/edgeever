@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, LocateFixed } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { NotebookMoveOption } from "@/lib/app-helpers";
 import type { EdgeEverRepository } from "@/lib/repository";
 import { EditorTagPicker } from "@/components/EditorTagPicker";
 import { MobileNotebookSelectSheet } from "@/components/editor/EditorPaneChrome";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type MemoEditorMetadataRowProps = {
   contentMarkdown: string;
@@ -20,6 +21,7 @@ type MemoEditorMetadataRowProps = {
   trailingActions?: ReactNode;
   onMobileNotebookPickerOpenChange: (open: boolean) => void;
   onNotebookChange: (notebookId: string) => void;
+  onRevealNotebook?: () => void;
   onTagsChange: (tagsText: string) => void;
 };
 
@@ -36,6 +38,7 @@ export const MemoEditorMetadataRow = ({
   trailingActions,
   onMobileNotebookPickerOpenChange,
   onNotebookChange,
+  onRevealNotebook,
   onTagsChange,
 }: MemoEditorMetadataRowProps) => {
   const { t } = useTranslation();
@@ -73,6 +76,23 @@ export const MemoEditorMetadataRow = ({
             </SelectContent>
           </Select>
         </div>
+        {onRevealNotebook ? (
+          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+                  type="button"
+                  aria-label={t("editor.revealNotebook")}
+                  onClick={onRevealNotebook}
+                >
+                  <LocateFixed className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t("editor.revealNotebook")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
         <EditorTagPicker
           contentMarkdown={contentMarkdown}
           disabled={disabled}

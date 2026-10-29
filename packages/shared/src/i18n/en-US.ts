@@ -1846,6 +1846,7 @@ export const enUS = {
     noNotebookFound: "No notebooks found",
     currentNotebookAria: "Current notebook: {{name}}",
     switchToNotebook: "Switch to {{name}}",
+    revealNotebook: "Reveal notebook in sidebar",
     attachmentLabel: "Attachment: {{filename}}",
     attachmentInsertText: "Attachment: {{filename}} {{url}}",
     attachmentActions: {

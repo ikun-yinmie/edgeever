@@ -389,6 +389,7 @@ type EditorPaneProps = {
   pluginHost: EdgeEverPluginHost;
   pluginNavigationRequest?: { id: number; noteId: string; search: string } | null;
   onOpenExecutionCenter: () => void;
+  onRevealNotebook?: () => void;
 };
 
 type RichEditorPaneProps = EditorPaneProps & {
@@ -468,6 +469,7 @@ const RichEditorPane = ({
   pluginHost,
   pluginNavigationRequest,
   onOpenExecutionCenter,
+  onRevealNotebook,
   onRequestMobileNativeEdit,
   sharedAccess,
   sharedDisplayPolicy = null,
@@ -4674,6 +4676,13 @@ const RichEditorPane = ({
             title={title}
             onMobileNotebookPickerOpenChange={setMobileNotebookSheetOpen}
             onNotebookChange={handleNotebookChange}
+            onRevealNotebook={
+              !isTrashView
+              && !memo.isDeleted
+              && notebooks.some((notebook) => notebook.id === memo.notebookId)
+                ? onRevealNotebook
+                : undefined
+            }
             onTagsChange={(nextTagsText) => {
               setTagsText(nextTagsText);
               persistCurrentDraft(title, nextTagsText, getMobilePlainTextValue());
