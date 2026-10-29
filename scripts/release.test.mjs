@@ -219,6 +219,11 @@ describe("release automation", () => {
       runView: { headSha: "different", status: "completed", conclusion: "success" },
       headSha,
     })).toBe("dispatch");
+    expect(draftRunResumeAction({
+      runId: 4,
+      runView: { headSha, status: "completed", conclusion: "skipped" },
+      headSha,
+    })).toBe("reuse");
   });
 
   test("only retries a Play delivery when upload definitely did not start", () => {

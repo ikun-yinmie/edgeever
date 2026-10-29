@@ -890,7 +890,9 @@ const waitForRerunStart = async ({ repository, runId }) => {
 
 export const draftRunResumeAction = ({ runId, runView, headSha }) => {
   if (!runId || !runView || runView.headSha !== headSha) return "dispatch";
-  if (runView.status === "completed" && runView.conclusion !== "success") {
+  // Fork-guarded workflows complete as "skipped"; GitHub cannot rerun them and
+  // they contribute nothing to this release, so reuse them like a success.
+  if (runView.status === "completed" && runView.conclusion !== "success" && runView.conclusion !== "skipped") {
     return "rerun";
   }
   return "reuse";
