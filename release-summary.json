@@ -1,14 +1,14 @@
 {
-  "version": "1.103.3",
+  "version": "1.103.4",
   "changes": {
     "en-US": [
-      "The recent-notes home no longer clears open tabs or the current note: coming back restores the previous tabs, and browsing all notes keeps them open."
+      "Desktop update checks and downloads now honor the configured HTTP/SOCKS5 proxy, and a failed check explains the network error and offers proxy setup."
     ],
     "zh-CN": [
-      "「近期笔记」不再清空已打开的页签和当前笔记：进入近期笔记再返回时，原来的页签和笔记都会恢复；浏览「全部笔记」也不会再丢掉打开中的页签。"
+      "桌面客户端检查/下载更新现在会走配置的 HTTP 或 SOCKS5 代理；网络失败时给出明确原因提示，并可当场配置代理后重试。"
     ],
     "ja": [
-      "「最近のノート」を開いても、開いているタブと現在のノートは維持されます。戻ると以前のタブがそのまま復元され、「すべてのノート」を閲覧してもタブは閉じません。"
+      "デスクトップの更新確認・ダウンロードが設定済みの HTTP/SOCKS5 プロキシを使うようになり、失敗時にはネットワークエラーの説明とプロキシ設定を表示します。"
     ]
   }
 }
