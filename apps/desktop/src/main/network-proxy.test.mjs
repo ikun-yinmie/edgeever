@@ -6,6 +6,7 @@ import {
   proxyRulesFor,
   proxySessionConfig,
   startupProxySessionConfig,
+  updaterProxySessionConfig,
 } from "./network-proxy.mjs";
 
 describe("desktop proxy settings", () => {
@@ -43,7 +44,7 @@ describe("desktop proxy settings", () => {
     expect(proxyRulesFor({ mode: "auto", protocol: "http", host: "127.0.0.1", port: 7890 })).toBe(
       "http=127.0.0.1:7890;https=127.0.0.1:7890"
     );
-    expect(proxyRulesFor({ mode: "always", protocol: "socks5", host: "10.0.0.2", port: 1080 })).toBe("socks=10.0.0.2:1080");
+    expect(proxyRulesFor({ mode: "always", protocol: "socks5", host: "10.0.0.2", port: 1080 })).toBe("socks=socks5://10.0.0.2:1080");
     expect(proxyRulesFor({ mode: "off", protocol: "http", host: "127.0.0.1", port: 7890 })).toBe("");
     expect(proxySessionConfig({ mode: "auto", protocol: "http", host: "127.0.0.1", port: 7890 })).toEqual({
       mode: "fixed_servers",
@@ -58,6 +59,22 @@ describe("desktop proxy settings", () => {
     expect(startupProxySessionConfig(settings)).toEqual({ mode: "direct" });
     expect(startupProxySessionConfig({ ...settings, mode: "always" })).toMatchObject({ mode: "fixed_servers" });
     expect(startupProxySessionConfig(null)).toEqual({ mode: "direct" });
+  });
+
+  test("routes updater traffic through any configured proxy, including auto", () => {
+    const settings = { mode: "auto", protocol: "socks5", host: "127.0.0.1", port: 1080 };
+    expect(updaterProxySessionConfig(settings)).toEqual({
+      mode: "fixed_servers",
+      proxyRules: "socks=socks5://127.0.0.1:1080",
+      proxyBypassRules: "<local>",
+    });
+    expect(updaterProxySessionConfig({ ...settings, mode: "always" })).toMatchObject({ mode: "fixed_servers" });
+    expect(updaterProxySessionConfig({ ...settings, mode: "off" })).toEqual({ mode: "direct" });
+    expect(updaterProxySessionConfig(null)).toEqual({ mode: "direct" });
+    expect(updaterProxySessionConfig({ mode: "auto", protocol: "http", host: "", port: 7890 }))
+      .toEqual({ mode: "direct" });
+    expect(updaterProxySessionConfig({ mode: "auto", protocol: "http", host: "127.0.0.1", port: 0 }))
+      .toEqual({ mode: "direct" });
   });
 
   test("picks the faster measured route with a direct bias on near ties", () => {

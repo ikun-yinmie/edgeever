@@ -167,6 +167,11 @@ interface DesktopUpdateStatus {
   state: "idle" | "available" | "downloaded";
   version: string | null;
   currentVersion: string;
+  error?: {
+    kind: "network" | "other";
+    message: string;
+    at: string;
+  } | null;
 }
 
 interface DesktopUpdatePreferenceInput {

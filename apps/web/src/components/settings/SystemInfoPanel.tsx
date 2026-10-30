@@ -320,6 +320,9 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
       queryClient.setQueryData(["desktop-update-status"], status);
       setDesktopUpdateChecked(true);
     },
+    onError: () => {
+      void desktopUpdateStatusQuery.refetch();
+    },
   });
   const desktopUpdateInstallMutation = useMutation({
     mutationFn: async () => {
@@ -427,10 +430,12 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
     `systemInfo.clientAheadOfInstanceByPlatform.${resolveDeploymentPlatform(healthQuery.data?.health?.runtime)}`,
   );
   const desktopUpdateState = desktopUpdateStatusQuery.data?.state ?? "idle";
+  const desktopUpdateError = desktopUpdateStatusQuery.data?.error ?? null;
   const desktopAutoUpdateSupported = clientRuntimeQuery.data?.autoUpdateSupported !== false;
   const desktopUpdateBusy = desktopUpdateCheckMutation.isPending || desktopUpdateInstallMutation.isPending;
-  const desktopUpdateStatus = desktopUpdateInstallMutation.isError || desktopUpdateCheckMutation.isError || desktopUpdateStatusQuery.isError
-    ? t("systemInfo.desktopUpdateFailed")
+  const desktopUpdateFailed = desktopUpdateInstallMutation.isError || desktopUpdateCheckMutation.isError || desktopUpdateStatusQuery.isError;
+  const desktopUpdateStatus = desktopUpdateFailed
+    ? t(desktopUpdateError?.kind === "network" ? "systemInfo.desktopUpdateNetworkFailed" : "systemInfo.desktopUpdateFailed")
     : desktopUpdateInstallMutation.isPending
       ? t("systemInfo.desktopUpdateInstalling")
       : desktopUpdateCheckMutation.isPending

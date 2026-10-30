@@ -25,7 +25,10 @@ export const normalizeProxySettings = (input) => {
 export const proxyRulesFor = (settings) => {
   if (!settings || settings.mode === "off" || !settings.host || !(settings.port >= 1)) return "";
   const server = `${settings.host}:${settings.port}`;
-  return settings.protocol === "socks5" ? `socks=${server}` : `http=${server};https=${server}`;
+  // Chromium ignores unknown per-scheme tokens ("socks5=host:port" falls back
+  // to DIRECT) and maps a bare "socks" scheme to SOCKS4. The SOCKS5 variant is
+  // expressed as a socks entry with an explicit socks5:// URL.
+  return settings.protocol === "socks5" ? `socks=socks5://${server}` : `http=${server};https=${server}`;
 };
 
 export const proxySessionConfig = (settings) => {
@@ -42,6 +45,18 @@ export const proxySessionConfig = (settings) => {
 export const startupProxySessionConfig = (settings) => (
   settings?.mode === "always" ? proxySessionConfig(settings) : { mode: "direct" }
 );
+
+/**
+ * Update traffic runs in electron-updater's own session partition, so it never
+ * sees the proxy chosen for the main session. A configured proxy therefore
+ * always covers update checks: the updater cannot probe the instance URL, and
+ * a direct route that reaches the instance may still be blocked for GitHub.
+ */
+export const updaterProxySessionConfig = (settings) => {
+  if (!settings || settings.mode === "off") return { mode: "direct" };
+  if (!settings.host || !(settings.port >= 1 && settings.port <= 65535)) return { mode: "direct" };
+  return proxySessionConfig(settings);
+};
 
 export const chooseFasterRoute = (directMs, proxyMs) => {
   if (directMs === null && proxyMs === null) return "direct";

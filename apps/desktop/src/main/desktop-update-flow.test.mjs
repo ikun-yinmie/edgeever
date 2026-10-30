@@ -115,6 +115,24 @@ describe("desktop update flow", () => {
     expect(mainSource).not.toContain("autoUpdater.autoInstallOnAppQuit = true");
   });
 
+  test("routes update traffic through the configured proxy and surfaces network failures", () => {
+    expect(mainSource).toContain("updaterProxySessionConfig");
+    expect(mainSource).toContain("autoUpdater.netSession.setProxy");
+    expect(mainSource).toContain("const applyUpdaterProxy = async () => {");
+    expect(mainSource).toContain("await applyUpdaterProxy();");
+    expect(mainSource).toContain(".then(() => autoUpdater.checkForUpdates())");
+    expect(mainSource).toContain("lastUpdateError = classifyUpdateError(error)");
+    expect(mainSource).toContain("error: lastUpdateError");
+    expect(mainSource).toContain('checkForDesktopUpdate("proxy", { force: true })');
+    expect(updateCardSource).toContain('t("desktopUpdate.proxyTitle")');
+    expect(updateCardSource).toContain("saveDesktopProxySettings");
+    expect(updateCardSource).toContain('value="socks5"');
+    expect(updateCardSource).toContain('t("desktopUpdate.failedNetwork")');
+    expect(updateCardSource).toContain('t("desktopUpdate.networkHint")');
+    expect(updateCardSource).toContain('status?.error');
+    expect(systemInfoSource).toContain("systemInfo.desktopUpdateNetworkFailed");
+  });
+
   test("does not hold auto-restart while the GitHub release is newer than the instance", () => {
     expect(mainSource).not.toContain("shouldHoldAutoRestartUpdate");
     expect(mainSource).not.toContain("holdAutoRestartUpdate");

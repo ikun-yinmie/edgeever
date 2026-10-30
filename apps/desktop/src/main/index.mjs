@@ -18,7 +18,9 @@ import {
   normalizeProxySettings,
   proxySessionConfig,
   startupProxySessionConfig,
+  updaterProxySessionConfig,
 } from "./network-proxy.mjs";
+import { classifyUpdateError } from "./update-error.mjs";
 import { restrictDirectory, restrictFile } from "./file-permissions.mjs";
 import {
   STAGED_RESOURCE_PART_BYTES,
@@ -167,6 +169,7 @@ let downloadedUpdateVersion = null;
 let promptedUpdateVersion = null;
 let trustedWindowsUpdate = null;
 let windowsDownloadedUpdateVerified = false;
+let lastUpdateError = null;
 let sidecarScopeKey = "anonymous";
 let activeAccountId = null;
 let shutdownCleanupStarted = false;
@@ -1215,6 +1218,7 @@ const desktopUpdateStatus = () => ({
   state: updateState,
   version: downloadedUpdateVersion,
   currentVersion: app.getVersion(),
+  error: lastUpdateError,
 });
 
 const publishDesktopUpdateStatus = () => {
@@ -1324,9 +1328,14 @@ const trackDesktopUpdateDownload = (downloadPromise, reason) => {
       updateState = "idle";
       downloadedUpdateVersion = null;
       windowsDownloadedUpdateVerified = false;
+      lastUpdateError = classifyUpdateError(error);
       refreshTrayMenu();
       publishDesktopUpdateStatus();
-      await writeDiagnostic("update.download-failed", { reason, message: error.message });
+      await writeDiagnostic("update.download-failed", {
+        reason,
+        kind: lastUpdateError.kind,
+        message: lastUpdateError.message,
+      });
     })
     .finally(() => { updateDownloadInFlight = null; });
   return updateDownloadInFlight;
@@ -1368,7 +1377,24 @@ const promptForDownloadedUpdate = async (version) => {
   }
 };
 
-const AUTOMATIC_UPDATE_REASONS = new Set(["startup", "interval", "resume", "activate", "window", "preferences"]);
+/**
+ * electron-updater fetches through its own session partition
+ * ("electron-updater"), so session.defaultSession.setProxy never reached the
+ * update checks. Push the proxy decision into that session before every check
+ * so a configured HTTP/SOCKS5 proxy also covers GitHub.
+ */
+const applyUpdaterProxy = async () => {
+  if (!app.isPackaged || process.env.EDGE_EVER_DISABLE_AUTO_UPDATE === "1") return;
+  try {
+    await autoUpdater.netSession.setProxy(updaterProxySessionConfig(proxySettings));
+  } catch (error) {
+    void writeDiagnostic("update.proxy-apply-failed", {
+      message: classifyUpdateError(error).message,
+    });
+  }
+};
+
+const AUTOMATIC_UPDATE_REASONS = new Set(["startup", "interval", "resume", "activate", "window", "preferences", "proxy"]);
 
 const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } = {}) => {
   if (!app.isPackaged || process.env.EDGE_EVER_DISABLE_AUTO_UPDATE === "1" || updateState === "downloaded") {
@@ -1387,8 +1413,10 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
   const now = Date.now();
   if (!force && now - lastUpdateCheckAt < updateCheckFocusThrottleMs) return Promise.resolve(null);
   lastUpdateCheckAt = now;
+  lastUpdateError = null;
   void writeDiagnostic("update.check-started", { reason });
-  updateCheckInFlight = autoUpdater.checkForUpdates()
+  updateCheckInFlight = applyUpdaterProxy()
+    .then(() => autoUpdater.checkForUpdates())
     .then(async (result) => {
       if (process.platform === "win32" && result?.isUpdateAvailable) {
         trustedWindowsUpdate = await fetchTrustedWindowsUpdate({
@@ -1413,9 +1441,14 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
       downloadedUpdateVersion = null;
       trustedWindowsUpdate = null;
       windowsDownloadedUpdateVerified = false;
+      lastUpdateError = classifyUpdateError(error);
       refreshTrayMenu();
       publishDesktopUpdateStatus();
-      await writeDiagnostic("update.check-failed", { reason, message: error.message });
+      await writeDiagnostic("update.check-failed", {
+        reason,
+        kind: lastUpdateError.kind,
+        message: lastUpdateError.message,
+      });
       throw error;
     })
     .finally(() => { updateCheckInFlight = null; });
@@ -1443,6 +1476,7 @@ const configureAutoUpdater = () => {
   autoUpdater.on("update-available", (info) => {
     updateState = "available";
     downloadedUpdateVersion = info?.version || null;
+    lastUpdateError = null;
     if (process.platform === "win32") {
       trustedWindowsUpdate = null;
       windowsDownloadedUpdateVerified = false;
@@ -1454,6 +1488,7 @@ const configureAutoUpdater = () => {
   autoUpdater.on("update-not-available", () => {
     updateState = "idle";
     downloadedUpdateVersion = null;
+    lastUpdateError = null;
     trustedWindowsUpdate = null;
     windowsDownloadedUpdateVerified = false;
     refreshTrayMenu();
@@ -1509,10 +1544,15 @@ const configureAutoUpdater = () => {
       downloadedUpdateVersion = null;
       windowsDownloadedUpdateVerified = false;
     }
+    lastUpdateError = classifyUpdateError(error);
     refreshTrayMenu();
     publishDesktopUpdateStatus();
-    void writeDiagnostic("update.error", { message: error.message });
+    void writeDiagnostic("update.error", {
+      kind: lastUpdateError.kind,
+      message: lastUpdateError.message,
+    });
   });
+  void applyUpdaterProxy();
   void checkForDesktopUpdate("startup", { force: true });
   updateCheckTimer = setInterval(() => {
     void checkForDesktopUpdate("interval", { force: true });
@@ -2268,12 +2308,18 @@ const startApplication = async () => {
     proxySettings = normalized;
     await writeFile(proxySettingsPath(), JSON.stringify(proxySettings));
     await session.defaultSession.setProxy(startupProxySessionConfig(proxySettings));
+    await applyUpdaterProxy();
     void writeDiagnostic("proxy.updated", {
       mode: proxySettings.mode,
       protocol: proxySettings.protocol,
       host: proxySettings.host,
       port: proxySettings.port,
     });
+    // A proxy configured in response to a failed update check should take
+    // effect immediately instead of waiting for the next hourly tick.
+    if (lastUpdateError?.kind === "network") {
+      void checkForDesktopUpdate("proxy", { force: true });
+    }
     return proxySettings;
   });
   ipcMain.handle("desktop:probe-proxy-for-session", async (event, baseUrl) => {
