@@ -1,14 +1,14 @@
 {
-  "version": "1.103.4",
+  "version": "1.103.5",
   "changes": {
     "en-US": [
-      "Desktop update checks and downloads now honor the configured HTTP/SOCKS5 proxy, and a failed check explains the network error and offers proxy setup."
+      "Creating a notebook category now lands on it right away: the list switches to the new category and the sidebar expands and scrolls to it, so the next note is created inside that category."
     ],
     "zh-CN": [
-      "桌面客户端检查/下载更新现在会走配置的 HTTP 或 SOCKS5 代理；网络失败时给出明确原因提示，并可当场配置代理后重试。"
+      "新建笔记分类后会直接定位并选中该分类，侧栏自动展开滚动到新节点，随后新建的笔记会建在这个分类下。"
     ],
     "ja": [
-      "デスクトップの更新確認・ダウンロードが設定済みの HTTP/SOCKS5 プロキシを使うようになり、失敗時にはネットワークエラーの説明とプロキシ設定を表示します。"
+      "ノート分類を新規作成すると、その分類へすぐに移動して選択されるため、続けてその分類の中にノートを作成できます。"
     ]
   }
 }
