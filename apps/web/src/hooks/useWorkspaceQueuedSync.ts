@@ -3,7 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { MemoDetail, MemoTemplate, Notebook, Resource } from "@edgeever/shared";
 import { isBrowserOffline } from "@/lib/network-status";
 import { emptySyncQueueSummary, observeRetryableSyncErrors, type SyncQueueSummary } from "@/lib/sync-queue";
-import { MEMO_ID_REMAPPED_EVENT, notifyMemoIdRemapped, notifyMemoSyncAcknowledged } from "@/lib/sync-events";
+import { MEMO_ID_REMAPPED_EVENT, notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifyNotebookIdRemapped } from "@/lib/sync-events";
 import { observeLocalMemoIdMappings, putLocalMemo, replaceLocalMemoId } from "@/lib/local-mirror";
 import { remapMemoIdsInLists } from "@/lib/memo-list-cache";
 import { preserveRemappedMemoDetailQueries, resolveSyncedMemoId } from "@/lib/workspace-refresh";
@@ -152,6 +152,9 @@ export const useWorkspaceQueuedSync = ({
           } else if (item.kind === "notebook.create" && "name" in result && temporaryId) {
             await deleteLocalNotebook(localDataScope, temporaryId);
             await putLocalNotebook(localDataScope, result as Notebook);
+            // Keep the sidebar selection and the next new-note target on the
+            // notebook the user just created instead of its temporary id.
+            notifyNotebookIdRemapped(new Map([[temporaryId, (result as Notebook).id]]));
           } else if (item.kind === "notebook.update" && "name" in result) {
             await putLocalNotebook(localDataScope, result as Notebook);
           } else if (item.kind === "template.create" && "contentMarkdown" in result && temporaryId) {

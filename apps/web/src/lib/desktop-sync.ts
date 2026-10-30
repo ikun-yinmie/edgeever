@@ -17,7 +17,7 @@ import {
 } from "@edgeever/shared";
 import { api, ApiRequestError } from "@/lib/api";
 import { isDesktopResourceRuntime, mapMarkdownResourceUrls, mapTiptapResourceUrls, toApiResourceUrl } from "@/lib/desktop-resources";
-import { notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifySyncQueueChanged } from "@/lib/sync-events";
+import { notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifyNotebookIdRemapped, notifySyncQueueChanged } from "@/lib/sync-events";
 
 type StagedResourceRewrite = { memoId: string; placeholder: string; url: string };
 
@@ -471,7 +471,10 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
   if (item.kind === "notebook.create") {
     const data = await api.createNotebook({ name: String(payload.name ?? ""), parentId: typeof payload.parentId === "string" ? payload.parentId : null });
     await acknowledge(item, undefined, data.notebook);
-    return null;
+    // The sidecar renames the local `local_*` row to the server id; hand the
+    // mapping back so the renderer can keep its selection on the same
+    // notebook once the new id reaches the notebook list.
+    return data.notebook;
   }
 
   if (item.kind === "notebook.update") {
@@ -591,6 +594,9 @@ const syncOutbox = async (stagedRewrites: StagedResourceRewrite[], onlyKinds?: S
         // create is acknowledged. Waiting for the workspace-wide sync to end
         // leaves a window where the next autosave still sends revision 0.
         notifyMemoIdRemapped(new Map([[item.entityId, result.id]]));
+      }
+      if (item.kind === "notebook.create" && result && typeof result === "object" && "id" in result && typeof result.id === "string") {
+        notifyNotebookIdRemapped(new Map([[item.entityId, result.id]]));
       }
       if (result && typeof result === "object" && "id" in result && typeof result.id === "string" && "contentJson" in result) {
         const syncedMemo = result as DesktopRpcResponses["memo.get"]["memo"];

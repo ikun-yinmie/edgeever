@@ -95,6 +95,8 @@ import {
   writeInstanceAppShortcutDefaults,
 } from "@/lib/shortcut-settings";
 import { updateMemoSummaryInLists, type MemoListQueryData } from "@/lib/memo-list-cache";
+import { NOTEBOOK_ID_REMAPPED_EVENT } from "@/lib/sync-events";
+import { notebookIdMappingsFromEvent, remapNotebookId } from "@/lib/notebook-id-remap";
 import {
   cacheMemoDetail,
   evictIdleMemoDetails,
@@ -304,6 +306,23 @@ export const WorkspaceApp = ({
       });
     }
   }, [memberNotesView, memoView, selectedMemoId, selectedNotebookId, user?.id]);
+  // Local-first creates put a `local_*` notebook id in the sidebar selection
+  // (and in the pending new-note target). Sync later renames that row to the
+  // server id, so follow the rename instead of leaving the selection pointing
+  // at a notebook that no longer exists (which silently falls back to Inbox).
+  useEffect(() => {
+    const handleNotebookIdRemapped = (event: Event) => {
+      const mappings = notebookIdMappingsFromEvent(event);
+      if (!mappings) return;
+      setSelectedNotebookId((current) => remapNotebookId(current, mappings));
+      setSelectionMoveTargetNotebookId((current) => remapNotebookId(current, mappings));
+      setNotebookRevealRequest((current) => (current
+        ? { notebookId: remapNotebookId(current.notebookId, mappings), token: current.token }
+        : current));
+    };
+    window.addEventListener(NOTEBOOK_ID_REMAPPED_EVENT, handleNotebookIdRemapped);
+    return () => window.removeEventListener(NOTEBOOK_ID_REMAPPED_EVENT, handleNotebookIdRemapped);
+  }, [setSelectedNotebookId, setSelectionMoveTargetNotebookId]);
   const creatingMemoSelectionRef = useRef(false);
   const createMemoInFlightRef = useRef(false);
   const memoDocumentActionIdRef = useRef(0);
@@ -1482,8 +1501,20 @@ export const WorkspaceApp = ({
     onSuccess: async (data) => {
       await putLocalNotebook(localDataScope, data.notebook);
       await queryClient.invalidateQueries({ queryKey: ["notebooks"] });
+      // Land on the new category so the next note is created inside it: switch
+      // away from trash/tags/recent, select the notebook (the new-note target
+      // follows the selection) and expand the tree to the new node, which may
+      // otherwise sit collapsed under its parent or off-screen.
+      notebookRevealTokenRef.current += 1;
+      setNotebookRevealRequest({ notebookId: data.notebook.id, token: notebookRevealTokenRef.current });
+      navigateWorkspaceHome();
+      setMemoView("notebook");
       setSelectedTag(null);
+      setMemberNotesView(null);
       setSelectedNotebookId(data.notebook.id);
+      setRightView("editor");
+      setMobileBottomNavActive("home");
+      setMobileNotebookPickerOpen(false);
       setActivePane("memos");
     },
   });
