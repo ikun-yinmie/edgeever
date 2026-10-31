@@ -1,14 +1,14 @@
 {
-  "version": "1.103.5",
+  "version": "1.103.6",
   "changes": {
     "en-US": [
-      "Creating a notebook category now lands on it right away: the list switches to the new category and the sidebar expands and scrolls to it, so the next note is created inside that category."
+      "Enhanced open-notes tab styling, streamlined note preview/edit mode defaults, and added desktop client branding controls with admin console sync and personal settings customization."
     ],
     "zh-CN": [
-      "新建笔记分类后会直接定位并选中该分类，侧栏自动展开滚动到新节点，随后新建的笔记会建在这个分类下。"
+      "美化已打开笔记页签卡片样式，优化编辑与预览模式切换默认逻辑，并支持客户端名称与图标由后台管理同步以及在个人中心单独自定义控制。"
     ],
     "ja": [
-      "ノート分類を新規作成すると、その分類へすぐに移動して選択されるため、続けてその分類の中にノートを作成できます。"
+      "開いているノートタブのデザインを刷新し、プレビュー・編集モードの既定動作を改善しました。また、デスクトップクライアントの名称・アイコンを管理コンソールと連携し、個人設定で個別カスタマイズできるようにしました。"
     ]
   }
 }
