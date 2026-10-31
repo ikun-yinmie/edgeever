@@ -1,5 +1,5 @@
 import { getRenderedAttributes } from "@tiptap/core";
-import { TaskItem } from "@tiptap/extension-list";
+import { EdgeEverTaskItem, insertListItemChildParagraph, toggleTaskItemCollapseAtSelection } from "@edgeever/shared";
 import i18n from "@/i18n";
 import { hasTaskItemSubContent, isTaskItemCollapsed } from "./task-item-collapse";
 
@@ -23,7 +23,7 @@ const createToggleIcon = () => {
   return svg;
 };
 
-export const CollapsibleTaskItem = TaskItem.extend({
+export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -33,6 +33,28 @@ export const CollapsibleTaskItem = TaskItem.extend({
         parseHTML: (element) => element.getAttribute("data-collapsed") === "true",
         renderHTML: (attributes) => attributes.collapsed ? { "data-collapsed": "true" } : {},
       },
+    };
+  },
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      toggleTaskItemCollapse: () => ({ state, dispatch }: { state: any; dispatch?: any }) => {
+        return toggleTaskItemCollapseAtSelection(state, dispatch);
+      },
+    };
+  },
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      "Shift-Enter": () => this.editor.commands.command(({ state, dispatch }) => {
+        return insertListItemChildParagraph(state, dispatch);
+      }),
+      "Mod-Alt-t": () => this.editor.commands.command(({ state, dispatch }) => {
+        return toggleTaskItemCollapseAtSelection(state, dispatch);
+      }),
+      "Mod-Alt-c": () => this.editor.commands.command(({ state, dispatch }) => {
+        return toggleTaskItemCollapseAtSelection(state, dispatch);
+      }),
     };
   },
   addNodeView() {
@@ -97,7 +119,7 @@ export const CollapsibleTaskItem = TaskItem.extend({
       toggle.addEventListener("mousedown", (event) => event.preventDefault());
       toggle.addEventListener("click", (event) => {
         event.preventDefault();
-        if (!editor.isEditable || typeof getPos !== "function") return;
+        if (typeof getPos !== "function") return;
         const position = getPos();
         if (typeof position !== "number") return;
         const currentNode = editor.state.doc.nodeAt(position);

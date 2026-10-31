@@ -481,9 +481,9 @@ describe("per-note editor outline preference", () => {
 });
 
 describe("editor content alignment preference", () => {
-  test("defaults to left aligned and persists both supported alignments", () => {
+  test("defaults to centered and persists both supported alignments", () => {
     const values = installLocalStorage();
-    expect(readEditorContentAlignmentPreference()).toBe("start");
+    expect(readEditorContentAlignmentPreference()).toBe("center");
 
     writeEditorContentAlignmentPreference("start");
     expect(values.get(EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY)).toBe("start");
@@ -494,10 +494,10 @@ describe("editor content alignment preference", () => {
     expect(readEditorContentAlignmentPreference()).toBe("center");
   });
 
-  test("falls back to left aligned for unknown or unavailable storage", () => {
+  test("falls back to centered for unknown or unavailable storage", () => {
     const values = installLocalStorage();
     values.set(EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY, "unexpected");
-    expect(readEditorContentAlignmentPreference()).toBe("start");
+    expect(readEditorContentAlignmentPreference()).toBe("center");
 
     globalThis.window = {
       localStorage: {
@@ -506,7 +506,7 @@ describe("editor content alignment preference", () => {
         },
       },
     };
-    expect(readEditorContentAlignmentPreference()).toBe("start");
+    expect(readEditorContentAlignmentPreference()).toBe("center");
   });
 });
 

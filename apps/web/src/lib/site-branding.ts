@@ -8,11 +8,12 @@ const DEFAULT_ICON_HREF = "/favicon.svg";
 const DEFAULT_APPLE_ICON_HREF = "/apple-touch-icon.png";
 
 const titleOptions = {
-  development: import.meta.env.DEV,
-  profile: __EDGEEVER_DEVELOPMENT_PROFILE__,
+  development: Boolean(import.meta.env?.DEV),
+  profile: typeof __EDGEEVER_DEVELOPMENT_PROFILE__ !== "undefined" ? __EDGEEVER_DEVELOPMENT_PROFILE__ : "",
 };
 
 let branding: SiteBranding = { name: null, description: null, iconUpdatedAt: null };
+let clientOverrideName: string | null = null;
 const listeners = new Set<() => void>();
 
 const subscribe = (listener: () => void) => {
@@ -24,14 +25,56 @@ export const getSiteBranding = () => branding;
 
 export const useSiteBranding = () => useSyncExternalStore(subscribe, getSiteBranding);
 
-export const getSiteDisplayName = (value: SiteBranding = branding) => value.name?.trim() || DEFAULT_SITE_NAME;
+export const setClientOverrideName = (name: string | null) => {
+  const previousName = getSiteDisplayName();
+  clientOverrideName = name?.trim() || null;
+  applyDocumentTitle(previousName, getSiteDisplayName());
+  listeners.forEach((listener) => listener());
+};
+
+export const getSiteDisplayName = (value: SiteBranding = branding) =>
+  clientOverrideName || value.name?.trim() || DEFAULT_SITE_NAME;
 
 // Only swap the brand name while the tab still shows the default title, so
 // page-specific titles (for example the public share page) stay intact.
 const applyDocumentTitle = (previousName: string, nextName: string) => {
   if (previousName === nextName) return;
+  if (typeof document === "undefined") return;
   if (document.title === withEnvironmentTitlePrefix(previousName, titleOptions)) {
     document.title = withEnvironmentTitlePrefix(nextName, titleOptions);
+  }
+};
+
+const syncBrandingToDesktop = async (site: SiteBranding) => {
+  const desktop = window.edgeeverDesktop;
+  if (!desktop?.syncServerBranding) return;
+
+  let iconDataUrl: string | null = null;
+  if (site.iconUpdatedAt) {
+    try {
+      const iconUrl = getSiteIconUrl(site.iconUpdatedAt);
+      const res = await fetch(iconUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        iconDataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    await desktop.syncServerBranding({
+      name: site.name ?? null,
+      icon: iconDataUrl || null,
+    });
+  } catch {
+    // ignore
   }
 };
 
@@ -75,10 +118,25 @@ export const applySiteBranding = (next: SiteBranding) => {
   applyDocumentTitle(previousName, getSiteDisplayName(branding));
   applyIconLinks();
   applyMetaDescription();
+  void syncBrandingToDesktop(branding);
   listeners.forEach((listener) => listener());
 };
 
+export const initDesktopBranding = async () => {
+  const desktop = window.edgeeverDesktop;
+  if (!desktop?.getClientBranding) return;
+  try {
+    const info = await desktop.getClientBranding();
+    if (info?.customName) {
+      setClientOverrideName(info.customName);
+    }
+  } catch {
+    // ignore
+  }
+};
+
 export const refreshSiteBranding = async () => {
+  void initDesktopBranding();
   try {
     const response = await api.getSiteBranding();
     applySiteBranding(response.site);

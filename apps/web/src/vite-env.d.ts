@@ -98,6 +98,42 @@ interface EdgeEverDesktopBridge {
   recordRendererError(details: DesktopRendererErrorDetails): Promise<{ recorded: true }>;
   openRendererIssue(details: DesktopRendererErrorDetails): Promise<{ opened: true }>;
   rendererBootstrapReady(): void;
+  getClientBranding?(): Promise<{
+    customName: string | null;
+    customIcon: string | null;
+    serverName: string | null;
+    serverIcon: string | null;
+    effectiveName: string;
+    effectiveIcon: string | null;
+    nameSource: "custom" | "server" | "default";
+    iconSource: "custom" | "server" | "default";
+  }>;
+  setClientCustomBranding?(input: {
+    name?: string | null;
+    icon?: string | null;
+  }): Promise<{
+    customName: string | null;
+    customIcon: string | null;
+    serverName: string | null;
+    serverIcon: string | null;
+    effectiveName: string;
+    effectiveIcon: string | null;
+    nameSource: "custom" | "server" | "default";
+    iconSource: "custom" | "server" | "default";
+  }>;
+  syncServerBranding?(input: {
+    name?: string | null;
+    icon?: string | null;
+  }): Promise<{
+    customName: string | null;
+    customIcon: string | null;
+    serverName: string | null;
+    serverIcon: string | null;
+    effectiveName: string;
+    effectiveIcon: string | null;
+    nameSource: "custom" | "server" | "default";
+    iconSource: "custom" | "server" | "default";
+  }>;
   sidecarStatus(): Promise<{ available: boolean; path: string; scope: string }>;
   systemInfo(): Promise<{
     appVersion: string;

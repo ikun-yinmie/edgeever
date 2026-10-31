@@ -50,6 +50,7 @@ export * from "./diagram-view";
 export * from "./file-attachment";
 export * from "./note-image-card";
 export * from "./pdf-attachment";
+export * from "./list-shortcuts";
 export * from "./types";
 export * from "./version";
 export * from './plugin-capabilities';

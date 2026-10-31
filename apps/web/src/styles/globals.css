@@ -1583,6 +1583,10 @@ textarea {
   flex: 1 1 auto;
 }
 
+.ProseMirror ul[data-type="taskList"] li[data-checked] > div .edgeever-image-node:not([data-width]) {
+  width: 25%;
+}
+
 .ProseMirror ul[data-type="taskList"] li[data-checked] > div > p {
   margin-bottom: 0;
 }

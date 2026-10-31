@@ -54,6 +54,21 @@ export const EdgeEverTaskList = TaskList.extend({
   },
 });
 
+export const EdgeEverTaskItem = TaskItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      collapsed: {
+        default: false,
+        keepOnSplit: false,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-collapsed") === "true",
+        renderHTML: (attributes: { collapsed?: unknown }) =>
+          attributes.collapsed ? { "data-collapsed": "true" } : {},
+      },
+    };
+  },
+});
+
 const withOptional = (value: AnyExtension | false | undefined, fallback: AnyExtension) => {
   if (value === false) return [];
   return [value ?? fallback];
@@ -78,7 +93,7 @@ export const createEdgeEverDocumentExtensions = (
     EdgeEverTextStyle,
     ParagraphFormat,
     ...withOptional(options.taskList, EdgeEverTaskList),
-    ...withOptional(options.taskItem, TaskItem.configure({ nested: true })),
+    ...withOptional(options.taskItem, EdgeEverTaskItem.configure({ nested: true })),
     options.table === undefined ? TableKit : TableKit.configure(options.table),
     ...withOptional(options.image, Image),
     ...withOptional(options.gallery, ImageGallery),

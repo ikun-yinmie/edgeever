@@ -83,7 +83,7 @@ const baseEditorTheme = EditorView.theme({
     fontFamily: "inherit",
   },
   ".cm-content": {
-    padding: "16px 24px 64px",
+    padding: "20px 32px 64px",
     minHeight: "100%",
   },
   ".cm-line": {

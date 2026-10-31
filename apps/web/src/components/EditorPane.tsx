@@ -101,6 +101,8 @@ import {
   clampResourceInsertionTarget,
   clearNodeSelectionAtDocumentEnd,
   getResourceInsertionTarget,
+  isSelectionInTaskItem,
+  isTaskItemTarget,
   shouldSelectInsertedResources,
 } from "@/lib/resource-insertion-target";
 import { insertUploadedResources } from "@/lib/resource-insertion";
@@ -162,7 +164,7 @@ import {
   createMemoLinkHref,
   parseMemoLinkHref,
 } from "@edgeever/shared";
-import { DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeever/shared/image-display";
+import { DEFAULT_IMAGE_WIDTH_PERCENT, TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeever/shared/image-display";
 import { EdgeEverLink } from "@edgeever/shared/editor-link";
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import { codeBlockLowlight, EdgeEverCodeBlock } from "@/lib/code-block";
@@ -205,9 +207,14 @@ import { EditorPhonePreview, PhonePreviewGlyph } from "./EditorPhonePreview";
 import {
   applyPlainTextTab,
   getAiSlashCommandStart,
+  handleConsecutiveListEnter,
+  insertListItemChildParagraph,
   preserveEmptyListIndentOnBackspace,
   saveAndSyncEditor,
   shouldOpenAiFromSpace,
+  sinkListItemPreservingAttrs,
+  toggleTaskItemCollapseAtSelection,
+  wrapIndentedParagraphInList,
 } from "@/lib/editor-shortcuts";
 import {
   AI_SPACE_SHORTCUT_CHANGED_EVENT,
@@ -564,10 +571,8 @@ const RichEditorPane = ({
     typeof window === "undefined" ? false : window.matchMedia(MOBILE_EDITOR_QUERY).matches
   );
   const [isMobileEditing, setIsMobileEditing] = useState(false);
-  // Reading protection is remembered per note; the device-wide flag is the fallback.
-  const [desktopReadingProtection, setDesktopReadingProtection] = useState(() =>
-    readNoteReadingProtection(memo?.id ?? null, readDesktopReadingProtectionPreference())
-  );
+  // Reading protection is not persisted across sessions/notes: notes always default to editing mode.
+  const [desktopReadingProtection, setDesktopReadingProtection] = useState(false);
   const [mobilePlainText, setMobilePlainText] = useState("");
   const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
   const [editorOutlineCollapsed, setEditorOutlineCollapsed] = useState(readEditorOutlineCollapsedPreference);
@@ -665,21 +670,16 @@ const RichEditorPane = ({
   const setDesktopPreviewMode = useCallback((preview: boolean) => {
     if (!preview && editModeLocked) return;
     setDesktopReadingProtection(preview);
-    writeNoteReadingProtection(memo?.id ?? null, preview, readDesktopReadingProtectionPreference());
-  }, [editModeLocked, memo?.id]);
+  }, [editModeLocked]);
 
   const toggleDesktopReadingProtection = useCallback(() => {
     if (editModeLocked) return;
-    setDesktopReadingProtection((protectedMode) => {
-      const nextProtectedMode = !protectedMode;
-      writeNoteReadingProtection(memo?.id ?? null, nextProtectedMode, readDesktopReadingProtectionPreference());
-      return nextProtectedMode;
-    });
-  }, [editModeLocked, memo?.id]);
+    setDesktopReadingProtection((protectedMode) => !protectedMode);
+  }, [editModeLocked]);
 
-  // Follow the per-note reading-protection state when switching notes.
+  // Notes always default to edit mode when opened or switched.
   useEffect(() => {
-    setDesktopReadingProtection(readNoteReadingProtection(memo?.id ?? null, readDesktopReadingProtectionPreference()));
+    setDesktopReadingProtection(false);
   }, [memo?.id]);
 
   // Follow the per-note outline state when switching notes.
@@ -708,9 +708,8 @@ const RichEditorPane = ({
   useEffect(() => {
     if (!isMobileViewport && mobileDefaultEditRequested && desktopReadingProtection) {
       setDesktopReadingProtection(false);
-      writeNoteReadingProtection(memo?.id ?? null, false, readDesktopReadingProtectionPreference());
     }
-  }, [desktopReadingProtection, isMobileViewport, memo?.id, mobileDefaultEditRequested]);
+  }, [desktopReadingProtection, isMobileViewport, mobileDefaultEditRequested]);
 
   useEffect(() => {
     if (!desktopReadingProtection) return;
@@ -1024,6 +1023,7 @@ const RichEditorPane = ({
               if (isEditorReady(activeEditor) && activeEditor.isEditable) {
                 activeEditor.commands.focus("end");
               }
+              onMobileDefaultEditConsumed?.();
             }, 0);
             return;
           }
@@ -1057,6 +1057,7 @@ const RichEditorPane = ({
 
     const targetMemoId = currentMemo.id;
     const interactionVersionAtRequest = editorCanvasInteractionVersionRef.current;
+    const initialInTaskItem = isSelectionInTaskItem(currentEditor.state.selection);
     const placeholderPosition = currentEditor.state.selection.from;
     const imagePlaceholderByFile = new Map(files
       .filter((file) => SUPPORTED_PASTE_IMAGE_TYPES.has(file.type))
@@ -1082,6 +1083,10 @@ const RichEditorPane = ({
       // Read the selection only after earlier resource insertions complete.
       // Rapid consecutive pastes otherwise race with the same stale cursor.
       const insertionTarget = getResourceInsertionTarget(insertionEditor.state.selection);
+      const isTaskItem =
+        initialInTaskItem ||
+        isSelectionInTaskItem(insertionEditor.state.selection) ||
+        isTaskItemTarget(insertionEditor.state.doc, insertionTarget);
       setImageUploadState("uploading");
       const imageReadiness: Promise<void>[] = [];
 
@@ -1167,7 +1172,7 @@ const RichEditorPane = ({
               src: resource.url,
               alt: file.name,
               title: file.name,
-              width: DEFAULT_IMAGE_WIDTH_PERCENT,
+              width: isTaskItem ? TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT : DEFAULT_IMAGE_WIDTH_PERCENT,
             },
           };
         }
@@ -1352,6 +1357,9 @@ const RichEditorPane = ({
         class: "edgeever-note-rich-editor prose prose-slate max-w-none focus:outline-none min-h-[240px] lg:min-h-[180px]",
       },
       handleKeyDown: (view, event) => {
+        if (!view.editable) {
+          return false;
+        }
         const { selection } = view.state;
         const currentNode = selection.$from.parent;
         if (event.key === "Backspace" && preserveEmptyListIndentOnBackspace(view.state, view.dispatch)) {
@@ -1359,9 +1367,42 @@ const RichEditorPane = ({
           return true;
         }
 
-        if (event.key === "Tab" && applyPlainTextTab(view.state, view.dispatch, event.shiftKey)) {
-          event.preventDefault();
-          return true;
+        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          if (handleConsecutiveListEnter(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+
+        if (event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          if (insertListItemChildParagraph(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+
+        if (event.key === "Tab") {
+          if (!event.shiftKey) {
+            if (wrapIndentedParagraphInList(view.state, view.dispatch)) {
+              event.preventDefault();
+              return true;
+            }
+            if (sinkListItemPreservingAttrs(view.state, view.dispatch)) {
+              event.preventDefault();
+              return true;
+            }
+          }
+          if (applyPlainTextTab(view.state, view.dispatch, event.shiftKey)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && (event.key.toLowerCase() === "t" || event.key.toLowerCase() === "c")) {
+          if (toggleTaskItemCollapseAtSelection(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
         }
 
         // Heading numbering shortcuts: Mod-Alt-1/2/3 select Arabic, Chinese,
@@ -1971,11 +2012,21 @@ const RichEditorPane = ({
   const handleEditorClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const noteLink = getNoteLinkFromEventTarget(event.target);
     const memoId = parseMemoLinkHref(noteLink?.getAttribute("href"));
-    if (shouldOpenInternalNoteLink(event, memoId)) {
+    if (memoId && (effectiveReadOnly || shouldOpenInternalNoteLink(event, memoId))) {
       event.preventDefault();
       event.stopPropagation();
       setNoteLinkHintPosition(null);
-      onOpenMemo?.(memoId as string);
+      onOpenMemo?.(memoId);
+      return;
+    }
+
+    const navigableLink = getEditorNavigableLinkFromEventTarget(event.target);
+    const linkHref = navigableLink?.getAttribute("href");
+    if (effectiveReadOnly && linkHref && !parseMemoLinkHref(linkHref)) {
+      event.preventDefault();
+      event.stopPropagation();
+      setNoteLinkHintPosition(null);
+      window.open(linkHref, "_blank", "noopener,noreferrer");
       return;
     }
 
@@ -1989,7 +2040,7 @@ const RichEditorPane = ({
         proseMirror !== null &&
         !proseMirror.contains(target)
       );
-      if (clickedEmptyCanvas) {
+      if (clickedEmptyCanvas && !effectiveReadOnly) {
         editorCanvasInteractionVersionRef.current += 1;
         // This handler runs in capture phase, before ProseMirror translates the
         // click coordinates into a selection. In a desktop WebView that later
@@ -2007,7 +2058,7 @@ const RichEditorPane = ({
         });
       }
     }
-  }, [editor, onOpenMemo, showEditorLinkOpenHint]);
+  }, [editor, effectiveReadOnly, onOpenMemo, showEditorLinkOpenHint]);
 
   const handleEditorFocusCapture = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
     if (showAttachmentMenu(event.target)) return;
@@ -4651,7 +4702,10 @@ const RichEditorPane = ({
           </div>
         ) : null}
 
-        <div className={MEMO_EDITOR_TITLE_REGION_CLASS_NAME}>
+        <div className={cn(
+          MEMO_EDITOR_TITLE_REGION_CLASS_NAME,
+          (desktopFocusMode || editorContentAlignment === "center") && "mx-auto max-w-[960px]"
+        )}>
           <div className="min-w-0">
             <MemoTitleInput
               value={title}
@@ -4706,7 +4760,7 @@ const RichEditorPane = ({
             onClose={closeNoteSearch}
           />
         ) : null}
-        {(!isMobileViewport || (mobileToolbarOpen && !useMobilePlainTextEditor)) && (
+        {!effectiveReadOnly && (!isMobileViewport || (mobileToolbarOpen && !useMobilePlainTextEditor)) && (
           <EditorToolbar
             editor={editor}
             readOnly={effectiveReadOnly}
@@ -4814,7 +4868,7 @@ const RichEditorPane = ({
               ? "mx-auto w-full max-w-[1400px] justify-center"
               : editorContentAlignment === "center"
                 ? "w-full justify-center"
-                : "w-full justify-between"
+                : "w-full justify-start"
           )}
         >
           <div
@@ -4826,7 +4880,7 @@ const RichEditorPane = ({
                 : "max-w-none"
             )}
             style={
-              !desktopFocusMode && !useMarkdownSourceEditor && editorContentAlignment === "center"
+              !desktopFocusMode && !useMarkdownSourceEditor
                 ? {
                     maxWidth: editorOutlineCollapsed
                       ? EDITOR_CONTENT_MAX_WIDTH_COLLAPSED
@@ -4851,7 +4905,7 @@ const RichEditorPane = ({
                   spellCheck
                   data-edgeever-mobile-editor="plain-textarea"
                   aria-label={t("editor.noteBodyAria")}
-                  className="block min-h-[60dvh] w-full resize-none border border-slate-200 bg-card px-4 py-3 pr-32 text-base leading-7 text-slate-950 outline-none placeholder:text-slate-400 sm:px-7"
+                  className="block min-h-[60dvh] w-full resize-none border border-slate-200 bg-card px-6 py-4 pr-32 text-base leading-7 text-slate-950 outline-none placeholder:text-slate-400 sm:px-10"
                   placeholder={t("editor.placeholder")}
                   style={{ WebkitUserSelect: "text", userSelect: "text", caretColor: "auto" }}
                 />

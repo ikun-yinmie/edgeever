@@ -524,9 +524,9 @@ export const writeNoteEditorOutlineCollapsed = (memoId: string | null | undefine
 
 export const readEditorContentAlignmentPreference = (): EditorContentAlignment => {
   try {
-    return window.localStorage.getItem(EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY) === "center" ? "center" : "start";
+    return window.localStorage.getItem(EDITOR_CONTENT_ALIGNMENT_STORAGE_KEY) === "start" ? "start" : "center";
   } catch {
-    return "start";
+    return "center";
   }
 };
 

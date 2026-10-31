@@ -45,7 +45,15 @@ import {
 } from "@/lib/mobile-editor-standalone";
 import { getMemoUpdateQueueId, isMemoUpdateAlreadyApplied, queueMemoUpdate, shouldQueueMemoSaveError } from "@/lib/sync-queue";
 import { createMarkdownImagePasteRule } from "@/lib/markdown-image-paste";
-import { preserveEmptyListIndentOnBackspace, wrapIndentedParagraphInList } from "@/lib/editor-shortcuts";
+import {
+  handleConsecutiveListEnter,
+  insertListItemChildParagraph,
+  preserveEmptyListIndentOnBackspace,
+  sinkListItemPreservingAttrs,
+  toggleTaskItemCollapseAtSelection,
+  wrapIndentedParagraphInList,
+} from "@/lib/editor-shortcuts";
+import { parseImageWidth, TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeever/shared/image-display";
 import { ThemeBlock } from "./ThemeBlock";
 import { EditorTagPicker } from "./EditorTagPicker";
 import { listLocalTags } from "@/lib/local-mirror";
@@ -53,6 +61,21 @@ import { listLocalTags } from "@/lib/local-mirror";
 const ProtectedExternalImage = Image.extend({
   addPasteRules() {
     return [createMarkdownImagePasteRule(this.type)];
+  },
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => parseImageWidth(
+          element.getAttribute("data-width") ?? element.getAttribute("width") ?? element.style.width,
+        ),
+        renderHTML: (attributes) => {
+          const width = parseImageWidth(attributes.width);
+          return width ? { "data-width": String(width), style: `width: ${width}%` } : {};
+        },
+      },
+    };
   },
   renderHTML({ HTMLAttributes }) {
     const referrerPolicy = getImageReferrerPolicy(HTMLAttributes.src);
@@ -221,11 +244,41 @@ export const MobileStandaloneTiptapEditor = ({
       attributes: getMobileEditorInputAttributes("edgeever-mobile-tiptap-content"),
       transformPastedHTML: (html) => wrapDetailsContentHtml(html),
       handleKeyDown: (view, event) => {
-        if (event.key !== "Backspace" || !preserveEmptyListIndentOnBackspace(view.state, view.dispatch)) {
-          return false;
+        if (event.key === "Backspace" && preserveEmptyListIndentOnBackspace(view.state, view.dispatch)) {
+          event.preventDefault();
+          return true;
         }
-        event.preventDefault();
-        return true;
+        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          if (handleConsecutiveListEnter(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+        if (event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          if (insertListItemChildParagraph(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+        if (event.key === "Tab") {
+          if (!event.shiftKey) {
+            if (wrapIndentedParagraphInList(view.state, view.dispatch)) {
+              event.preventDefault();
+              return true;
+            }
+            if (sinkListItemPreservingAttrs(view.state, view.dispatch)) {
+              event.preventDefault();
+              return true;
+            }
+          }
+        }
+        if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && (event.key.toLowerCase() === "t" || event.key.toLowerCase() === "c")) {
+          if (toggleTaskItemCollapseAtSelection(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+        }
+        return false;
       },
     },
     onUpdate: ({ editor: activeEditor }) => {
@@ -628,6 +681,7 @@ export const MobileStandaloneTiptapEditor = ({
       setSaveStateStable("uploading");
       const { resource } = await uploadMobileEditorResource(currentMemo.id, uploadFile);
       if (resource.kind === "image") {
+        const isTaskItem = editor.isActive("taskItem") || editor.isActive("taskList");
         editor
           .chain()
           .focus()
@@ -635,6 +689,7 @@ export const MobileStandaloneTiptapEditor = ({
             src: resource.url,
             alt: file.name,
             title: file.name,
+            ...(isTaskItem ? { width: TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT } : {}),
           })
           .run();
       } else if (isPdfAttachment(file.type, resource.filename || file.name)) {
@@ -992,7 +1047,7 @@ export const MobileStandaloneTiptapEditor = ({
             editor ? wrapIndentedParagraphInList(editor.state, editor.view.dispatch, "taskList") || editor.commands.toggleTaskList() : false
           ))}
           onIncreaseListIndent={() => runEditorCommand(() => (
-            editor ? wrapIndentedParagraphInList(editor.state, editor.view.dispatch) || editor.commands.sinkListItem(activeListItemType) : false
+            editor ? wrapIndentedParagraphInList(editor.state, editor.view.dispatch) || sinkListItemPreservingAttrs(editor.state, editor.view.dispatch) || editor.commands.sinkListItem(activeListItemType) : false
           ))}
           onDecreaseListIndent={() => runEditorCommand(() => editor?.chain().focus().liftListItem(activeListItemType).run() ?? false)}
           onToggleBlockquote={() => runEditorCommand(() => editor?.chain().focus().toggleBlockquote().run() ?? false)}

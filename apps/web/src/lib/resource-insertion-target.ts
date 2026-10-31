@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/core";
 import { GapCursor } from "@tiptap/pm/gapcursor";
 import type { Selection } from "@tiptap/pm/state";
 import { NodeSelection, Selection as ProseMirrorSelection } from "@tiptap/pm/state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { IMAGE_GALLERY_NODE_TYPE } from "@edgeever/shared";
 
 export type ResourceInsertionTarget = number | { from: number; to: number };
@@ -68,4 +69,33 @@ export const clearNodeSelectionAtDocumentEnd = (editor: Editor) => {
 
   editor.view.dispatch(editor.state.tr.setSelection(nextSelection));
   return true;
+};
+
+export const isTaskItemTarget = (
+  doc: ProseMirrorNode,
+  target: ResourceInsertionTarget,
+): boolean => {
+  const pos = typeof target === "number" ? target : target.from;
+  if (pos < 0 || pos > doc.content.size) {
+    return false;
+  }
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const typeName = $pos.node(depth).type.name;
+    if (typeName === "taskItem" || typeName === "taskList") {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const isSelectionInTaskItem = (selection: Selection): boolean => {
+  const $pos = selection.$from;
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const typeName = $pos.node(depth).type.name;
+    if (typeName === "taskItem" || typeName === "taskList") {
+      return true;
+    }
+  }
+  return false;
 };

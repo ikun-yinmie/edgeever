@@ -6,8 +6,11 @@ import {
   clampResourceInsertionTarget,
   clearNodeSelectionAtDocumentEnd,
   getResourceInsertionTarget,
+  isSelectionInTaskItem,
+  isTaskItemTarget,
   shouldSelectInsertedResources,
 } from "./resource-insertion-target.ts";
+import { TaskList, TaskItem } from "@tiptap/extension-list";
 
 describe("resource insertion target", () => {
   test("inserts a second pasted image after the selected first image", () => {
@@ -100,6 +103,42 @@ describe("resource insertion target", () => {
       "first.webp",
       "second.webp",
     ]);
+    editor.destroy();
+  });
+
+  test("detects when selection or insertion target is within a task item", () => {
+    const editor = new Editor({
+      extensions: [StarterKit, TaskList, TaskItem],
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "taskList",
+            content: [
+              {
+                type: "taskItem",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Buy milk" }] }],
+              },
+            ],
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Regular paragraph" }],
+          },
+        ],
+      },
+    });
+
+    // Select inside the task item paragraph
+    editor.commands.setTextSelection(3);
+    expect(isSelectionInTaskItem(editor.state.selection)).toBe(true);
+    expect(isTaskItemTarget(editor.state.doc, 3)).toBe(true);
+
+    // Select in the regular paragraph
+    editor.commands.setTextSelection(14);
+    expect(isSelectionInTaskItem(editor.state.selection)).toBe(false);
+    expect(isTaskItemTarget(editor.state.doc, 14)).toBe(false);
+
     editor.destroy();
   });
 });

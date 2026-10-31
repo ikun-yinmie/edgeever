@@ -110,7 +110,7 @@ input {
 .mobile-editor-main {
   display: grid;
   gap: 10px;
-  padding: 14px 12px max(16px, env(safe-area-inset-bottom));
+  padding: 14px 16px max(16px, env(safe-area-inset-bottom));
 }
 
 .mobile-editor-error {
@@ -467,13 +467,13 @@ input {
 
 .edgeever-mobile-tiptap-editor {
   min-height: calc(100dvh - 14rem);
-  margin: 0 -12px;
+  margin: 0;
 }
 
 .edgeever-mobile-tiptap-content {
   min-height: calc(100dvh - 14rem);
   outline: none;
-  padding: 18px 12px 32px;
+  padding: 18px 20px 32px;
   color: #020617;
   font-size: 17px;
   line-height: 1.6;
@@ -593,6 +593,10 @@ html.dark .edgeever-mobile-tiptap-content a:hover {
 .edgeever-mobile-tiptap-content ul[data-type="taskList"] li[data-checked] > div {
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.edgeever-mobile-tiptap-content ul[data-type="taskList"] li[data-checked] > div img:not([data-width]) {
+  max-width: 25%;
 }
 
 .edgeever-mobile-tiptap-content ul[data-type="taskList"] li[data-checked] > div > p {

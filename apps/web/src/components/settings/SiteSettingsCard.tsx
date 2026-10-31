@@ -81,6 +81,12 @@ export const SiteSettingsCard = () => {
         siteIcon: draft.siteIcon,
       },
       () => {
+        if (window.edgeeverDesktop?.syncServerBranding) {
+          void window.edgeeverDesktop.syncServerBranding({
+            name: draft.siteName ?? null,
+            icon: draft.siteIcon ?? null,
+          });
+        }
         void refreshSiteBranding();
       },
     );

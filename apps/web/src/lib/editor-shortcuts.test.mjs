@@ -1,12 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { Schema } from "@tiptap/pm/model";
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { TaskItem } from "@tiptap/extension-list";
+import { EdgeEverTaskList, EdgeEverTaskItem } from "@edgeever/shared";
 import {
   applyPlainTextTab,
   getAiSlashCommandStart,
+  handleConsecutiveListEnter,
+  insertListItemChildParagraph,
   preserveEmptyListIndentOnBackspace,
   saveAndSyncEditor,
   shouldOpenAiFromSpace,
+  sinkListItemPreservingAttrs,
+  toggleTaskItemCollapseAtSelection,
   wrapIndentedParagraphInList,
 } from "./editor-shortcuts.ts";
 
@@ -233,5 +241,138 @@ describe("editor shortcut actions", () => {
     })).rejects.toThrow("save failed");
 
     expect(calls).toEqual(["save"]);
+  });
+
+  test("consecutive enter converts empty taskItem into child paragraph and third enter exits list", () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          content: [{
+            type: "taskItem",
+            attrs: { checked: false },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Task 1" }] }],
+          }],
+        }],
+      },
+    });
+
+    // 1st Enter: splitListItem creates new sibling taskItem
+    editor.commands.setTextSelection(9);
+    editor.commands.splitListItem("taskItem");
+    expect(editor.getJSON().content[0].content).toHaveLength(2);
+    expect(editor.getJSON().content[0].content[1].type).toBe("taskItem");
+
+    // 2nd Enter: consecutive enter merges into previous task item as child paragraph (making it collapsible)
+    const handled2 = handleConsecutiveListEnter(editor.state, editor.view.dispatch);
+    expect(handled2).toBe(true);
+    expect(editor.getJSON().content[0].content).toHaveLength(1);
+    const taskItem = editor.getJSON().content[0].content[0];
+    expect(taskItem.content).toHaveLength(2);
+    expect(taskItem.content[0].content[0].text).toBe("Task 1");
+    expect(taskItem.content[1].type).toBe("paragraph");
+
+    // 3rd Enter: exits empty child paragraph out of the list to root paragraph
+    const handled3 = handleConsecutiveListEnter(editor.state, editor.view.dispatch);
+    expect(handled3).toBe(true);
+    const doc = editor.getJSON();
+    expect(doc.content).toHaveLength(2);
+    expect(doc.content[0].type).toBe("taskList");
+    expect(doc.content[0].content[0].content).toHaveLength(1);
+    expect(doc.content[1].type).toBe("paragraph");
+    editor.destroy();
+  });
+
+  test("Shift+Enter creates a child paragraph inside the current task item", () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          content: [{
+            type: "taskItem",
+            attrs: { checked: false, collapsed: true },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Task with detail" }] }],
+          }],
+        }],
+      },
+    });
+
+    editor.commands.setTextSelection(19);
+    const handled = insertListItemChildParagraph(editor.state, editor.view.dispatch);
+    expect(handled).toBe(true);
+    const taskItem = editor.getJSON().content[0].content[0];
+    expect(taskItem.content).toHaveLength(2);
+    expect(taskItem.content[0].content[0].text).toBe("Task with detail");
+    expect(taskItem.content[1].type).toBe("paragraph");
+    // Collapsed state was un-collapsed so new child is visible
+    expect(taskItem.attrs.collapsed).toBe(false);
+    editor.destroy();
+  });
+
+  test("sinkListItemPreservingAttrs preserves numbered: true on sub-taskList", () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          attrs: { numbered: true },
+          content: [
+            {
+              type: "taskItem",
+              attrs: { checked: false },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Numbered 1" }] }],
+            },
+            {
+              type: "taskItem",
+              attrs: { checked: false },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Numbered 2" }] }],
+            },
+          ],
+        }],
+      },
+    });
+
+    editor.commands.setTextSelection(18);
+    const handled = sinkListItemPreservingAttrs(editor.state, editor.view.dispatch);
+    expect(handled).toBe(true);
+    const nestedList = editor.getJSON().content[0].content[0].content[1];
+    expect(nestedList.type).toBe("taskList");
+    expect(nestedList.attrs.numbered).toBe(true);
+    editor.destroy();
+  });
+
+  test("toggleTaskItemCollapseAtSelection toggles collapsed state of task item with children", () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          content: [{
+            type: "taskItem",
+            attrs: { checked: false, collapsed: false },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Task 1" }] },
+              { type: "paragraph", content: [{ type: "text", text: "Sub text" }] },
+            ],
+          }],
+        }],
+      },
+    });
+
+    editor.commands.setTextSelection(5);
+    const toggled = toggleTaskItemCollapseAtSelection(editor.state, editor.view.dispatch);
+    expect(toggled).toBe(true);
+    expect(editor.getJSON().content[0].content[0].attrs.collapsed).toBe(true);
+
+    const toggledAgain = toggleTaskItemCollapseAtSelection(editor.state, editor.view.dispatch);
+    expect(toggledAgain).toBe(true);
+    expect(editor.getJSON().content[0].content[0].attrs.collapsed).toBe(false);
+    editor.destroy();
   });
 });

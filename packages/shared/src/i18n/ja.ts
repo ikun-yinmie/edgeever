@@ -2235,7 +2235,7 @@ export const ja = {
     orderedList: "番号付きリスト",
     increaseListIndent: "リスト階層を上げる（Tab）",
     decreaseListIndent: "リスト階層を下げる（Shift + Tab）",
-    listIndentHint: "Tab で階層を上げる · Shift + Tab で階層を下げる",
+    listIndentHint: "Tab で階層化 · Shift+Enter で子ブロック · 連続Enter で子ブロック",
     quote: "引用",
     fold: "折りたたみ",
     videoEmbed: "動画の埋め込み",

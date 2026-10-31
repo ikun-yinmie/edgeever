@@ -29,6 +29,7 @@ import { DesktopStorageCard } from "./settings/DesktopStorageCard";
 import { DesktopMarkdownMirrorCard } from "./settings/DesktopMarkdownMirrorCard";
 import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { DesktopUpdateCard } from "./settings/DesktopUpdateCard";
+import { DesktopBrandingCard } from "./settings/DesktopBrandingCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
 import { EvernoteImportGuideCard } from "./settings/EvernoteImportGuideCard";
 import { FeedbackLink } from "./settings/FeedbackLink";
@@ -203,6 +204,7 @@ export const SettingsPane = ({
               onEditorContentAlignmentChange={onEditorContentAlignmentChange}
             />
             <DesktopUpdateCard />
+            <DesktopBrandingCard />
             {isOwner ? (
               <button
                 className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-emerald-700 transition hover:bg-emerald-50/50"

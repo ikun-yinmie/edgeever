@@ -337,7 +337,7 @@ export const PublicSharePage = () => {
               ) : null}
             </header>
             <div
-              className="edgeever-editor px-1 py-4 sm:px-4 sm:py-7"
+              className="edgeever-editor px-5 py-6 sm:px-10 sm:py-8"
               data-editor-theme={shareEditorTheme ?? "default"}
               data-paper-theme={isPaperEditorTheme(shareEditorTheme) ? "true" : undefined}
               style={

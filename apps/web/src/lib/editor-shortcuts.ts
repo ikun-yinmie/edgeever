@@ -200,10 +200,20 @@ export const wrapIndentedParagraphInList = (
     return false;
   }
 
-  const listTypeName = requestedListType ?? selection.$from.node(listItemDepth - 1).type.name;
+  const parentList = selection.$from.node(listItemDepth - 1);
+  const listTypeName = requestedListType ?? parentList.type.name;
   const listType = state.schema.nodes[listTypeName];
-  return Boolean(listType && wrapInList(listType)(state, dispatch));
+  if (!listType) return false;
+  const listAttrs = listTypeName === parentList.type.name ? parentList.attrs : undefined;
+  return Boolean(wrapInList(listType, listAttrs)(state, dispatch));
 };
+
+export {
+  handleConsecutiveListEnter,
+  insertListItemChildParagraph,
+  sinkListItemPreservingAttrs,
+  toggleTaskItemCollapseAtSelection,
+} from "@edgeever/shared";
 
 /** Keep a partial heading selection isolated from the surrounding paragraph. */
 export const setHeadingWithSelectionBoundary = (editor: Editor, level: 1 | 2 | 3 | 4 | 5 | 6) => {

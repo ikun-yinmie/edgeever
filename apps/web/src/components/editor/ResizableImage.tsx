@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { getImageReferrerPolicy, IMAGE_GALLERY_NODE_TYPE } from "@edgeever/shared";
 import {
   DEFAULT_IMAGE_WIDTH_PERCENT,
+  TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT,
   IMAGE_WIDTH_PRESETS,
   clampImageWidth,
   parseImageWidth,
@@ -16,7 +17,7 @@ import { getImagePreviewGroup, type ImagePreviewGroup } from "@/lib/image-previe
 import { createMarkdownImagePasteRule } from "@/lib/markdown-image-paste";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { isImageInGallery } from "./image-editing-context";
+import { isImageInGallery, isImageInTaskItem } from "./image-editing-context";
 
 export type ImageMenuRequestDetail = {
   element: HTMLElement;
@@ -53,15 +54,17 @@ const ResizableImageNodeView = ({
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const [reloadKey, setReloadKey] = useState(0);
-  const nodeWidth = parseImageWidth(node.attrs.width) ?? DEFAULT_IMAGE_WIDTH_PERCENT;
-  const width = previewWidth ?? nodeWidth;
-  const { editable, inGallery } = useEditorState({
+  const { editable, inGallery, inTaskItem } = useEditorState({
     editor,
     selector: ({ editor: activeEditor }) => ({
       editable: activeEditor.isEditable,
       inGallery: isImageInGallery(activeEditor.state.doc, getPos()),
+      inTaskItem: isImageInTaskItem(activeEditor.state.doc, getPos()),
     }),
   });
+  const defaultWidth = inTaskItem ? TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT : DEFAULT_IMAGE_WIDTH_PERCENT;
+  const nodeWidth = parseImageWidth(node.attrs.width) ?? defaultWidth;
+  const width = previewWidth ?? nodeWidth;
   const showSizeControls = editable && selected && !inGallery;
   const alt = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
   const title = typeof node.attrs.title === "string" ? node.attrs.title : "";

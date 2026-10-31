@@ -64,6 +64,14 @@ import {
   serializeUpdatePreferences,
   shouldAutoUpdateNow,
 } from "./update-preferences.mjs";
+import {
+  CLIENT_BRANDING_FILE,
+  DEFAULT_CLIENT_NAME,
+  normalizeClientBranding,
+  readClientBranding,
+  resolveEffectiveBranding,
+  writeClientBranding,
+} from "./client-branding.mjs";
 import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
@@ -122,6 +130,17 @@ const projectRoot = join(currentDirectory, "../../..");
  */
 const applyMacDockIcon = () => {
   if (process.platform !== "darwin" || !app.dock) return;
+  const currentBranding = getClientBrandingState();
+  const effective = resolveEffectiveBranding(currentBranding);
+  const customIcon = effective.effectiveIcon ? imageFromDataUrlSafe(effective.effectiveIcon) : null;
+  if (customIcon && !customIcon.isEmpty()) {
+    try {
+      app.dock.setIcon(customIcon);
+      return;
+    } catch {
+      // fallback
+    }
+  }
   const candidates = app.isPackaged
     ? [join(process.resourcesPath, "icon.icns"), join(process.resourcesPath, "icon.png")]
     : [
@@ -168,6 +187,83 @@ let lastUpdateCheckAt = 0;
 let downloadedUpdateVersion = null;
 let promptedUpdateVersion = null;
 let trustedWindowsUpdate = null;
+let clientBrandingState = null;
+const getClientBrandingState = () => {
+  if (!clientBrandingState) {
+    clientBrandingState = readClientBranding(app.getPath("userData"));
+  }
+  return clientBrandingState;
+};
+
+const imageFromDataUrlSafe = (dataUrl) => {
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return null;
+  try {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    return !img.isEmpty() ? img : null;
+  } catch {
+    return null;
+  }
+};
+
+const defaultAppIconImage = () => {
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath, "icon.png"), join(process.resourcesPath, "web", "pwa-512x512.png")]
+    : [
+        join(projectRoot, "apps/desktop/assets/icon.png"),
+        join(projectRoot, "apps/web/public/pwa-512x512.png"),
+      ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      const img = nativeImage.createFromPath(p);
+      if (!img.isEmpty()) return img;
+    }
+  }
+  return null;
+};
+
+const applyClientBrandingToSystem = (branding) => {
+  const effective = resolveEffectiveBranding(branding);
+  try {
+    app.setName(effective.effectiveName);
+  } catch {
+    // ignore
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.setTitle(effective.effectiveName);
+    } catch {
+      // ignore
+    }
+  }
+
+  if (tray && !tray.isDestroyed()) {
+    try {
+      tray.setToolTip(effective.effectiveName);
+    } catch {
+      // ignore
+    }
+  }
+
+  const iconImage = effective.effectiveIcon ? imageFromDataUrlSafe(effective.effectiveIcon) : null;
+  const targetIcon = iconImage || defaultAppIconImage();
+
+  if (targetIcon && !targetIcon.isEmpty()) {
+    if (process.platform === "darwin" && app.dock) {
+      try {
+        app.dock.setIcon(targetIcon);
+      } catch {
+        // ignore
+      }
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.setIcon(targetIcon);
+      } catch {
+        // ignore
+      }
+    }
+  }
+};
 let windowsDownloadedUpdateVerified = false;
 let lastUpdateError = null;
 let sidecarScopeKey = "anonymous";
@@ -1009,7 +1105,9 @@ const createTray = () => {
   const icon = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
   if (process.platform === "darwin") icon.setTemplateImage(true);
   tray = new Tray(icon);
-  tray.setToolTip("EdgeEver");
+  const currentBranding = getClientBrandingState();
+  const effective = resolveEffectiveBranding(currentBranding);
+  tray.setToolTip(effective.effectiveName);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: copy.show, click: () => showWindow(mainWindow) },
     { label: copy.screenshotToNote, click: () => void captureScreenshotToNote() },
@@ -1772,7 +1870,14 @@ const installWindowOpenPolicy = (contents) => {
 
 const createWindow = async () => {
   const state = await readWindowState();
+  const currentBranding = getClientBrandingState();
+  const effective = resolveEffectiveBranding(currentBranding);
+  const customIcon = effective.effectiveIcon ? imageFromDataUrlSafe(effective.effectiveIcon) : null;
+  const initialIcon = customIcon || defaultAppIconImage();
+
   mainWindow = new BrowserWindow({
+    title: effective.effectiveName,
+    ...(initialIcon && !initialIcon.isEmpty() ? { icon: initialIcon } : {}),
     width: state.width,
     height: state.height,
     x: state.x,
@@ -2233,6 +2338,34 @@ const startApplication = async () => {
     clearTimeout(forcedExitTimer);
     setTimeout(() => app.exit(0), 50).unref();
     return { scheduled: true };
+  });
+  ipcMain.handle("desktop:get-client-branding", () => {
+    const raw = getClientBrandingState();
+    return resolveEffectiveBranding(raw);
+  });
+  ipcMain.handle("desktop:set-client-custom-branding", async (_event, input) => {
+    const current = getClientBrandingState();
+    const updated = {
+      ...current,
+      customName: input?.name ?? null,
+      customIcon: input?.icon ?? null,
+    };
+    clientBrandingState = normalizeClientBranding(updated);
+    writeClientBranding(app.getPath("userData"), clientBrandingState);
+    applyClientBrandingToSystem(clientBrandingState);
+    return resolveEffectiveBranding(clientBrandingState);
+  });
+  ipcMain.handle("desktop:sync-server-branding", async (_event, input) => {
+    const current = getClientBrandingState();
+    const updated = {
+      ...current,
+      serverName: input?.name ?? null,
+      serverIcon: input?.icon ?? null,
+    };
+    clientBrandingState = normalizeClientBranding(updated);
+    writeClientBranding(app.getPath("userData"), clientBrandingState);
+    applyClientBrandingToSystem(clientBrandingState);
+    return resolveEffectiveBranding(clientBrandingState);
   });
   ipcMain.handle("desktop:set-api-base-url", async (_event, value) => {
     const normalized = typeof value === "string" ? value.trim().replace(/\/$/, "") : "";

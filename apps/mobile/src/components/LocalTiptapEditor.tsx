@@ -54,6 +54,7 @@ import {
 import { createEdgeEverMathematics } from "@edgeever/shared/mathematics";
 import {
   DEFAULT_IMAGE_WIDTH_PERCENT,
+  TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT,
   IMAGE_WIDTH_PRESETS,
   clampImageWidth,
   parseImageWidth,
@@ -2918,11 +2919,23 @@ const insertImageUploadPlaceholder = (
   if (!imageType) {
     return;
   }
+  const targetPos = (selection ?? editor.state.selection).from;
+  let isTaskItem = editor.isActive("taskItem") || editor.isActive("taskList");
+  if (!isTaskItem && targetPos >= 0 && targetPos <= editor.state.doc.content.size) {
+    const $pos = editor.state.doc.resolve(targetPos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      const typeName = $pos.node(depth).type.name;
+      if (typeName === "taskItem" || typeName === "taskList") {
+        isTaskItem = true;
+        break;
+      }
+    }
+  }
   const tr = createImageInsertTransaction(editor.state, {
       alt,
       src: source,
       title: previewDataUrl,
-      width: DEFAULT_IMAGE_WIDTH_PERCENT,
+      width: isTaskItem ? TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT : DEFAULT_IMAGE_WIDTH_PERCENT,
   }, selection ?? editor.state.selection);
   tr.setMeta(TRANSIENT_IMAGE_UPLOAD_META, true);
   editor.view.dispatch(tr);
@@ -3079,7 +3092,7 @@ const getEditorStyles = (theme: "light" | "dark", options?: { viewer?: boolean }
     min-height: 100%;
     max-width: 100%;
     min-width: 0;
-    padding: 18px 12px calc(32px + var(--edgeever-keyboard-inset));
+    padding: 18px 20px calc(32px + var(--edgeever-keyboard-inset));
     scroll-padding-bottom: calc(32px + var(--edgeever-keyboard-inset));
     font-size: 1rem;
     line-height: var(--editor-body-line-height);
