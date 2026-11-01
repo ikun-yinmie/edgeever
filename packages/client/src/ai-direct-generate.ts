@@ -1,6 +1,7 @@
 import type { AiPreparedTagSuggestions, AiPreparedTextGeneration, CompanionDiscoveryItem, CompanionPreparedDiscovery } from "@edgeever/shared";
 import { finalizeAiTagSuggestions, parseAiTagSuggestionNames } from "@edgeever/shared";
 import { createClientAiModel } from "./ai-model";
+import { isAiCorsFailure } from "./ai-direct-stream";
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" ? value as Record<string, unknown> : null;
@@ -78,26 +79,72 @@ export const parsePreparedDiscovery = (value: unknown): CompanionPreparedDiscove
   };
 };
 
+export const formatAiDirectError = (error: unknown, modelId?: string): string => {
+  let cur: any = error;
+  while (cur && typeof cur === "object" && cur.lastError) {
+    cur = cur.lastError;
+  }
+  const statusCode = cur?.statusCode ?? cur?.status;
+  let detail = "";
+  if (typeof cur?.responseBody === "string" && cur.responseBody.trim()) {
+    try {
+      const parsed = JSON.parse(cur.responseBody);
+      detail = parsed.message || parsed.error?.message || parsed.msg || parsed.detail || "";
+    } catch {
+      detail = cur.responseBody.slice(0, 140);
+    }
+  }
+
+  const prefix = modelId ? `${modelId}: ` : "";
+
+  if (statusCode === 401) {
+    return `${prefix}401 未认证 (${detail || "API Token 已过期或无效，请在设置中更新"})`;
+  }
+  if (statusCode === 429) {
+    return `${prefix}429 配额不足或超频 (${detail || "服务商额度已耗尽或请求过于频繁"})`;
+  }
+  if (statusCode === 404) {
+    return `${prefix}404 接口或模型未找到 (${detail || "请检查模型名称或接口地址"})`;
+  }
+  if (statusCode) {
+    return `${prefix}HTTP ${statusCode} (${detail || cur?.message || "请求失败"})`;
+  }
+
+  const rawMessage = cur instanceof Error ? cur.message : String(cur ?? "");
+  if (/failed to fetch|network|unable to connect|connectionrefused/i.test(rawMessage)) {
+    return `${prefix}网络连接失败，无法连接 AI 接口地址`;
+  }
+
+  return `${prefix}${detail || rawMessage || "AI 生成失败"}`;
+};
+
 export const generateDirectAiText = async (
   prepared: AiPreparedTextGeneration,
   options: { fetch: typeof fetch; signal?: AbortSignal },
 ) => {
   const { generateText } = await import("ai");
-  const result = await generateText({
-    model: createClientAiModel({
-      provider: prepared.provider,
-      baseUrl: prepared.baseUrl,
-      apiKey: prepared.apiKey,
-      modelId: prepared.modelId,
-      fetch: options.fetch,
-    }),
-    system: prepared.system,
-    prompt: prepared.prompt,
-    maxOutputTokens: prepared.maxOutputTokens,
-    ...(prepared.temperature == null ? {} : { temperature: prepared.temperature }),
-    abortSignal: options.signal,
-  });
-  return result.text;
+  try {
+    const result = await generateText({
+      model: createClientAiModel({
+        provider: prepared.provider,
+        baseUrl: prepared.baseUrl,
+        apiKey: prepared.apiKey,
+        modelId: prepared.modelId,
+        fetch: options.fetch,
+      }),
+      system: prepared.system,
+      prompt: prepared.prompt,
+      maxOutputTokens: prepared.maxOutputTokens,
+      ...(prepared.temperature == null ? {} : { temperature: prepared.temperature }),
+      abortSignal: options.signal,
+    });
+    return result.text;
+  } catch (error) {
+    if (isAiCorsFailure(error)) {
+      throw error;
+    }
+    throw new Error(formatAiDirectError(error, prepared.modelId), { cause: error });
+  }
 };
 
 export const generateDirectDiscoveryOutput = async (

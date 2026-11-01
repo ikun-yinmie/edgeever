@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createEdgeEverClient } from "./index.ts";
-import { parsePreparedTagSuggestions, suggestionsFromDirectText } from "./ai-direct-generate.ts";
+import { formatAiDirectError, parsePreparedTagSuggestions, suggestionsFromDirectText } from "./ai-direct-generate.ts";
 
 describe("direct tag suggestions", () => {
   test("prepares on the instance then calls the model provider", async () => {
@@ -118,5 +118,41 @@ describe("direct plugin AI", () => {
     const result = await client.pluginAi.generate({ system: "Translate", prompt: "hello", maxOutputTokens: 100 });
     expect(urls[0]).toBe("https://notes.example/api/v1/plugins/ai/generate/prepare");
     expect(result.text).toBe("bonjour");
+  });
+});
+
+describe("formatAiDirectError", () => {
+  test("formats 401 unauthorized errors with model id and response message", () => {
+    const error = {
+      name: "AI_APICallError",
+      statusCode: 401,
+      responseBody: JSON.stringify({ code: "UNAUTHORIZED", message: "未认证或登录已过期" }),
+      message: "Unauthorized",
+    };
+    expect(formatAiDirectError(error, "deepseek-v4.1-flash-1017"))
+      .toBe("deepseek-v4.1-flash-1017: 401 未认证 (未认证或登录已过期)");
+  });
+
+  test("formats 429 quota errors with model id", () => {
+    const error = {
+      name: "AI_APICallError",
+      statusCode: 429,
+      responseBody: JSON.stringify({ error: { message: "insufficient_quota" } }),
+      message: "Too Many Requests",
+    };
+    expect(formatAiDirectError(error, "glm-5.2"))
+      .toBe("glm-5.2: 429 配额不足或超频 (insufficient_quota)");
+  });
+
+  test("unwraps RetryError to extract underlying API error", () => {
+    const error = {
+      name: "AI_RetryError",
+      lastError: {
+        statusCode: 401,
+        responseBody: JSON.stringify({ message: "Invalid API key" }),
+      },
+    };
+    expect(formatAiDirectError(error, "my-model"))
+      .toBe("my-model: 401 未认证 (Invalid API key)");
   });
 });

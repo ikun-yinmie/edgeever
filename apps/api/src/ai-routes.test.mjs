@@ -331,7 +331,7 @@ describe("AI route contracts", () => {
     expect(body.apiKey).toBe("secret");
     expect(body.prompt).toContain("Body about React");
     expect(body.currentTags).toEqual(["Current"]);
-    expect(body.maxOutputTokens).toBe(300);
+    expect(body.maxOutputTokens).toBe(1000);
   });
 
   test("defers prompt-specific action and parameter validation to the saved prompt", () => {

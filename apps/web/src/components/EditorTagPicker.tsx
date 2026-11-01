@@ -74,12 +74,12 @@ export const EditorTagPicker = ({ contentMarkdown, disabled, loadTags, title, va
     commit([...selectedTags, ...additions]);
     setQuery("");
   };
-  const resetAiStatusLater = () => {
+  const resetAiStatusLater = (delayMs = 4000) => {
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
     feedbackTimerRef.current = setTimeout(() => {
       setAiStatus({ kind: "idle" });
       feedbackTimerRef.current = null;
-    }, 4000);
+    }, delayMs);
   };
   const generateAndApplyTags = async () => {
     if (!title.trim() && !contentMarkdown.trim()) return;
@@ -113,15 +113,25 @@ export const EditorTagPicker = ({ contentMarkdown, disabled, loadTags, title, va
       resetAiStatusLater();
     } catch (error) {
       if (controller.signal.aborted) return;
+      let message = t("editor.tagPicker.aiFailed");
+      if (error instanceof ApiRequestError) {
+        if (error.code === "ai_not_configured") {
+          message = t("editor.tagPicker.aiConfigure");
+        } else if (error.code === "ai_provider_disabled") {
+          message = t("aiModel.disabled", "当前 AI 服务商已禁用，请在设置中启用");
+        } else if (error.code === "ai_credentials_unavailable") {
+          message = t("aiModel.savedCredentialsUnavailable", "保存的 AI 凭证无法解密");
+        } else if (error.message) {
+          message = error.message;
+        }
+      } else if (error instanceof Error && error.message) {
+        message = error.message;
+      }
       setAiStatus({
         kind: "error",
-        message:
-        error instanceof ApiRequestError && error.code === "ai_not_configured"
-          ? t("editor.tagPicker.aiConfigure")
-          : error instanceof Error
-            ? error.message
-            : t("editor.tagPicker.aiFailed"),
+        message,
       });
+      resetAiStatusLater(15000);
     } finally {
       if (suggestionControllerRef.current === controller) {
         suggestionControllerRef.current = null;
@@ -187,6 +197,7 @@ export const EditorTagPicker = ({ contentMarkdown, disabled, loadTags, title, va
                     ? "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-500/20 disabled:opacity-50 sm:h-8 sm:w-8"
                     : "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-emerald-700 outline-none transition hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-500/20 disabled:opacity-50 sm:h-8 sm:w-8"}
                 aria-label={aiDescription}
+                title={aiDescription}
                 onClick={() => void generateAndApplyTags()}
               >
                 {suggesting
@@ -198,7 +209,9 @@ export const EditorTagPicker = ({ contentMarkdown, disabled, loadTags, title, va
                     : <TagPlus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{aiDescription}</TooltipContent>
+            <TooltipContent side="bottom" className="max-w-xs break-words text-xs">
+              {aiDescription}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
