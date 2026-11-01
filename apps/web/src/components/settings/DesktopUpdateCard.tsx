@@ -423,7 +423,7 @@ const DesktopUpdateCardContent = () => {
         {!autoUpdateSupported ? (
           <a
             className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-emerald-700 underline underline-offset-2 hover:text-emerald-900"
-            href="https://github.com/tianma-if/edgeever/releases/latest"
+            href="https://github.com/ikun-yinmie/edgeever/releases/latest"
             target="_blank"
             rel="noreferrer"
           >

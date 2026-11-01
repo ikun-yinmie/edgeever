@@ -83,9 +83,9 @@ const DesktopSyncIssuesDialog = lazy(() => import("./DesktopSyncIssuesDialog").t
 const NOTEBOOK_SIDEBAR_ID = "edgeever-notebook-sidebar";
 const NOTEBOOK_DRAG_SCROLL_EDGE_PX = 56;
 const NOTEBOOK_DRAG_SCROLL_MAX_STEP_PX = 18;
-const DESKTOP_DOWNLOAD_URL = "https://github.com/tianma-if/edgeever/releases/latest";
+const DESKTOP_DOWNLOAD_URL = "https://github.com/ikun-yinmie/edgeever/releases/latest";
 const ANDROID_PLAY_URL = "https://play.google.com/store/apps/details?id=org.edgeever.mobile";
-const ANDROID_APK_URL = "https://github.com/tianma-if/edgeever/releases/latest";
+const ANDROID_APK_URL = "https://github.com/ikun-yinmie/edgeever/releases/latest";
 const IOS_DOWNLOAD_URL = "https://apps.apple.com/us/app/edgeever/id6792625631";
 const CHROMIUM_CLIPPER_URL = "https://chromewebstore.google.com/detail/edgeever-web-clipper/gjadpfmanienmlofajibkfkkpfdkclgo";
 const FIREFOX_CLIPPER_URL = "https://addons.mozilla.org/firefox/addon/edgeever-web-clipper/";
