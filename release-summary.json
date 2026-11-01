@@ -1,14 +1,14 @@
 {
-  "version": "1.103.6",
+  "version": "1.103.7",
   "changes": {
     "en-US": [
-      "Enhanced open-notes tab styling, streamlined note preview/edit mode defaults, and added desktop client branding controls with admin console sync and personal settings customization."
+      "Enhanced AI tag suggestion parsing for reasoning models, increased output token budget to prevent response truncation, and added detailed error tooltips on hover."
     ],
     "zh-CN": [
-      "美化已打开笔记页签卡片样式，优化编辑与预览模式切换默认逻辑，并支持客户端名称与图标由后台管理同步以及在个人中心单独自定义控制。"
+      "优化智能标签对思考模型的支持与解析容错，提升输出 Token 限制防止响应被截断，并支持在失败时鼠标悬浮查看详细错误信息。"
     ],
     "ja": [
-      "開いているノートタブのデザインを刷新し、プレビュー・編集モードの既定動作を改善しました。また、デスクトップクライアントの名称・アイコンを管理コンソールと連携し、個人設定で個別カスタマイズできるようにしました。"
+      "推論モデル向けにAIタグ提案の解析とフォールバックを改善し、出力トークン上限を引き上げて途切れを防ぎ、ホバー時の詳細なエラー表示に対応しました。"
     ]
   }
 }
