@@ -195,6 +195,11 @@ describe("desktop client-branding", () => {
       const readContent = readFileSync(join(tempDir, "org.edgeever.desktop"), "utf8");
       expect(readContent).toContain("Name=Sync Test");
       expect(readContent).toContain("Icon=/tmp/icon.png");
+
+      const edgeEverContent = readFileSync(join(tempDir, "EdgeEver.desktop"), "utf8");
+      expect(edgeEverContent).toContain("Name=Sync Test");
+      const lowerContent = readFileSync(join(tempDir, "edgeever.desktop"), "utf8");
+      expect(lowerContent).toContain("Name=Sync Test");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

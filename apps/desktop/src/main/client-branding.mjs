@@ -76,9 +76,15 @@ export const syncLinuxDesktopEntry = ({ applicationsDir, execPath, name, iconPat
     if (!existsSync(applicationsDir)) {
       mkdirSync(applicationsDir, { recursive: true });
     }
-    const desktopFilePath = join(applicationsDir, "org.edgeever.desktop");
     const content = buildLinuxDesktopEntryContent({ name, execPath, iconPath });
-    writeFileSync(desktopFilePath, content, "utf8");
+    const targetNames = ["edgeever.desktop", "EdgeEver.desktop", "org.edgeever.desktop"];
+    for (const file of targetNames) {
+      try {
+        writeFileSync(join(applicationsDir, file), content, "utf8");
+      } catch {
+        // ignore single write error
+      }
+    }
     return true;
   } catch {
     return false;

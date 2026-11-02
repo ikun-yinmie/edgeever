@@ -1994,6 +1994,7 @@ const createWindow = async () => {
 
   mainWindow = new BrowserWindow({
     title: effective.effectiveName,
+    ...(process.platform === "linux" ? { wmClass: "EdgeEver" } : {}),
     ...(initialIcon && !initialIcon.isEmpty() ? { icon: initialIcon } : {}),
     width: state.width,
     height: state.height,
