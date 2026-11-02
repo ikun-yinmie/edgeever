@@ -135,4 +135,68 @@ describe("desktop client-branding", () => {
     expect(mainSource).toContain("relaunchDesktopApp");
     expect(mainSource).toContain("copy.relaunch");
   });
+
+  it("decodes dataUrl to buffer and handles invalid inputs", () => {
+    const { dataUrlToBuffer } = require("./client-branding.mjs");
+    expect(dataUrlToBuffer(null)).toBeNull();
+    expect(dataUrlToBuffer("")).toBeNull();
+    expect(dataUrlToBuffer("invalid-data")).toBeNull();
+
+    const sample = Buffer.from("sample image content", "utf8");
+    const sampleDataUrl = `data:image/png;base64,${sample.toString("base64")}`;
+    const decoded = dataUrlToBuffer(sampleDataUrl);
+    expect(decoded).not.toBeNull();
+    expect(decoded.toString("utf8")).toBe("sample image content");
+  });
+
+  it("materializes branding icon to disk and cleans up when reset", () => {
+    const { existsSync } = require("node:fs");
+    const { BRANDING_ICON_FILE, materializeBrandingFiles } = require("./client-branding.mjs");
+    const tempDir = mkdtempSync(join(tmpdir(), "branding-mat-test-"));
+    try {
+      const sample = Buffer.from("png-bytes", "utf8");
+      const sampleDataUrl = `data:image/png;base64,${sample.toString("base64")}`;
+
+      const res = materializeBrandingFiles(tempDir, sampleDataUrl);
+      expect(res.hasIcon).toBe(true);
+      expect(res.iconPath).toBe(join(tempDir, BRANDING_ICON_FILE));
+      expect(existsSync(res.iconPath)).toBe(true);
+
+      const resetRes = materializeBrandingFiles(tempDir, null);
+      expect(resetRes.hasIcon).toBe(false);
+      expect(existsSync(join(tempDir, BRANDING_ICON_FILE))).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("builds and synchronizes linux desktop entry with custom branding", () => {
+    const { readFileSync } = require("node:fs");
+    const { buildLinuxDesktopEntryContent, syncLinuxDesktopEntry } = require("./client-branding.mjs");
+    const content = buildLinuxDesktopEntryContent({
+      name: "My App",
+      execPath: "/opt/EdgeEver/EdgeEver",
+      iconPath: "/home/user/.config/EdgeEver/branding-icon.png",
+    });
+    expect(content).toContain("Name=My App");
+    expect(content).toContain('Exec="/opt/EdgeEver/EdgeEver" %U');
+    expect(content).toContain("Icon=/home/user/.config/EdgeEver/branding-icon.png");
+    expect(content).toContain("StartupWMClass=EdgeEver");
+
+    const tempDir = mkdtempSync(join(tmpdir(), "desktop-entry-test-"));
+    try {
+      const ok = syncLinuxDesktopEntry({
+        applicationsDir: tempDir,
+        execPath: "/usr/bin/EdgeEver",
+        name: "Sync Test",
+        iconPath: "/tmp/icon.png",
+      });
+      expect(ok).toBe(true);
+      const readContent = readFileSync(join(tempDir, "org.edgeever.desktop"), "utf8");
+      expect(readContent).toContain("Name=Sync Test");
+      expect(readContent).toContain("Icon=/tmp/icon.png");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

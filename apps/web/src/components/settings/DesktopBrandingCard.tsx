@@ -266,10 +266,13 @@ export const DesktopBrandingCard = () => {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <div className="flex flex-wrap items-center gap-2">
             {savedSuccess ? (
-              <>
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                   <CheckCircle2 className="h-4 w-4" />
                   {t("desktopBranding.saveSuccess")}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {t("desktopBranding.relaunchHint")}
                 </span>
                 {bridge?.relaunch ? (
                   <Button
@@ -283,7 +286,7 @@ export const DesktopBrandingCard = () => {
                     {t("desktopBranding.relaunchButton")}
                   </Button>
                 ) : null}
-              </>
+              </div>
             ) : null}
           </div>
           <div className="flex items-center gap-2">

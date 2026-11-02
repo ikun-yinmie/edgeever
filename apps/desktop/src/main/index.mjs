@@ -67,9 +67,11 @@ import {
 import {
   CLIENT_BRANDING_FILE,
   DEFAULT_CLIENT_NAME,
+  materializeBrandingFiles,
   normalizeClientBranding,
   readClientBranding,
   resolveEffectiveBranding,
+  syncLinuxDesktopEntry,
   writeClientBranding,
 } from "./client-branding.mjs";
 import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
@@ -222,6 +224,72 @@ const defaultAppIconImage = () => {
   return null;
 };
 
+const buildMultiResolutionIcon = (sourceImage) => {
+  if (!sourceImage || sourceImage.isEmpty()) return null;
+  try {
+    const multi = nativeImage.createEmpty();
+    const sizes = [16, 24, 32, 48, 64, 128, 256];
+    for (const size of sizes) {
+      const resized = sourceImage.resize({ width: size, height: size, quality: "high" });
+      const buffer = resized.toPNG();
+      multi.addRepresentation({
+        width: size,
+        height: size,
+        scaleFactor: 1.0,
+        buffer,
+      });
+      if (size >= 32) {
+        multi.addRepresentation({
+          width: Math.round(size / 2),
+          height: Math.round(size / 2),
+          scaleFactor: 2.0,
+          buffer,
+        });
+      }
+    }
+    return !multi.isEmpty() ? multi : sourceImage;
+  } catch {
+    return sourceImage;
+  }
+};
+
+const resolveAppIconImage = (dataUrl) => {
+  const baseImage = (dataUrl ? imageFromDataUrlSafe(dataUrl) : null) || defaultAppIconImage();
+  if (!baseImage || baseImage.isEmpty()) return null;
+  return buildMultiResolutionIcon(baseImage);
+};
+
+const resolveTrayIconImage = (dataUrl) => {
+  if (!dataUrl) return null;
+  const baseImage = imageFromDataUrlSafe(dataUrl);
+  if (!baseImage || baseImage.isEmpty()) return null;
+  try {
+    const size = process.platform === "win32" ? 16 : 24;
+    return baseImage.resize({ width: size, height: size, quality: "high" });
+  } catch {
+    return null;
+  }
+};
+
+const updateLinuxDesktopBranding = (effectiveName, iconPath) => {
+  if (process.platform !== "linux") return;
+  try {
+    const home = process.env.HOME || app.getPath("home");
+    const applicationsDir = join(home, ".local", "share", "applications");
+    const execPath = process.env.APPIMAGE || process.execPath;
+    syncLinuxDesktopEntry({
+      applicationsDir,
+      execPath,
+      name: effectiveName,
+      iconPath: iconPath || (app.isPackaged
+        ? join(process.resourcesPath, "icon.png")
+        : join(projectRoot, "apps/desktop/assets/icon.png")),
+    });
+  } catch {
+    // ignore
+  }
+};
+
 const applyClientBrandingToSystem = (branding) => {
   const effective = resolveEffectiveBranding(branding);
   try {
@@ -229,6 +297,9 @@ const applyClientBrandingToSystem = (branding) => {
   } catch {
     // ignore
   }
+
+  const { iconPath } = materializeBrandingFiles(app.getPath("userData"), effective.effectiveIcon);
+  updateLinuxDesktopBranding(effective.effectiveName, iconPath);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -238,16 +309,7 @@ const applyClientBrandingToSystem = (branding) => {
     }
   }
 
-  if (tray && !tray.isDestroyed()) {
-    try {
-      tray.setToolTip(effective.effectiveName);
-    } catch {
-      // ignore
-    }
-  }
-
-  const iconImage = effective.effectiveIcon ? imageFromDataUrlSafe(effective.effectiveIcon) : null;
-  const targetIcon = iconImage || defaultAppIconImage();
+  const targetIcon = resolveAppIconImage(effective.effectiveIcon);
 
   if (targetIcon && !targetIcon.isEmpty()) {
     if (process.platform === "darwin" && app.dock) {
@@ -262,6 +324,30 @@ const applyClientBrandingToSystem = (branding) => {
       } catch {
         // ignore
       }
+    }
+  }
+
+  if (tray && !tray.isDestroyed()) {
+    try {
+      tray.setToolTip(effective.effectiveName);
+      const customTray = resolveTrayIconImage(effective.effectiveIcon);
+      if (customTray && !customTray.isEmpty()) {
+        tray.setImage(customTray);
+      } else {
+        const defaultPath = trayIconPath({
+          isPackaged: app.isPackaged,
+          platform: process.platform,
+          projectRoot,
+          resourcesPath: process.resourcesPath,
+        });
+        if (existsSync(defaultPath)) {
+          const img = nativeImage.createFromPath(defaultPath);
+          if (process.platform === "darwin") img.setTemplateImage(true);
+          tray.setImage(img);
+        }
+      }
+    } catch {
+      // ignore
     }
   }
 };
@@ -1098,17 +1184,22 @@ const buildApplicationMenu = () => {
 
 const createTray = () => {
   const copy = desktopMenuCopy(app.getLocale());
-  const iconPath = trayIconPath({
-    isPackaged: app.isPackaged,
-    platform: process.platform,
-    projectRoot,
-    resourcesPath: process.resourcesPath,
-  });
-  const icon = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
-  if (process.platform === "darwin") icon.setTemplateImage(true);
-  tray = new Tray(icon);
   const currentBranding = getClientBrandingState();
   const effective = resolveEffectiveBranding(currentBranding);
+
+  let icon = resolveTrayIconImage(effective.effectiveIcon);
+  if (!icon || icon.isEmpty()) {
+    const iconPath = trayIconPath({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      projectRoot,
+      resourcesPath: process.resourcesPath,
+    });
+    icon = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+    if (process.platform === "darwin") icon.setTemplateImage(true);
+  }
+
+  tray = new Tray(icon);
   tray.setToolTip(effective.effectiveName);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: copy.show, click: () => showWindow(mainWindow) },
@@ -1896,8 +1987,10 @@ const createWindow = async () => {
   const state = await readWindowState();
   const currentBranding = getClientBrandingState();
   const effective = resolveEffectiveBranding(currentBranding);
-  const customIcon = effective.effectiveIcon ? imageFromDataUrlSafe(effective.effectiveIcon) : null;
-  const initialIcon = customIcon || defaultAppIconImage();
+  const initialIcon = resolveAppIconImage(effective.effectiveIcon);
+
+  const { iconPath } = materializeBrandingFiles(app.getPath("userData"), effective.effectiveIcon);
+  updateLinuxDesktopBranding(effective.effectiveName, iconPath);
 
   mainWindow = new BrowserWindow({
     title: effective.effectiveName,
@@ -2019,6 +2112,13 @@ const confirmMacInstallation = async () => {
 };
 
 const startApplication = async () => {
+  if (process.platform === "win32") {
+    try {
+      app.setAppUserModelId("org.edgeever.desktop");
+    } catch {
+      // ignore
+    }
+  }
   applyMacDockIcon();
   if (app.isPackaged && isMountedInstallerPath(app.getAppPath())) {
     const isChinese = app.getLocale().toLowerCase().startsWith("zh");
