@@ -154,6 +154,7 @@ interface EdgeEverDesktopBridge {
   checkUpdate(): Promise<DesktopUpdateStatus>;
   downloadUpdate(): Promise<unknown>;
   installUpdate(): Promise<DesktopUpdateInstallResult>;
+  relaunch?(): Promise<{ scheduled: boolean }>;
   onUpdateStatus(callback: (status: DesktopUpdateStatus) => void): () => void;
   onUpdateInstallPrepare?(
     callback: () => Promise<DesktopUpdateInstallPreparation>,

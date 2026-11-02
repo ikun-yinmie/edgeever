@@ -1068,6 +1068,7 @@ const buildApplicationMenu = () => {
         { label: copy.newMemo, accelerator: "CmdOrCtrl+N", click: () => sendDesktopCommand("new-memo") },
         { label: copy.newNotebook, accelerator: "CmdOrCtrl+Shift+N", click: () => sendDesktopCommand("new-notebook") },
         { type: "separator" },
+        { label: copy.relaunch, accelerator: "CmdOrCtrl+Shift+R", click: () => void relaunchDesktopApp() },
         { label: copy.close, role: "close" },
       ],
     },
@@ -1112,6 +1113,7 @@ const createTray = () => {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: copy.show, click: () => showWindow(mainWindow) },
     { label: copy.screenshotToNote, click: () => void captureScreenshotToNote() },
+    { label: copy.relaunch, click: () => void relaunchDesktopApp() },
     ...(updateState === "downloaded" ? [{ label: copy.restartToUpdate, click: () => installDownloadedUpdate() }] : []),
     { type: "separator" },
     { label: copy.quit, click: () => { isQuitting = true; app.quit(); } },
@@ -1420,6 +1422,17 @@ const installDownloadedUpdate = async () => {
   } finally {
     updateInstallInProgress = false;
   }
+};
+
+const relaunchDesktopApp = async () => {
+  isQuitting = true;
+  try {
+    await prepareRendererForUpdateInstall();
+  } catch {
+    // Non-critical sync preparation failure should not block restart
+  }
+  app.relaunch();
+  app.exit(0);
 };
 
 const trackDesktopUpdateDownload = (downloadPromise, reason) => {
@@ -2517,6 +2530,10 @@ const startApplication = async () => {
   });
   ipcMain.handle("desktop:download-update", () => downloadTrustedDesktopUpdate("manual-download"));
   ipcMain.handle("desktop:install-update", () => installDownloadedUpdate());
+  ipcMain.handle("desktop:relaunch", async () => {
+    await relaunchDesktopApp();
+    return { scheduled: true };
+  });
   ipcMain.handle("desktop:stage-resource-begin", async (_event, input) => {
     const { memoId, name, type, size } = normalizeStagedResourceMetadataInput(input);
     const id = `stage_${Date.now()}_${Math.random().toString(36).slice(2)}`;

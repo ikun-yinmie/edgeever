@@ -193,20 +193,34 @@ const DesktopUpdateCardContent = () => {
                 v{status?.currentVersion ?? __EDGEEVER_APP_VERSION__}
               </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              disabled={busy || !autoUpdateSupported || (!downloaded && status?.state === "available") || (statusQuery.isError && !status)}
-              onClick={() => (downloaded ? installUpdate.mutate() : checkUpdate.mutate())}
-            >
-              {installUpdate.isPending || checkUpdate.isPending
-                ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                : downloaded
-                  ? <RotateCcw className="h-3.5 w-3.5" />
-                  : <RefreshCw className="h-3.5 w-3.5" />}
-              {actionLabel}
-            </Button>
+            <div className="flex items-center gap-2">
+              {!downloaded && bridge?.relaunch ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void bridge.relaunch?.()}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t("desktopUpdate.relaunchApp")}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                disabled={busy || !autoUpdateSupported || (!downloaded && status?.state === "available") || (statusQuery.isError && !status)}
+                onClick={() => (downloaded ? installUpdate.mutate() : checkUpdate.mutate())}
+              >
+                {installUpdate.isPending || checkUpdate.isPending
+                  ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  : downloaded
+                    ? <RotateCcw className="h-3.5 w-3.5" />
+                    : <RefreshCw className="h-3.5 w-3.5" />}
+                {actionLabel}
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-slate-500">
             {t("desktopUpdate.latestVersion")}

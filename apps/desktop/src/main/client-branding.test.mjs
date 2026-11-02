@@ -122,4 +122,17 @@ describe("desktop client-branding", () => {
     expect(mainSource).toContain('ipcMain.handle("desktop:sync-server-branding"');
     expect(mainSource).toContain("applyClientBrandingToSystem");
   });
+
+  it("exposes client relaunch capability to restart the desktop app", () => {
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const currentDirectory = import.meta.dir;
+    const preloadSource = readFileSync(join(currentDirectory, "../preload/index.cjs"), "utf8");
+    const mainSource = readFileSync(join(currentDirectory, "index.mjs"), "utf8");
+
+    expect(preloadSource).toContain('relaunch: () => ipcRenderer.invoke("desktop:relaunch")');
+    expect(mainSource).toContain('ipcMain.handle("desktop:relaunch"');
+    expect(mainSource).toContain("relaunchDesktopApp");
+    expect(mainSource).toContain("copy.relaunch");
+  });
 });

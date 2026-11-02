@@ -24,6 +24,46 @@ const BRANDING_ICON_MIME_TYPES = new Set([
 const BRANDING_ICON_MAX_BYTES = 256 * 1024;
 const BRANDING_ICON_DATA_URL_MAX_LENGTH = 400_000;
 
+export const convertIconFileToPngDataUrl = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const size = Math.min(512, Math.max(img.naturalWidth || 512, img.naturalHeight || 512));
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(img, 0, 0, size, size);
+          const pngUrl = canvas.toDataURL("image/png");
+          URL.revokeObjectURL(url);
+          resolve(pngUrl);
+          return;
+        }
+      } catch {
+        // fallback to standard readAsDataURL
+      }
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(new Error("File read failed"));
+      reader.readAsDataURL(file);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(new Error("Image decode failed"));
+      reader.readAsDataURL(file);
+    };
+    img.src = url;
+  });
+};
+
 type EffectiveBrandingState = {
   customName: string | null;
   customIcon: string | null;
@@ -61,7 +101,7 @@ export const DesktopBrandingCard = () => {
     return null;
   }
 
-  const handleIconFile = (file: File) => {
+  const handleIconFile = async (file: File) => {
     if (!BRANDING_ICON_MIME_TYPES.has(file.type)) {
       setIconError(t("adminConsole.siteIconInvalidType"));
       return;
@@ -70,18 +110,17 @@ export const DesktopBrandingCard = () => {
       setIconError(t("adminConsole.siteIconTooLarge"));
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      if (!result || result.length > BRANDING_ICON_DATA_URL_MAX_LENGTH) {
+    try {
+      const pngDataUrl = await convertIconFileToPngDataUrl(file);
+      if (!pngDataUrl || pngDataUrl.length > BRANDING_ICON_DATA_URL_MAX_LENGTH) {
         setIconError(t("adminConsole.siteIconTooLarge"));
         return;
       }
       setIconError(null);
-      setDraftIcon(result);
-    };
-    reader.onerror = () => setIconError(t("adminConsole.siteIconReadFailed"));
-    reader.readAsDataURL(file);
+      setDraftIcon(pngDataUrl);
+    } catch {
+      setIconError(t("adminConsole.siteIconReadFailed"));
+    }
   };
 
   const handleSave = async () => {
@@ -224,13 +263,27 @@ export const DesktopBrandingCard = () => {
           </div>
         </section>
 
-        <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <div className="flex flex-wrap items-center gap-2">
             {savedSuccess ? (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                <CheckCircle2 className="h-4 w-4" />
-                {t("desktopBranding.saveSuccess")}
-              </span>
+              <>
+                <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {t("desktopBranding.saveSuccess")}
+                </span>
+                {bridge?.relaunch ? (
+                  <Button
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() => void bridge.relaunch?.()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {t("desktopBranding.relaunchButton")}
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </div>
           <div className="flex items-center gap-2">

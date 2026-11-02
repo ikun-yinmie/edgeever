@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
   checkUpdate: () => ipcRenderer.invoke("desktop:check-update"),
   downloadUpdate: () => ipcRenderer.invoke("desktop:download-update"),
   installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
+  relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
   onUpdateStatus: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("desktop:update-status-changed", listener);

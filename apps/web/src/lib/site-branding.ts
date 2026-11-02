@@ -45,6 +45,46 @@ const applyDocumentTitle = (previousName: string, nextName: string) => {
   }
 };
 
+const convertBlobToPngDataUrl = async (blob: Blob): Promise<string> => {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const size = Math.min(512, Math.max(img.naturalWidth || 512, img.naturalHeight || 512));
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(img, 0, 0, size, size);
+          const pngUrl = canvas.toDataURL("image/png");
+          URL.revokeObjectURL(url);
+          resolve(pngUrl);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    };
+    img.src = url;
+  });
+};
+
 const syncBrandingToDesktop = async (site: SiteBranding) => {
   const desktop = window.edgeeverDesktop;
   if (!desktop?.syncServerBranding) return;
@@ -56,12 +96,7 @@ const syncBrandingToDesktop = async (site: SiteBranding) => {
       const res = await fetch(iconUrl);
       if (res.ok) {
         const blob = await res.blob();
-        iconDataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
-          reader.onerror = () => resolve("");
-          reader.readAsDataURL(blob);
-        });
+        iconDataUrl = await convertBlobToPngDataUrl(blob);
       }
     } catch {
       // ignore

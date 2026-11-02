@@ -9,6 +9,7 @@ describe("desktop native menu localization", () => {
     expect(copy.view).toBe("视图");
     expect(copy.window).toBe("窗口");
     expect(copy.restartToUpdate).toBe("重启以更新");
+    expect(copy.relaunch).toBe("重启 EdgeEver");
     expect(copy.screenshotToNote).toBe("截取屏幕到笔记");
   });
 
@@ -18,6 +19,7 @@ describe("desktop native menu localization", () => {
 
   test("falls back to English for other or missing locales", () => {
     expect(desktopMenuCopy("en-US").file).toBe("File");
+    expect(desktopMenuCopy("en-US").relaunch).toBe("Restart EdgeEver");
     expect(desktopMenuCopy(undefined).file).toBe("File");
   });
 });
