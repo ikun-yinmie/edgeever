@@ -1,14 +1,14 @@
 {
-  "version": "1.103.8",
+  "version": "1.103.9",
   "changes": {
     "en-US": [
-      "Added desktop app relaunch capability in tray and application menus, fixed custom branding icon format parsing, and improved version status display."
+      "Enhanced client branding and multi-resolution taskbar icons for Windows and Linux, added format painter to editor toolbar, isolated list formatting on task item line break, and supported rich and plain text copy."
     ],
     "zh-CN": [
-      "新增客户端一键重启功能（托盘与应用菜单），修复客户端品牌与图标格式解析，并在已是最新版本时明确展示最新版本号。"
+      "增强客户端多尺寸任务栏与托盘图标（适配 Windows 与 Linux），编辑器工具栏新增格式刷，待办换行样式隔离（不继承背景色且兼容连续回车），并支持富文本与纯文本复制。"
     ],
     "ja": [
-      "トレイおよびアプリケーションメニューにクライアント再起動機能を追加し、カスタムブランドアイコンのフォーマット解析を修正し、最新バージョン表示を改善しました。"
+      "WindowsおよびLinux用のマルチ解像度タスクバーとトレイアイコンの強化、エディタツールバーへの書式ブラシの追加、ToDo改行時の書式継承の分離、リッチテキストおよびプレーンテキストのコピーをサポートしました。"
     ]
   }
 }
