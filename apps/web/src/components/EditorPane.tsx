@@ -29,6 +29,9 @@ import {
   Image as ImageIcon,
   Share2,
   Copy,
+  ClipboardCopy,
+  ClipboardPaste,
+  Scissors,
   Lock,
   Eye,
   ExternalLink as ExternalLinkIcon,
@@ -213,6 +216,7 @@ import {
   saveAndSyncEditor,
   shouldOpenAiFromSpace,
   sinkListItemPreservingAttrs,
+  splitTaskItemWithoutInheritedMarks,
   toggleTaskItemCollapseAtSelection,
   wrapIndentedParagraphInList,
 } from "@/lib/editor-shortcuts";
@@ -267,6 +271,11 @@ import { ImageViewer } from "./editor/ImageViewer";
 import { PdfAttachment } from "./editor/PdfAttachment";
 import { FileAttachment } from "./editor/FileAttachment";
 import { CollapsibleTaskItem } from "./editor/CollapsibleTaskItem";
+import {
+  copySelectionAsPlainText,
+  copySelectionWithFormat,
+  pasteClipboardAsPlainText,
+} from "@/lib/format-painter";
 import { createInlineFieldExtension } from "./editor/InlineField";
 import { createPluginEmbedExtension } from "./editor/PluginEmbed";
 import { useEditorDocumentActions } from "./editor/useEditorDocumentActions";
@@ -1369,6 +1378,10 @@ const RichEditorPane = ({
 
         if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
           if (handleConsecutiveListEnter(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+          if (splitTaskItemWithoutInheritedMarks(view.state, view.dispatch)) {
             event.preventDefault();
             return true;
           }
@@ -4983,6 +4996,55 @@ const RichEditorPane = ({
                     className="max-h-[min(26rem,70vh)] w-64 overflow-y-auto"
                     ref={(el) => alignContextMenuToPoint(el, editorContextMenuPointRef.current)}
                   >
+                    {!effectiveReadOnly && (
+                      <ContextMenuItem
+                        disabled={!editor || editor.state.selection.empty}
+                        onSelect={() => {
+                          if (!editor) return;
+                          void copySelectionWithFormat(editor);
+                          editor.commands.deleteSelection();
+                        }}
+                      >
+                        <Scissors className="mr-2 h-4 w-4" />
+                        {t("editorToolbar.cut")}
+                      </ContextMenuItem>
+                    )}
+                    <ContextMenuItem
+                      disabled={!editor || editor.state.selection.empty}
+                      onSelect={() => editor && void copySelectionWithFormat(editor)}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      {t("editorToolbar.copy")}
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      disabled={!editor || editor.state.selection.empty}
+                      onSelect={() => editor && void copySelectionAsPlainText(editor)}
+                    >
+                      <ClipboardCopy className="mr-2 h-4 w-4" />
+                      {t("editorToolbar.copyPlainText")}
+                    </ContextMenuItem>
+                    {!effectiveReadOnly && (
+                      <>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          onSelect={() => {
+                            if (!editor) return;
+                            editor.commands.focus();
+                            document.execCommand("paste");
+                          }}
+                        >
+                          <ClipboardPaste className="mr-2 h-4 w-4" />
+                          {t("editorToolbar.paste")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => editor && void pasteClipboardAsPlainText(editor)}
+                        >
+                          <ClipboardPaste className="mr-2 h-4 w-4" />
+                          {t("editorToolbar.pastePlainText")}
+                        </ContextMenuItem>
+                      </>
+                    )}
+                    <ContextMenuSeparator />
                     <EditorParagraphFormatItems editor={editor} readOnly={effectiveReadOnly} context />
                     <ContextMenuSeparator />
                     <ContextMenuItem onSelect={() => editor?.chain().focus().undo().run()}>{t("editorToolbar.undo")}</ContextMenuItem>

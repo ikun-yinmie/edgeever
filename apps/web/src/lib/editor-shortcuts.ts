@@ -212,6 +212,7 @@ export {
   handleConsecutiveListEnter,
   insertListItemChildParagraph,
   sinkListItemPreservingAttrs,
+  splitTaskItemWithoutInheritedMarks,
   toggleTaskItemCollapseAtSelection,
 } from "@edgeever/shared";
 

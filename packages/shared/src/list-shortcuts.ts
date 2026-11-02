@@ -1,7 +1,7 @@
 import { TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { wrapInList } from "@tiptap/pm/schema-list";
 import { Fragment, Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { ReplaceAroundStep } from "@tiptap/pm/transform";
+import { ReplaceAroundStep, canSplit } from "@tiptap/pm/transform";
 
 /**
  * Consecutive Enter behavior for list items (both taskItem and listItem):
@@ -223,5 +223,72 @@ export const toggleTaskItemCollapseAtSelection = (
       collapsed,
     }),
   );
+  return true;
+};
+
+/**
+ * Splits the current taskItem into a new sibling taskItem while ensuring that:
+ * 1. The new taskItem does NOT inherit inline marks (such as textStyle backgroundColor, color, fontSize, bold, italic).
+ * 2. tr.setStoredMarks([]) is cleared so that any typing in the new task item begins clean without formatting.
+ * 3. Attributes such as checked: false and collapsed: false are reset on the new taskItem.
+ */
+export const splitTaskItemWithoutInheritedMarks = (
+  state: EditorState,
+  dispatch: ((transaction: Transaction) => void) | undefined,
+): boolean => {
+  const { selection } = state;
+  let taskItemDepth = -1;
+  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+    if (selection.$from.node(depth).type.name === "taskItem") {
+      taskItemDepth = depth;
+      break;
+    }
+  }
+  if (taskItemDepth < 1) return false;
+
+  // If the cursor is inside an empty textblock, let consecutive list enter handle it
+  if (
+    selection.empty
+    && selection.$from.parent.isTextblock
+    && selection.$from.parent.content.size === 0
+  ) {
+    return false;
+  }
+
+  const taskItemType = selection.$from.node(taskItemDepth).type;
+  const paragraphType = state.schema.nodes.paragraph;
+  const typesAfter = [
+    { type: taskItemType, attrs: { checked: false, collapsed: false } },
+    { type: paragraphType, attrs: {} },
+  ];
+
+  if (!canSplit(state.tr.doc, selection.from, 2, typesAfter)) {
+    return false;
+  }
+
+  if (!dispatch) return true;
+
+  const tr = state.tr;
+  if (!selection.empty) {
+    tr.delete(selection.from, selection.to);
+  }
+
+  tr.split(tr.selection.from, 2, typesAfter);
+
+  // Clear stored marks so newly typed characters in the new task item do not inherit previous marks (like background color)
+  tr.setStoredMarks([]);
+
+  // If text was split mid-string, clean any marks that were carried over to the new item
+  const $newPos = tr.selection.$from;
+  const newParent = $newPos.parent;
+  if (newParent.isTextblock && newParent.content.size > 0 && state.schema.marks) {
+    const parentStart = $newPos.start();
+    const parentEnd = $newPos.end();
+    for (const markType of Object.values(state.schema.marks)) {
+      tr.removeMark(parentStart, parentEnd, markType);
+    }
+  }
+
+  dispatch(tr.scrollIntoView());
   return true;
 };

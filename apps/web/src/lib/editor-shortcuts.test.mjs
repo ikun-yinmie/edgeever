@@ -14,6 +14,7 @@ import {
   saveAndSyncEditor,
   shouldOpenAiFromSpace,
   sinkListItemPreservingAttrs,
+  splitTaskItemWithoutInheritedMarks,
   toggleTaskItemCollapseAtSelection,
   wrapIndentedParagraphInList,
 } from "./editor-shortcuts.ts";
@@ -373,6 +374,60 @@ describe("editor shortcut actions", () => {
     const toggledAgain = toggleTaskItemCollapseAtSelection(editor.state, editor.view.dispatch);
     expect(toggledAgain).toBe(true);
     expect(editor.getJSON().content[0].content[0].attrs.collapsed).toBe(false);
+    editor.destroy();
+  });
+
+  test("splitTaskItemWithoutInheritedMarks does not inherit background color or marks to the next task item", () => {
+    const { EdgeEverTextStyle } = require("@edgeever/shared");
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true }), EdgeEverTextStyle],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          content: [{
+            type: "taskItem",
+            attrs: { checked: true, collapsed: false },
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "text",
+                marks: [
+                  { type: "bold" },
+                  { type: "textStyle", attrs: { backgroundColor: "#fef08a", color: "#16a34a" } },
+                ],
+                text: "Highlighted task",
+              }],
+            }],
+          }],
+        }],
+      },
+    });
+
+    // Place caret at the end of the first task item (length of "Highlighted task" is 16)
+    editor.commands.setTextSelection(19);
+    const split = splitTaskItemWithoutInheritedMarks(editor.state, editor.view.dispatch);
+    expect(split).toBe(true);
+
+    const doc = editor.getJSON();
+    expect(doc.content[0].content).toHaveLength(2);
+    const newTaskItem = doc.content[0].content[1];
+    expect(newTaskItem.type).toBe("taskItem");
+    // Should NOT inherit checked: true
+    expect(newTaskItem.attrs.checked).toBe(false);
+
+    // Stored marks should be empty so subsequent typing will not have background color or bold
+    expect(editor.state.storedMarks ?? []).toHaveLength(0);
+
+    // Type new text into the new task item using transaction insertText
+    editor.view.dispatch(editor.state.tr.insertText("Clean task item"));
+    const updatedDoc = editor.getJSON();
+    const updatedNewTaskItem = updatedDoc.content[0].content[1];
+    const textNode = updatedNewTaskItem.content[0].content[0];
+    expect(textNode.text).toBe("Clean task item");
+    // Crucial: no bold, no textStyle/backgroundColor
+    expect(textNode.marks ?? []).toHaveLength(0);
+
     editor.destroy();
   });
 });

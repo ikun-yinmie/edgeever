@@ -1,5 +1,5 @@
 import { getRenderedAttributes } from "@tiptap/core";
-import { EdgeEverTaskItem, insertListItemChildParagraph, toggleTaskItemCollapseAtSelection } from "@edgeever/shared";
+import { EdgeEverTaskItem, insertListItemChildParagraph, splitTaskItemWithoutInheritedMarks, toggleTaskItemCollapseAtSelection } from "@edgeever/shared";
 import i18n from "@/i18n";
 import { hasTaskItemSubContent, isTaskItemCollapsed } from "./task-item-collapse";
 
@@ -46,6 +46,9 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
+      Enter: () => this.editor.commands.command(({ state, dispatch }) => {
+        return splitTaskItemWithoutInheritedMarks(state, dispatch);
+      }),
       "Shift-Enter": () => this.editor.commands.command(({ state, dispatch }) => {
         return insertListItemChildParagraph(state, dispatch);
       }),

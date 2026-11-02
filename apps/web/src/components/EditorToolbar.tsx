@@ -24,12 +24,29 @@ import {
   ChevronUp,
   Baseline,
   Highlighter,
+  Paintbrush,
+  Copy,
+  ClipboardCopy,
+  ClipboardPaste,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MEMO_EDITOR_TOOLBAR_COLLAPSED_CLASS_NAME } from "@/components/MemoEditorChromeDensity";
 import { MemoEditorToolbarDivider, MemoEditorToolbarRow } from "@/components/MemoEditorToolbarChrome";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useFormatPainter,
+  copySelectionAsPlainText,
+  copySelectionWithFormat,
+  pasteClipboardAsPlainText,
+} from "@/lib/format-painter";
 import {
   EDITOR_HEADING_LEVELS,
   formatShortcutBinding,
@@ -65,12 +82,14 @@ const EditorToolbarButton = ({
   children,
   disabled = false,
   onClick,
+  onDoubleClick,
   title,
 }: {
   active?: boolean;
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
   title: string;
 }) => (
   <Tooltip>
@@ -88,6 +107,7 @@ const EditorToolbarButton = ({
         disabled={disabled}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onClick}
+        onDoubleClick={onDoubleClick}
       >
         {children}
       </button>
@@ -223,6 +243,7 @@ export const EditorToolbar = ({
   const markdownModeShortcutLabel = markdownModeShortcut ? formatShortcutBinding(markdownModeShortcut) : null;
   const editorReady = isToolbarEditorReady(editor);
   const disabled = readOnly || !editorReady;
+  const painter = useFormatPainter(editor);
   const blockValue = getActiveBlockValue(editor);
   const isActive = (name: string) => {
     if (!editorReady) {
@@ -505,6 +526,48 @@ export const EditorToolbar = ({
           >
             <Redo2 className="h-4 w-4" />
           </EditorToolbarButton>
+          <EditorToolbarButton
+            title={painter.isActive ? t("editorToolbar.formatPainterActive") : t("editorToolbar.formatPainter")}
+            active={painter.isActive}
+            disabled={disabled}
+            onClick={() => painter.togglePainter(false)}
+            onDoubleClick={() => painter.togglePainter(true)}
+          >
+            <Paintbrush className={cn("h-4 w-4", painter.isActive && "text-emerald-600")} />
+          </EditorToolbarButton>
+
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild disabled={disabled}>
+                  <button
+                    type="button"
+                    className="flex h-8 items-center gap-0.5 rounded-md border border-transparent px-1.5 text-xs text-slate-700 transition hover:border-slate-200 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40"
+                    aria-label={t("editorToolbar.copy")}
+                  >
+                    <Copy className="h-4 w-4" />
+                    <ChevronDown className="h-3 w-3 opacity-60" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t("editorToolbar.copy")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start" className="min-w-36">
+              <DropdownMenuItem onSelect={() => editor && void copySelectionWithFormat(editor)}>
+                <Copy className="mr-2 h-4 w-4" />
+                {t("editorToolbar.copy")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => editor && void copySelectionAsPlainText(editor)}>
+                <ClipboardCopy className="mr-2 h-4 w-4" />
+                {t("editorToolbar.copyPlainText")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => editor && void pasteClipboardAsPlainText(editor)}>
+                <ClipboardPaste className="mr-2 h-4 w-4" />
+                {t("editorToolbar.pastePlainText")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <MemoEditorToolbarDivider className="hidden sm:block" />
           <EditorToolbarButton

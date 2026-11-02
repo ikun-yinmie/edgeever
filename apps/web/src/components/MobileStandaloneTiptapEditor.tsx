@@ -50,6 +50,7 @@ import {
   insertListItemChildParagraph,
   preserveEmptyListIndentOnBackspace,
   sinkListItemPreservingAttrs,
+  splitTaskItemWithoutInheritedMarks,
   toggleTaskItemCollapseAtSelection,
   wrapIndentedParagraphInList,
 } from "@/lib/editor-shortcuts";
@@ -250,6 +251,10 @@ export const MobileStandaloneTiptapEditor = ({
         }
         if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
           if (handleConsecutiveListEnter(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+          if (splitTaskItemWithoutInheritedMarks(view.state, view.dispatch)) {
             event.preventDefault();
             return true;
           }

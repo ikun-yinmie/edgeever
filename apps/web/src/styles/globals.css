@@ -3328,3 +3328,9 @@ textarea {
   border-color: rgb(var(--brand-green-rgb) / 0.28);
   color: var(--brand-green-text);
 }
+
+.edgeever-format-painter-active,
+.edgeever-format-painter-active * {
+  cursor: copy !important;
+}
+
