@@ -25,8 +25,10 @@ import {
   Archive,
   Trash2,
   KeyRound,
+  Check,
   CheckSquare,
   ArrowDownWideNarrow,
+  Filter,
   LayoutList,
   List,
   FileText as FileIcon,
@@ -1672,15 +1674,6 @@ export const MemoListPane = ({
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
-              {canRevealLocalStorage() && (
-                <DropdownMenuItem
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={handleRevealLocalStorage}
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  {t("common.showInFileManager")}
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                 onClick={() => {
@@ -1692,6 +1685,119 @@ export const MemoListPane = ({
                 <CheckSquare className="h-4 w-4" />
                 {t("memoList.selectMemo")}
               </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                >
+                  <Filter className="h-4 w-4" />
+                  <span className="min-w-0 flex-1 truncate">{t("memoList.filter")}</span>
+                  <span className="text-xs text-slate-400 font-normal">{activeFilterLabel}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                  {filterOptions.map((option: any) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      className={cn(
+                        "flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm cursor-pointer outline-none",
+                        filterMode === option.value ? "bg-slate-100 font-medium text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                      )}
+                      onClick={() => {
+                        setMemoContextMenu(null);
+                        handleFilterModeChange(option.value);
+                      }}
+                    >
+                      <span className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                        {getMobileFilterIcon(option.value)}
+                        <span className="truncate">{option.label}</span>
+                      </span>
+                      {filterMode === option.value && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                >
+                  <ArrowDownWideNarrow className="h-4 w-4" />
+                  <span className="min-w-0 flex-1 truncate">{t("memoList.sort")}</span>
+                  <span className="text-xs text-slate-400 font-normal">{activeSortLabel}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                  {memoSortOptions.map((option: any) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      className={cn(
+                        "flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm cursor-pointer outline-none",
+                        sortMode === option.value ? "bg-slate-100 font-medium text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                      )}
+                      onClick={() => {
+                        setMemoContextMenu(null);
+                        onSortModeChange(option.value);
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {sortMode === option.value && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                >
+                  {listDensity === "compact" ? <List className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
+                  <span className="min-w-0 flex-1 truncate">{t("memoList.listDensity")}</span>
+                  <span className="text-xs text-slate-400 font-normal">
+                    {listDensity === "compact" ? t("memoList.compactList") : t("memoList.previewList")}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                  <DropdownMenuItem
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm cursor-pointer outline-none",
+                      listDensity === "preview" ? "bg-slate-100 font-medium text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                    onClick={() => {
+                      setMemoContextMenu(null);
+                      handleListDensityChange("preview");
+                    }}
+                  >
+                    <span className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                      <LayoutList className="h-4 w-4" />
+                      <span className="truncate">{t("memoList.previewList")}</span>
+                    </span>
+                    {listDensity === "preview" && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm cursor-pointer outline-none",
+                      listDensity === "compact" ? "bg-slate-100 font-medium text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                    onClick={() => {
+                      setMemoContextMenu(null);
+                      handleListDensityChange("compact");
+                    }}
+                  >
+                    <span className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                      <List className="h-4 w-4" />
+                      <span className="truncate">{t("memoList.compactList")}</span>
+                    </span>
+                    {listDensity === "compact" && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
+              {canRevealLocalStorage() && (
+                <DropdownMenuItem
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onClick={handleRevealLocalStorage}
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  {t("common.showInFileManager")}
+                </DropdownMenuItem>
+              )}
               {view !== "trash" && (
                 <DropdownMenuItem
                   className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"

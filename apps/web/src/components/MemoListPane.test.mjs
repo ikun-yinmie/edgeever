@@ -41,6 +41,29 @@ describe("memo context menu", () => {
     expect(source).toContain('t("common.showInFileManager")');
   });
 
+  test("provides filter, sort, and density submenus between select memo and show in file manager", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('t("memoList.selectMemo")');
+    expect(source).toContain('t("memoList.filter")');
+    expect(source).toContain('t("memoList.sort")');
+    expect(source).toContain('t("memoList.listDensity")');
+    expect(source).toContain('t("memoList.compactList")');
+    expect(source).toContain('t("memoList.previewList")');
+
+    const selectMemoIndex = source.indexOf('t("memoList.selectMemo")');
+    const filterIndex = source.indexOf('t("memoList.filter")', selectMemoIndex);
+    const sortIndex = source.indexOf('t("memoList.sort")', selectMemoIndex);
+    const densityIndex = source.indexOf('t("memoList.listDensity")', selectMemoIndex);
+    const showInFileManagerIndex = source.indexOf('t("common.showInFileManager")', selectMemoIndex);
+
+    expect(selectMemoIndex).toBeGreaterThan(-1);
+    expect(filterIndex).toBeGreaterThan(selectMemoIndex);
+    expect(sortIndex).toBeGreaterThan(filterIndex);
+    expect(densityIndex).toBeGreaterThan(sortIndex);
+    expect(showInFileManagerIndex).toBeGreaterThan(densityIndex);
+  });
+
   test("opens the card menu without a modal scroll lock so the list does not hitch", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
 
