@@ -13,6 +13,15 @@ describe("PublicSharePage header", () => {
     expect(source).not.toContain("ShieldCheck");
     expect(source).not.toContain("EdgeEver ·");
   });
+
+  test("formats document title as note title with site branding name", () => {
+    expect(source).toContain("useSiteBranding()");
+    expect(source).toContain("getSiteDisplayName(branding)");
+    expect(source).toContain("refreshSiteBranding()");
+    expect(source).not.toContain("· EdgeEver");
+    expect(source).toContain("`${memoTitle}（${siteName}）`");
+    expect(source).toContain("`${memoTitle} (${siteName})`");
+  });
 });
 
 describe("PublicSharePage image preview", () => {

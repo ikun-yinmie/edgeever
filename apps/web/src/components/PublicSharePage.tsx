@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EdgeEverCodeBlock, codeBlockLowlight } from "@/lib/code-block";
 import { withEnvironmentTitlePrefix } from "@/lib/environment-title";
+import { getSiteDisplayName, refreshSiteBranding, useSiteBranding } from "@/lib/site-branding";
 import { resolvePublicShareBody } from "@/lib/public-share-body";
 import {
   parseImageWidth,
@@ -240,6 +241,13 @@ const PublicSharePasswordForm = ({
 export const PublicSharePage = () => {
   const { t, i18n } = useTranslation();
   const { token = "" } = useParams();
+  const branding = useSiteBranding();
+  const siteName = getSiteDisplayName(branding);
+
+  useEffect(() => {
+    void refreshSiteBranding();
+  }, []);
+
   const [shareEditor, setShareEditor] = useState<Editor | null>(null);
   const [articleScroller, setArticleScroller] = useState<HTMLElement | null>(null);
   const [outlineCollapsed, setOutlineCollapsed] = useState(false);
@@ -259,12 +267,19 @@ export const PublicSharePage = () => {
     robots.content = "noindex,nofollow,noarchive";
     document.head.appendChild(robots);
     if (share) {
+      const memoTitle = share.title?.trim() || t("common.untitledMemo");
+      const isZh = (i18n.resolvedLanguage || i18n.language || "").startsWith("zh");
+      const titleWithSite = isZh ? `${memoTitle}（${siteName}）` : `${memoTitle} (${siteName})`;
       document.title = withEnvironmentTitlePrefix(
-        `${share.title?.trim() || t("common.untitledMemo")} · EdgeEver`,
+        titleWithSite,
         { development: import.meta.env.DEV, profile: __EDGEEVER_DEVELOPMENT_PROFILE__ },
       );
     } else if (passwordRequired) {
-      document.title = withEnvironmentTitlePrefix(t("sharing.passwordRequiredTitle"), {
+      const isZh = (i18n.resolvedLanguage || i18n.language || "").startsWith("zh");
+      const titleWithSite = isZh
+        ? `${t("sharing.passwordRequiredTitle")}（${siteName}）`
+        : `${t("sharing.passwordRequiredTitle")} (${siteName})`;
+      document.title = withEnvironmentTitlePrefix(titleWithSite, {
         development: import.meta.env.DEV,
         profile: __EDGEEVER_DEVELOPMENT_PROFILE__,
       });
@@ -273,7 +288,7 @@ export const PublicSharePage = () => {
       document.title = previousTitle;
       robots.remove();
     };
-  }, [passwordRequired, share, t]);
+  }, [i18n.language, i18n.resolvedLanguage, passwordRequired, share, siteName, t]);
 
   if (shareQuery.isLoading) {
     return (
