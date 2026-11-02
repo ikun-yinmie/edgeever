@@ -429,6 +429,17 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
   const clientAheadHint = t(
     `systemInfo.clientAheadOfInstanceByPlatform.${resolveDeploymentPlatform(healthQuery.data?.health?.runtime)}`,
   );
+  const desktopCurrentVersion = clientRuntimeQuery.data?.appVersion
+    ?? desktopUpdateStatusQuery.data?.currentVersion
+    ?? __EDGEEVER_APP_VERSION__;
+  const desktopCurrentVersionTag = desktopCurrentVersion.startsWith("v") ? desktopCurrentVersion : `v${desktopCurrentVersion}`;
+  const desktopLatestVersion = desktopUpdateStatusQuery.data?.latestVersion
+    ?? desktopUpdateStatusQuery.data?.version
+    ?? (desktopUpdateChecked ? desktopCurrentVersion : null);
+  const desktopLatestVersionTag = desktopLatestVersion
+    ? (desktopLatestVersion.startsWith("v") ? desktopLatestVersion : `v${desktopLatestVersion}`)
+    : desktopCurrentVersionTag;
+
   const desktopUpdateState = desktopUpdateStatusQuery.data?.state ?? "idle";
   const desktopUpdateError = desktopUpdateStatusQuery.data?.error ?? null;
   const desktopAutoUpdateSupported = clientRuntimeQuery.data?.autoUpdateSupported !== false;
@@ -445,7 +456,9 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
           : desktopUpdateState === "downloaded"
             ? t("systemInfo.desktopUpdateReady")
             : desktopUpdateChecked
-              ? t("systemInfo.desktopUpdateCurrent")
+              ? (desktopLatestVersionTag
+                ? t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })
+                : t("systemInfo.desktopUpdateCurrent"))
               : null;
 
   const handleDesktopUpdate = () => {

@@ -142,4 +142,13 @@ describe("desktop update flow", () => {
     expect(systemInfoSource).toContain("clientAheadOfInstanceByPlatform");
     expect(systemInfoSource).toContain("isClientAheadOfInstance");
   });
+
+  test("displays the latest checked version when client is already up to date", () => {
+    expect(mainSource).toContain("latestVersion: latestCheckedVersion");
+    expect(updateCardSource).toContain("latestResolvedVersion = status?.latestVersion");
+    expect(updateCardSource).toContain("latestVersionTag ?? t(\"desktopUpdate.notChecked\")");
+    expect(updateCardSource).toContain('t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })');
+    expect(systemInfoSource).toContain("desktopLatestVersionTag");
+    expect(systemInfoSource).toContain('t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })');
+  });
 });

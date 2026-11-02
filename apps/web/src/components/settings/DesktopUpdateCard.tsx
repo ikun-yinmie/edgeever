@@ -137,6 +137,18 @@ const DesktopUpdateCardContent = () => {
       ? `${proxy.protocol.toUpperCase()} · ${proxy.host}:${proxy.port}`
       : t("desktopUpdate.proxyIncomplete");
 
+  const currentVersionTag = status?.currentVersion
+    ? (status.currentVersion.startsWith("v") ? status.currentVersion : `v${status.currentVersion}`)
+    : `v${__EDGEEVER_APP_VERSION__}`;
+  const latestResolvedVersion = status?.latestVersion
+    ?? status?.version
+    ?? ((checkedOnce || status?.state === "idle") && !checkFailed && !updateError && !checkUpdate.isPending
+      ? (status?.currentVersion ?? __EDGEEVER_APP_VERSION__)
+      : null);
+  const latestVersionTag = latestResolvedVersion
+    ? (latestResolvedVersion.startsWith("v") ? latestResolvedVersion : `v${latestResolvedVersion}`)
+    : null;
+
   const statusLabel = installUpdate.isError
     ? t("desktopUpdate.syncBlocked")
     : installUpdate.isPending
@@ -151,8 +163,8 @@ const DesktopUpdateCardContent = () => {
               ? t("desktopUpdate.failedNetwork")
               : checkFailed || updateError
                 ? t("desktopUpdate.failed")
-                : checkedOnce
-                  ? t("desktopUpdate.upToDate")
+                : checkedOnce || Boolean(status?.latestVersion)
+                  ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
                   : null;
 
   const actionLabel = installUpdate.isError
@@ -200,7 +212,7 @@ const DesktopUpdateCardContent = () => {
             {t("desktopUpdate.latestVersion")}
             {": "}
             <span className="font-mono text-slate-700">
-              {status?.version ? `v${status.version}` : t("desktopUpdate.notChecked")}
+              {latestVersionTag ?? t("desktopUpdate.notChecked")}
             </span>
           </p>
           {statusLabel ? (

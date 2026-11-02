@@ -185,6 +185,7 @@ let updateInstallInProgress = false;
 let updatePreferences = normalizeUpdatePreferences(null);
 let lastUpdateCheckAt = 0;
 let downloadedUpdateVersion = null;
+let latestCheckedVersion = null;
 let promptedUpdateVersion = null;
 let trustedWindowsUpdate = null;
 let clientBrandingState = null;
@@ -1315,6 +1316,7 @@ const refreshTrayMenu = () => {
 const desktopUpdateStatus = () => ({
   state: updateState,
   version: downloadedUpdateVersion,
+  latestVersion: latestCheckedVersion || (updateState === "downloaded" ? downloadedUpdateVersion : null) || (lastUpdateCheckAt > 0 && !lastUpdateError ? app.getVersion() : null),
   currentVersion: app.getVersion(),
   error: lastUpdateError,
 });
@@ -1516,6 +1518,12 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
   updateCheckInFlight = applyUpdaterProxy()
     .then(() => autoUpdater.checkForUpdates())
     .then(async (result) => {
+      const checkedVersion = result?.updateInfo?.version;
+      if (checkedVersion) {
+        latestCheckedVersion = checkedVersion;
+      } else if (!result?.isUpdateAvailable) {
+        latestCheckedVersion = app.getVersion();
+      }
       if (process.platform === "win32" && result?.isUpdateAvailable) {
         trustedWindowsUpdate = await fetchTrustedWindowsUpdate({
           version: result.updateInfo.version,
@@ -1574,6 +1582,7 @@ const configureAutoUpdater = () => {
   autoUpdater.on("update-available", (info) => {
     updateState = "available";
     downloadedUpdateVersion = info?.version || null;
+    latestCheckedVersion = info?.version || latestCheckedVersion;
     lastUpdateError = null;
     if (process.platform === "win32") {
       trustedWindowsUpdate = null;
@@ -1583,9 +1592,10 @@ const configureAutoUpdater = () => {
     publishDesktopUpdateStatus();
     void writeDiagnostic("update.available", { version: info?.version });
   });
-  autoUpdater.on("update-not-available", () => {
+  autoUpdater.on("update-not-available", (info) => {
     updateState = "idle";
     downloadedUpdateVersion = null;
+    latestCheckedVersion = info?.version || app.getVersion();
     lastUpdateError = null;
     trustedWindowsUpdate = null;
     windowsDownloadedUpdateVerified = false;
@@ -1611,6 +1621,7 @@ const configureAutoUpdater = () => {
       }
       updateState = "downloaded";
       downloadedUpdateVersion = info?.version || downloadedUpdateVersion;
+      latestCheckedVersion = downloadedUpdateVersion || latestCheckedVersion || app.getVersion();
       refreshTrayMenu();
       publishDesktopUpdateStatus();
       await writeDiagnostic("update.downloaded", { version: downloadedUpdateVersion });
