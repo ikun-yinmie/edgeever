@@ -430,4 +430,57 @@ describe("editor shortcut actions", () => {
 
     editor.destroy();
   });
+
+  test("consecutive enter still triggers task item sub-content even when splitTaskItemWithoutInheritedMarks is in place", () => {
+    const { EdgeEverTextStyle } = require("@edgeever/shared");
+    const editor = new Editor({
+      extensions: [StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true }), EdgeEverTextStyle],
+      content: {
+        type: "doc",
+        content: [{
+          type: "taskList",
+          content: [{
+            type: "taskItem",
+            attrs: { checked: false, collapsed: false },
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "text",
+                marks: [{ type: "textStyle", attrs: { backgroundColor: "#fef08a" } }],
+                text: "Parent Task with Background",
+              }],
+            }],
+          }],
+        }],
+      },
+    });
+
+    // 1st Enter: split creates clean empty task item without inherited background
+    editor.commands.setTextSelection(30);
+    const split = splitTaskItemWithoutInheritedMarks(editor.state, editor.view.dispatch);
+    expect(split).toBe(true);
+    expect(editor.getJSON().content[0].content).toHaveLength(2);
+    expect(editor.state.storedMarks ?? []).toHaveLength(0);
+
+    // 2nd Enter on the empty task item: consecutive enter must successfully merge into parent as child paragraph (sub-content)
+    const handled2 = handleConsecutiveListEnter(editor.state, editor.view.dispatch);
+    expect(handled2).toBe(true);
+
+    const docAfter2ndEnter = editor.getJSON();
+    expect(docAfter2ndEnter.content[0].content).toHaveLength(1);
+    const parentTask = docAfter2ndEnter.content[0].content[0];
+    expect(parentTask.content).toHaveLength(2);
+    expect(parentTask.content[0].content[0].text).toBe("Parent Task with Background");
+    expect(parentTask.content[1].type).toBe("paragraph");
+
+    // 3rd Enter: exits sub-paragraph to a new root paragraph
+    const handled3 = handleConsecutiveListEnter(editor.state, editor.view.dispatch);
+    expect(handled3).toBe(true);
+    const docAfter3rdEnter = editor.getJSON();
+    expect(docAfter3rdEnter.content).toHaveLength(2);
+    expect(docAfter3rdEnter.content[0].type).toBe("taskList");
+    expect(docAfter3rdEnter.content[1].type).toBe("paragraph");
+
+    editor.destroy();
+  });
 });
