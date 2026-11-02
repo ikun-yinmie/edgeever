@@ -1,14 +1,14 @@
 {
-  "version": "1.103.7",
+  "version": "1.103.8",
   "changes": {
     "en-US": [
-      "Enhanced AI tag suggestion parsing for reasoning models, increased output token budget to prevent response truncation, and added detailed error tooltips on hover."
+      "Added desktop app relaunch capability in tray and application menus, fixed custom branding icon format parsing, and improved version status display."
     ],
     "zh-CN": [
-      "优化智能标签对思考模型的支持与解析容错，提升输出 Token 限制防止响应被截断，并支持在失败时鼠标悬浮查看详细错误信息。"
+      "新增客户端一键重启功能（托盘与应用菜单），修复客户端品牌与图标格式解析，并在已是最新版本时明确展示最新版本号。"
     ],
     "ja": [
-      "推論モデル向けにAIタグ提案の解析とフォールバックを改善し、出力トークン上限を引き上げて途切れを防ぎ、ホバー時の詳細なエラー表示に対応しました。"
+      "トレイおよびアプリケーションメニューにクライアント再起動機能を追加し、カスタムブランドアイコンのフォーマット解析を修正し、最新バージョン表示を改善しました。"
     ]
   }
 }
