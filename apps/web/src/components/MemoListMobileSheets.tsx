@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { Archive, CheckSquare, FileDown, Folder as NotebookIcon, KeyRound, LayoutList, List, Merge, Star, Tags, Trash2, X } from "lucide-react";
+import { Archive, CheckSquare, FileDown, Folder as NotebookIcon, FolderTree, KeyRound, LayoutList, List, Merge, Star, Tags, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +59,8 @@ const MobileListActionButton = ({
 export const MobileListActionsSheet = ({
   canSelectMemos,
   isSelectionMode,
+  hasSubNotebooks = false,
+  includeSubNotebooks = true,
   listDescription,
   listDensity,
   listTitle,
@@ -71,11 +73,14 @@ export const MobileListActionsSheet = ({
   onOpenSettings,
   onOpenTags,
   onOpenTrash,
+  onToggleIncludeSubNotebooks,
   onListDensityChange,
   onSortModeChange,
 }: {
   canSelectMemos: boolean;
   isSelectionMode: boolean;
+  hasSubNotebooks?: boolean;
+  includeSubNotebooks?: boolean;
   listDescription: string;
   listDensity: MemoListDensity;
   listTitle: string;
@@ -88,6 +93,7 @@ export const MobileListActionsSheet = ({
   onOpenSettings: () => void;
   onOpenTags: () => void;
   onOpenTrash: () => void;
+  onToggleIncludeSubNotebooks?: () => void;
   onListDensityChange: (value: MemoListDensity) => void;
   onSortModeChange: (value: MemoSortMode) => void;
 }) => {
@@ -123,6 +129,20 @@ export const MobileListActionsSheet = ({
                 icon={<CheckSquare className="h-4 w-4" />}
                 label={t("mobileSheets.selectMemo")}
                 onClick={onEnterSelectionMode}
+              />
+              <div className="my-2 h-px bg-slate-100" />
+            </>
+          )}
+
+          {hasSubNotebooks && onToggleIncludeSubNotebooks && (
+            <>
+              <MobileListActionButton
+                icon={<FolderTree className="h-4 w-4" />}
+                label={includeSubNotebooks ? t("memoList.directNotebookOnly") : t("memoList.notebookAndSubNotebooks")}
+                onClick={() => {
+                  onToggleIncludeSubNotebooks();
+                  onClose();
+                }}
               />
               <div className="my-2 h-px bg-slate-100" />
             </>

@@ -30,6 +30,7 @@ import { createClientUuid } from "@/lib/client-id";
 export type LocalMemoListParams = {
   notebookId?: string | null;
   notebookIds?: string[];
+  includeDescendants?: boolean;
   q?: string;
   tag?: string;
   trash?: boolean;

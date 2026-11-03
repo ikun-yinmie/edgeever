@@ -470,7 +470,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
 
     const remote = await api.listMemos({
       notebookId: params.notebookId,
-      includeDescendants: Boolean(params.notebookIds?.length),
+      includeDescendants: params.includeDescendants !== undefined
+        ? params.includeDescendants
+        : Boolean(params.notebookIds?.length),
       q: params.q,
       tag: params.tag,
       trash: params.trash,

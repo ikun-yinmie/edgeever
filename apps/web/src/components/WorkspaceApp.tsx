@@ -667,6 +667,23 @@ export const WorkspaceApp = ({
   const [search, setSearch] = useState("");
   const [memoFilterMode, setMemoFilterMode] = useState<MemoFilterMode>("all");
   const [memoSortMode, setMemoSortMode] = useState<MemoSortMode>("updated-desc");
+  const [includeSubNotebooks, setIncludeSubNotebooks] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem("edgeever:include-sub-notebooks");
+      return stored !== null ? stored === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+  const handleToggleIncludeSubNotebooks = useCallback(() => {
+    setIncludeSubNotebooks((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("edgeever:include-sub-notebooks", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [mobileEditorReturnPreview, setMobileEditorReturnPreview] = useState<MobileEditorReturnPreview | null>(() =>
     readMobileEditorReturnPreview(route.mobileEditorReturnMemoId)
   );
@@ -1193,14 +1210,19 @@ export const WorkspaceApp = ({
     setOnline: setIsOnline,
   });
 
+  const selectedNotebookHasChildren = useMemo(() => {
+    if (!selectedNotebookId) return false;
+    return notebooks.some((n) => n.parentId === selectedNotebookId);
+  }, [notebooks, selectedNotebookId]);
+
   const selectedNotebookDescendantIds = useMemo(
-    () => (selectedNotebookId && !selectedTag ? getNotebookDescendantIds(notebooks, selectedNotebookId) : []),
-    [notebooks, selectedNotebookId, selectedTag]
+    () => (selectedNotebookId && !selectedTag && includeSubNotebooks ? getNotebookDescendantIds(notebooks, selectedNotebookId) : []),
+    [notebooks, selectedNotebookId, selectedTag, includeSubNotebooks]
   );
   const memosQuery = useInfiniteQuery({
     queryKey: memberNotesView
       ? ["member-notes-memos", memberNotesView.id, search, memoFilterMode, memoSortMode]
-      : ["memos", memoView, selectedNotebookId, search, memoFilterMode, memoSortMode, selectedNotebookDescendantIds, selectedTag],
+      : ["memos", memoView, selectedNotebookId, search, memoFilterMode, memoSortMode, selectedNotebookDescendantIds, selectedTag, includeSubNotebooks],
     queryFn: ({ pageParam }) => memberNotesView
       ? api.listMemberNotes(memberNotesView.id, {
           q: search,
@@ -1210,7 +1232,8 @@ export const WorkspaceApp = ({
         })
       : repository.listMemos({
           notebookId: memoView === "notebook" && !selectedTag ? selectedNotebookId : null,
-          notebookIds: memoView === "notebook" && !selectedTag ? selectedNotebookDescendantIds : undefined,
+          notebookIds: memoView === "notebook" && !selectedTag && includeSubNotebooks ? selectedNotebookDescendantIds : undefined,
+          includeDescendants: memoView === "notebook" && !selectedTag && includeSubNotebooks,
           q: search,
           tag: memoView === "notebook" ? selectedTag ?? undefined : undefined,
           trash: memoView === "trash",
@@ -3675,6 +3698,9 @@ export const WorkspaceApp = ({
             <MemoListPane
               notebook={selectedTag ? null : selectedNotebook}
               selectedTag={selectedTag}
+              includeSubNotebooks={includeSubNotebooks}
+              onToggleIncludeSubNotebooks={handleToggleIncludeSubNotebooks}
+              hasSubNotebooks={selectedNotebookHasChildren}
               readOnly={memberNotesActive}
               listTitleOverride={memberNotesView ? memberNotesView.displayName || memberNotesView.username : undefined}
               listContextLabelOverride={memberNotesView ? t("memberNotes.readOnlyContext") : undefined}
@@ -4045,6 +4071,7 @@ export const WorkspaceApp = ({
                                   memoSortMode,
                                   selectedNotebookDescendantIds,
                                   selectedTag,
+                                  includeSubNotebooks,
                                 ],
                                 exact: true,
                                 refetchType: "active",

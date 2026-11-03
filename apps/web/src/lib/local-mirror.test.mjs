@@ -398,6 +398,30 @@ describe("local mirror", () => {
     expect(result.memos[0]?.excerpt).toContain("Hello local first");
   });
 
+  test("filters memos for direct notebook vs sub-notebook hierarchy", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await Promise.all([
+      seedNotebook(scope, "nb-parent"),
+      seedNotebook(scope, "nb-child"),
+    ]);
+
+    const parentMemo = await createLocalMemo(scope, { notebookId: "nb-parent", title: "Parent Note" });
+    const childMemo = await createLocalMemo(scope, { notebookId: "nb-child", title: "Child Note" });
+
+    // Direct only: pass notebookId without notebookIds
+    const directResult = await listLocalMemos(scope, { notebookId: "nb-parent" });
+    expect(directResult.totalCount).toBe(1);
+    expect(directResult.memos.map((m) => m.id)).toEqual([parentMemo.id]);
+
+    // Include sub-notebooks: pass notebookIds containing [parent, child]
+    const allDescendantsResult = await listLocalMemos(scope, {
+      notebookId: "nb-parent",
+      notebookIds: ["nb-parent", "nb-child"],
+    });
+    expect(allDescendantsResult.totalCount).toBe(2);
+    expect(allDescendantsResult.memos.map((m) => m.id).sort()).toEqual([parentMemo.id, childMemo.id].sort());
+  });
+
   test("filters local memos by an exact tag across notebooks", async () => {
     const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
     await Promise.all([seedNotebook(scope, "nb-a"), seedNotebook(scope, "nb-b")]);

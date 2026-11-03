@@ -54,6 +54,7 @@ import {
   Pencil,
   Copy,
   FolderOpen,
+  FolderTree,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -372,6 +373,9 @@ export const MemoListPane = ({
   readOnly = false,
   listTitleOverride,
   listContextLabelOverride,
+  includeSubNotebooks = true,
+  onToggleIncludeSubNotebooks,
+  hasSubNotebooks = false,
   memos,
   totalMemoCount,
   hasMoreMemos,
@@ -456,6 +460,9 @@ export const MemoListPane = ({
   readOnly?: boolean;
   listTitleOverride?: string;
   listContextLabelOverride?: string;
+  includeSubNotebooks?: boolean;
+  onToggleIncludeSubNotebooks?: () => void;
+  hasSubNotebooks?: boolean;
   memos: MemoSummary[];
   totalMemoCount: number;
   hasMoreMemos: boolean;
@@ -580,7 +587,17 @@ export const MemoListPane = ({
   const visibleSelectionToggleLabel = allVisibleMemosSelected ? t("memoList.selectedListNone") : t("memoList.selectedListAll");
 
   const listTitle = listTitleOverride ?? (view === "trash" ? t("memoList.trash") : selectedTag ? `#${selectedTag}` : notebook?.name ?? t("memoList.allMemos"));
-  const listContextLabel = listContextLabelOverride ?? (view === "trash" ? t("memoList.deletedMemos") : selectedTag ? t("memoList.tagFilter") : notebook ? t("memoList.currentNotebook") : t("memoList.allNotebooks"));
+  const listContextLabel = listContextLabelOverride ?? (
+    view === "trash"
+      ? t("memoList.deletedMemos")
+      : selectedTag
+        ? t("memoList.tagFilter")
+        : notebook
+          ? (hasSubNotebooks
+              ? (includeSubNotebooks ? t("memoList.notebookAndSubNotebooks") : t("memoList.directNotebookOnly"))
+              : t("memoList.currentNotebook"))
+          : t("memoList.allNotebooks")
+  );
   const visibleCount = `${memos.length}${memos.length !== totalMemoCount ? ` / ${totalMemoCount}` : ""}`;
   const listCountLabel = view === "trash"
     ? t("memoList.deletedCount", { count: visibleCount })
@@ -1248,7 +1265,19 @@ export const MemoListPane = ({
           <div className="min-w-0">
             <div className={`truncate ${WORKSPACE_PAGE_TITLE_CLASSNAME}`}>{listTitle}</div>
             <div className="mt-0.5 truncate text-xs text-slate-500">
-              {listContextLabel} · {listCountLabel}
+              {hasSubNotebooks && onToggleIncludeSubNotebooks ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 hover:text-slate-900 transition-colors cursor-pointer"
+                  onClick={onToggleIncludeSubNotebooks}
+                  title={includeSubNotebooks ? t("memoList.toggleSubNotebooksOff") : t("memoList.toggleSubNotebooksOn")}
+                >
+                  <span className="underline decoration-dotted underline-offset-2">{listContextLabel}</span>
+                </button>
+              ) : (
+                <span>{listContextLabel}</span>
+              )}{" "}
+              · {listCountLabel}
             </div>
           </div>
         </div>
@@ -1352,6 +1381,24 @@ export const MemoListPane = ({
                 <List className="h-4 w-4" />
               </ToggleGroupItem>
             </ToggleGroup>
+
+            {hasSubNotebooks && onToggleIncludeSubNotebooks && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  "h-8 w-8 shrink-0 rounded-md border text-xs font-medium transition-all duration-200 outline-none",
+                  includeSubNotebooks
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    : "border-slate-200 bg-card text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                )}
+                title={includeSubNotebooks ? t("memoList.toggleSubNotebooksOff") : t("memoList.toggleSubNotebooksOn")}
+                aria-label={includeSubNotebooks ? t("memoList.toggleSubNotebooksOff") : t("memoList.toggleSubNotebooksOn")}
+                onClick={onToggleIncludeSubNotebooks}
+              >
+                <FolderTree className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {!readOnly && (
@@ -1788,6 +1835,23 @@ export const MemoListPane = ({
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              {hasSubNotebooks && onToggleIncludeSubNotebooks && (
+                <DropdownMenuItem
+                  className="flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onClick={() => {
+                    setMemoContextMenu(null);
+                    onToggleIncludeSubNotebooks();
+                  }}
+                >
+                  <span className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                    <FolderTree className="h-4 w-4" />
+                    <span className="truncate">{t("memoList.includeSubNotebooks")}</span>
+                  </span>
+                  <span className="text-xs text-slate-400 font-normal">
+                    {includeSubNotebooks ? t("memoList.includeSubNotebooksActive") : t("memoList.includeSubNotebooksInactive")}
+                  </span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
               {canRevealLocalStorage() && (
                 <DropdownMenuItem
@@ -1994,12 +2058,15 @@ export const MemoListPane = ({
           <MobileListActionsSheet
             canSelectMemos={canEnterSelectionMode}
             isSelectionMode={selectionMode}
+            hasSubNotebooks={hasSubNotebooks}
+            includeSubNotebooks={includeSubNotebooks}
             listDescription={listCountLabel}
             listDensity={listDensity}
             listTitle={listTitle}
             sortMode={sortMode}
             view={view}
             onClose={() => setMobileListActionsOpen(false)}
+            onToggleIncludeSubNotebooks={onToggleIncludeSubNotebooks}
             onEmptyTrash={() => {
               setMobileListActionsOpen(false);
               onEmptyTrash();

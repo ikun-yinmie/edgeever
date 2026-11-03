@@ -114,3 +114,21 @@ describe("desktop bulk move", () => {
     expect(memoListSource).not.toContain("setMoveTargetNotebookId(notebook.id)");
   });
 });
+
+describe("sub-notebook inclusion controls", () => {
+  test("supports toggling between all sub-notebooks and direct notebook notes", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+    const mobileSource = readFileSync(new URL("./MemoListMobileSheets.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("includeSubNotebooks");
+    expect(source).toContain("onToggleIncludeSubNotebooks");
+    expect(source).toContain("hasSubNotebooks");
+    expect(source).toContain('t("memoList.notebookAndSubNotebooks")');
+    expect(source).toContain('t("memoList.directNotebookOnly")');
+    expect(source).toContain('t("memoList.toggleSubNotebooksOff")');
+    expect(source).toContain('t("memoList.toggleSubNotebooksOn")');
+    expect(source).toContain('t("memoList.includeSubNotebooks")');
+    expect(mobileSource).toContain("hasSubNotebooks");
+    expect(mobileSource).toContain("onToggleIncludeSubNotebooks");
+  });
+});
