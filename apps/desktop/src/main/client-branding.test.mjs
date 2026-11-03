@@ -151,7 +151,12 @@ describe("desktop client-branding", () => {
 
   it("materializes branding icon to disk and cleans up when reset", () => {
     const { existsSync } = require("node:fs");
-    const { BRANDING_ICON_FILE, materializeBrandingFiles } = require("./client-branding.mjs");
+    const {
+      BRANDING_ICON_FILE,
+      BRANDING_ICON_ICO_FILE,
+      BRANDING_TRAY_ICON_FILE,
+      materializeBrandingFiles,
+    } = require("./client-branding.mjs");
     const tempDir = mkdtempSync(join(tmpdir(), "branding-mat-test-"));
     try {
       const sample = Buffer.from("png-bytes", "utf8");
@@ -160,13 +165,98 @@ describe("desktop client-branding", () => {
       const res = materializeBrandingFiles(tempDir, sampleDataUrl);
       expect(res.hasIcon).toBe(true);
       expect(res.iconPath).toBe(join(tempDir, BRANDING_ICON_FILE));
+      expect(res.icoPath).toBe(join(tempDir, BRANDING_ICON_ICO_FILE));
+      expect(res.trayIconPath).toBe(join(tempDir, BRANDING_TRAY_ICON_FILE));
       expect(existsSync(res.iconPath)).toBe(true);
+      expect(existsSync(res.icoPath)).toBe(true);
+      expect(existsSync(res.trayIconPath)).toBe(true);
 
       const resetRes = materializeBrandingFiles(tempDir, null);
       expect(resetRes.hasIcon).toBe(false);
       expect(existsSync(join(tempDir, BRANDING_ICON_FILE))).toBe(false);
+      expect(existsSync(join(tempDir, BRANDING_ICON_ICO_FILE))).toBe(false);
+      expect(existsSync(join(tempDir, BRANDING_TRAY_ICON_FILE))).toBe(false);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("builds valid Windows ICO header and entries from PNG buffers", () => {
+    const { createIcoBufferFromPngBuffers } = require("./client-branding.mjs");
+    const png16 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02]);
+    const png32 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x03, 0x04, 0x05]);
+
+    const ico = createIcoBufferFromPngBuffers([
+      { width: 16, height: 16, buffer: png16 },
+      { width: 32, height: 32, buffer: png32 },
+    ]);
+    expect(ico).not.toBeNull();
+    // 6-byte header + 2 * 16-byte entries = 38 bytes header
+    expect(ico.length).toBe(6 + 32 + png16.length + png32.length);
+    expect(ico.readUInt16LE(0)).toBe(0); // reserved
+    expect(ico.readUInt16LE(2)).toBe(1); // ICO type
+    expect(ico.readUInt16LE(4)).toBe(2); // 2 images
+
+    // Entry 1: 16x16
+    expect(ico.readUInt8(6)).toBe(16);
+    expect(ico.readUInt8(7)).toBe(16);
+    expect(ico.readUInt32LE(14)).toBe(png16.length);
+    expect(ico.readUInt32LE(18)).toBe(38); // offset
+
+    // Entry 2: 32x32
+    expect(ico.readUInt8(22)).toBe(32);
+    expect(ico.readUInt8(23)).toBe(32);
+    expect(ico.readUInt32LE(30)).toBe(png32.length);
+    expect(ico.readUInt32LE(34)).toBe(38 + png16.length);
+  });
+
+  it("synchronizes Windows shortcuts across Start Menu, Desktop and User Pinned TaskBar", () => {
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    const { syncWindowsShortcuts } = require("./client-branding.mjs");
+    const tempRoot = mkdtempSync(join(tmpdir(), "win-shortcuts-test-"));
+    try {
+      const appData = join(tempRoot, "AppData");
+      const desktop = join(tempRoot, "Desktop");
+      const startMenu = join(appData, "Microsoft", "Windows", "Start Menu", "Programs");
+      const pinnedTaskbar = join(appData, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+      mkdirSync(startMenu, { recursive: true });
+      mkdirSync(pinnedTaskbar, { recursive: true });
+      mkdirSync(desktop, { recursive: true });
+
+      // Create dummy shortcuts
+      writeFileSync(join(startMenu, "EdgeEver.lnk"), "dummy");
+      writeFileSync(join(desktop, "EdgeEver.lnk"), "dummy");
+      writeFileSync(join(pinnedTaskbar, "EdgeEver.lnk"), "dummy");
+      const fakeIcoPath = join(tempRoot, "branding-icon.ico");
+      writeFileSync(fakeIcoPath, "dummy-ico");
+
+      const written = [];
+      const fakeWriter = (shortcutPath, operation, options) => {
+        written.push({ shortcutPath, operation, options });
+        return true;
+      };
+
+      const result = syncWindowsShortcuts({
+        appDataDir: appData,
+        desktopDir: desktop,
+        execPath: "C:\\Program Files\\EdgeEver\\EdgeEver.exe",
+        name: "岁玥史书",
+        icoPath: fakeIcoPath,
+        appUserModelId: "org.edgeever.desktop",
+        shellWriter: fakeWriter,
+      });
+
+      expect(result.updated).toBe(3);
+      expect(result.failed).toBe(0);
+      expect(written.length).toBe(3);
+      for (const item of written) {
+        expect(item.operation).toBe("update");
+        expect(item.options.description).toBe("岁玥史书");
+        expect(item.options.icon).toBe(fakeIcoPath);
+        expect(item.options.appUserModelId).toBe("org.edgeever.desktop");
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 

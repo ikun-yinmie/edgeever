@@ -1228,7 +1228,7 @@ export const ja = {
     statusSourceServer: "サーバーのサイト設定を使用中",
     statusSourceDefault: "システムデフォルト設定を使用中",
     saveSuccess: "クライアント表示設定を保存して適用しました",
-    relaunchHint: "一部のシステムではアイコンの完全な反映にアプリの再起動が必要です。",
+    relaunchHint: "ショートカットとトレイアイコンが同期されました。タスクバーとシステムアイコンを完全に更新するにはアプリを再起動してください。",
     relaunchButton: "今すぐ再起動",
     saveFailed: "保存に失敗しました。入力内容をご確認ください。",
     save: "設定を保存",

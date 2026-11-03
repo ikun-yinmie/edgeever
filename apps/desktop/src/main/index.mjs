@@ -67,11 +67,13 @@ import {
 import {
   CLIENT_BRANDING_FILE,
   DEFAULT_CLIENT_NAME,
+  dataUrlToBuffer,
   materializeBrandingFiles,
   normalizeClientBranding,
   readClientBranding,
   resolveEffectiveBranding,
   syncLinuxDesktopEntry,
+  syncWindowsShortcuts,
   writeClientBranding,
 } from "./client-branding.mjs";
 import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
@@ -259,12 +261,24 @@ const resolveAppIconImage = (dataUrl) => {
   return buildMultiResolutionIcon(baseImage);
 };
 
-const resolveTrayIconImage = (dataUrl) => {
+const resolveTrayIconImage = (dataUrl, localTrayPath) => {
+  if (localTrayPath && existsSync(localTrayPath)) {
+    try {
+      const img = nativeImage.createFromPath(localTrayPath);
+      if (!img.isEmpty()) {
+        const size = process.platform === "win32" ? 32 : 24;
+        return img.resize({ width: size, height: size, quality: "high" });
+      }
+    } catch {
+      // fallback
+    }
+  }
   if (!dataUrl) return null;
-  const baseImage = imageFromDataUrlSafe(dataUrl);
+  const buffer = dataUrlToBuffer(dataUrl);
+  const baseImage = (buffer ? nativeImage.createFromBuffer(buffer) : null) || imageFromDataUrlSafe(dataUrl);
   if (!baseImage || baseImage.isEmpty()) return null;
   try {
-    const size = process.platform === "win32" ? 16 : 24;
+    const size = process.platform === "win32" ? 32 : 24;
     return baseImage.resize({ width: size, height: size, quality: "high" });
   } catch {
     return null;
@@ -290,6 +304,26 @@ const updateLinuxDesktopBranding = (effectiveName, iconPath) => {
   }
 };
 
+const updateWindowsShortcutsBranding = (effectiveName, icoPath) => {
+  if (process.platform !== "win32") return;
+  try {
+    const appDataDir = app.getPath("appData");
+    const desktopDir = app.getPath("desktop");
+    const execPath = process.execPath;
+    syncWindowsShortcuts({
+      appDataDir,
+      desktopDir,
+      execPath,
+      name: effectiveName,
+      icoPath,
+      appUserModelId: "org.edgeever.desktop",
+      shellWriter: (shortcutPath, operation, options) => shell.writeShortcutLink(shortcutPath, operation, options),
+    });
+  } catch {
+    // ignore
+  }
+};
+
 const applyClientBrandingToSystem = (branding) => {
   const effective = resolveEffectiveBranding(branding);
   try {
@@ -298,8 +332,13 @@ const applyClientBrandingToSystem = (branding) => {
     // ignore
   }
 
-  const { iconPath } = materializeBrandingFiles(app.getPath("userData"), effective.effectiveIcon);
+  const { iconPath, icoPath, trayIconPath: localTrayPath } = materializeBrandingFiles(
+    app.getPath("userData"),
+    effective.effectiveIcon,
+    { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
+  );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
+  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -309,20 +348,30 @@ const applyClientBrandingToSystem = (branding) => {
     }
   }
 
-  const targetIcon = resolveAppIconImage(effective.effectiveIcon);
-
-  if (targetIcon && !targetIcon.isEmpty()) {
-    if (process.platform === "darwin" && app.dock) {
+  if (process.platform === "win32" && icoPath && existsSync(icoPath)) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       try {
-        app.dock.setIcon(targetIcon);
+        mainWindow.setIcon(icoPath);
       } catch {
         // ignore
       }
-    } else if (mainWindow && !mainWindow.isDestroyed()) {
-      try {
-        mainWindow.setIcon(targetIcon);
-      } catch {
-        // ignore
+    }
+  } else {
+    const targetIcon = resolveAppIconImage(effective.effectiveIcon);
+
+    if (targetIcon && !targetIcon.isEmpty()) {
+      if (process.platform === "darwin" && app.dock) {
+        try {
+          app.dock.setIcon(targetIcon);
+        } catch {
+          // ignore
+        }
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          mainWindow.setIcon(targetIcon);
+        } catch {
+          // ignore
+        }
       }
     }
   }
@@ -330,7 +379,7 @@ const applyClientBrandingToSystem = (branding) => {
   if (tray && !tray.isDestroyed()) {
     try {
       tray.setToolTip(effective.effectiveName);
-      const customTray = resolveTrayIconImage(effective.effectiveIcon);
+      const customTray = resolveTrayIconImage(effective.effectiveIcon, localTrayPath);
       if (customTray && !customTray.isEmpty()) {
         tray.setImage(customTray);
       } else {
@@ -1186,8 +1235,13 @@ const createTray = () => {
   const copy = desktopMenuCopy(app.getLocale());
   const currentBranding = getClientBrandingState();
   const effective = resolveEffectiveBranding(currentBranding);
+  const { trayIconPath: localTrayPath } = materializeBrandingFiles(
+    app.getPath("userData"),
+    effective.effectiveIcon,
+    { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
+  );
 
-  let icon = resolveTrayIconImage(effective.effectiveIcon);
+  let icon = resolveTrayIconImage(effective.effectiveIcon, localTrayPath);
   if (!icon || icon.isEmpty()) {
     const iconPath = trayIconPath({
       isPackaged: app.isPackaged,
@@ -1989,13 +2043,22 @@ const createWindow = async () => {
   const effective = resolveEffectiveBranding(currentBranding);
   const initialIcon = resolveAppIconImage(effective.effectiveIcon);
 
-  const { iconPath } = materializeBrandingFiles(app.getPath("userData"), effective.effectiveIcon);
+  const { iconPath, icoPath } = materializeBrandingFiles(
+    app.getPath("userData"),
+    effective.effectiveIcon,
+    { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
+  );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
+  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
+
+  const windowIcon = (process.platform === "win32" && icoPath && existsSync(icoPath))
+    ? icoPath
+    : (initialIcon && !initialIcon.isEmpty() ? initialIcon : null);
 
   mainWindow = new BrowserWindow({
     title: effective.effectiveName,
     ...(process.platform === "linux" ? { wmClass: "EdgeEver" } : {}),
-    ...(initialIcon && !initialIcon.isEmpty() ? { icon: initialIcon } : {}),
+    ...(windowIcon ? { icon: windowIcon } : {}),
     width: state.width,
     height: state.height,
     x: state.x,
@@ -2120,6 +2183,15 @@ const startApplication = async () => {
       // ignore
     }
   }
+  const currentBranding = getClientBrandingState();
+  const effective = resolveEffectiveBranding(currentBranding);
+  const { iconPath, icoPath } = materializeBrandingFiles(
+    app.getPath("userData"),
+    effective.effectiveIcon,
+    { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
+  );
+  updateLinuxDesktopBranding(effective.effectiveName, iconPath);
+  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
   applyMacDockIcon();
   if (app.isPackaged && isMountedInstallerPath(app.getAppPath())) {
     const isChinese = app.getLocale().toLowerCase().startsWith("zh");

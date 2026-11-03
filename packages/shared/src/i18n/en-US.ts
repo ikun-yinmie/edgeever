@@ -1228,7 +1228,7 @@ export const enUS = {
     statusSourceServer: "Following instance site settings",
     statusSourceDefault: "Using default settings",
     saveSuccess: "Client branding settings saved and applied",
-    relaunchHint: "Some systems require an app restart for taskbar and tray icons to update.",
+    relaunchHint: "Shortcuts and tray icons synchronized; restart the app to fully refresh taskbar and system icons.",
     relaunchButton: "Restart App Now",
     saveFailed: "Failed to save settings. Please check your inputs.",
     save: "Save Settings",

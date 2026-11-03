@@ -1228,7 +1228,7 @@ export const zhCN = {
     statusSourceServer: "当前跟随后台管理站点设置",
     statusSourceDefault: "当前使用系统默认设置",
     saveSuccess: "客户端显示设置已保存并生效",
-    relaunchHint: "部分系统需要重启客户端后图标完全生效。",
+    relaunchHint: "快捷方式与托盘图标已同步，建议重启客户端以完全刷新任务栏与系统图标。",
     relaunchButton: "立即重启客户端",
     saveFailed: "保存失败，请检查输入或查看诊断日志",
     save: "保存设置",
