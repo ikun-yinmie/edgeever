@@ -15,6 +15,8 @@ describe("image copy actions", () => {
     expect(imageSource).toContain("IMAGE_CONTEXT_MENU_SHOW_EVENT");
     expect(imageSource).toContain("point: { x: event.clientX, y: event.clientY }");
     expect(imageSource).toContain("onContextMenu={(event: MouseEvent<HTMLElement>) => requestImageContextMenu(event)}");
+    expect(imageSource).toContain("event.stopPropagation()");
+    expect(imageSource).toContain("onContextMenu={(event: MouseEvent<HTMLImageElement>) => requestImageContextMenu(event)}");
   });
 
   test("offers copy-to-clipboard from the image right-click menu", () => {
@@ -22,5 +24,7 @@ describe("image copy actions", () => {
     expect(editorSource).toContain("IMAGE_CONTEXT_MENU_SHOW_EVENT");
     expect(editorSource).toContain("resourceMenuLabels.copy");
     expect(editorSource).toContain("handleResourceCopyImage(target)");
+    expect(editorSource).toContain("alignContextMenuToPoint(el, imageContextMenu.point)");
+    expect(editorSource).toContain("onPointerDownOutside");
   });
 });

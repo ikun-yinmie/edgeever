@@ -5124,9 +5124,16 @@ const RichEditorPane = ({
               <span className="sr-only" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
+              ref={(el) => alignContextMenuToPoint(el, imageContextMenu.point)}
               align="start"
-              className="w-52"
+              className="w-52 max-h-[min(26rem,70vh)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
+              data-image-actions-menu
               onCloseAutoFocus={(event) => event.preventDefault()}
+              onPointerDownOutside={(event) => {
+                if ((event as unknown as { button?: number }).button === 2) {
+                  event.preventDefault();
+                }
+              }}
             >
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"

@@ -160,6 +160,7 @@ const ResizableImageNodeView = ({
 
   const requestImageContextMenu = useCallback((event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     const element = wrapperRef.current;
     if (!element || !src) return;
     // A right click opens the full action menu at the pointer, so the hover
@@ -267,7 +268,11 @@ const ResizableImageNodeView = ({
       onContextMenu={(event: MouseEvent<HTMLElement>) => requestImageContextMenu(event)}
     >
        {loadState !== "loaded" && (
-         <div className={cn("edgeever-image-placeholder", loadState === "error" && "is-error")} role={loadState === "error" ? "alert" : undefined}>
+         <div
+           className={cn("edgeever-image-placeholder", loadState === "error" && "is-error")}
+           role={loadState === "error" ? "alert" : undefined}
+           onContextMenu={(event: MouseEvent<HTMLDivElement>) => requestImageContextMenu(event)}
+         >
            {loadState === "error" ? (
              <>
                <span>{t("editor.imageLoadFailed")}</span>
@@ -291,6 +296,7 @@ const ResizableImageNodeView = ({
          referrerPolicy={getImageReferrerPolicy(src)}
          onLoad={() => setLoadState("loaded")}
          onError={() => setLoadState("error")}
+        onContextMenu={(event: MouseEvent<HTMLImageElement>) => requestImageContextMenu(event)}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
