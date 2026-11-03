@@ -1,14 +1,14 @@
 {
-  "version": "1.103.9",
+  "version": "1.103.10",
   "changes": {
     "en-US": [
-      "Enhanced client branding and multi-resolution taskbar icons for Windows and Linux, added format painter to editor toolbar, isolated list formatting on task item line break, and supported rich and plain text copy."
+      "Added support for toggling sub-notebooks vs direct notes only in category list, generated multi-resolution Windows taskbar ICO and synchronized shortcuts for custom branding, and fixed image right-click context menu dismiss and bubbling in web browsers."
     ],
     "zh-CN": [
-      "增强客户端多尺寸任务栏与托盘图标（适配 Windows 与 Linux），编辑器工具栏新增格式刷，待办换行样式隔离（不继承背景色且兼容连续回车），并支持富文本与纯文本复制。"
+      "外层笔记本分类支持控制是否显示其下全部子级笔记（含全部子级/仅直属笔记），生成多尺寸 ICO 图标并同步桌面与开始菜单快捷方式以彻底解决 Windows 任务栏图标自定义问题，并优化 Web 端图片右键菜单触发体验与事件冒泡。"
     ],
     "ja": [
-      "WindowsおよびLinux用のマルチ解像度タスクバーとトレイアイコンの強化、エディタツールバーへの書式ブラシの追加、ToDo改行時の書式継承の分離、リッチテキストおよびプレーンテキストのコピーをサポートしました。"
+      "ノートブックカテゴリでのサブノートブック表示制御のサポート、Windowsタスクバー用のマルチ解像度ICOアイコン生成およびショートカット同期、Webブラウザでの画像右クリックメニューの改善を行いました。"
     ]
   }
 }
