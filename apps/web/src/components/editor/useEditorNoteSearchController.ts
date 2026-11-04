@@ -21,7 +21,7 @@ import {
 
 type EditorNoteSearchControllerOptions = {
   contentSearchQuery: string;
-  dirtyVersion: number;
+  hydratedMemoId: string | null;
   editor: Editor | null;
   editorInstanceKey: string | null;
   editorScrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -34,17 +34,9 @@ type EditorNoteSearchControllerOptions = {
 const isEditorReady = (editor: Editor | null | undefined): editor is Editor =>
   Boolean(editor && !editor.isDestroyed && (editor as { extensionManager?: unknown }).extensionManager);
 
-const getEditorSearchMatches = (editor: Editor | null, query: string): NoteSearchMatch[] => {
-  if (!isEditorReady(editor)) {
-    return [];
-  }
-
-  return getSearchMatchesFromDocument(editor.state.doc, query);
-};
-
 export const useEditorNoteSearchController = ({
   contentSearchQuery,
-  dirtyVersion,
+  hydratedMemoId,
   editor,
   editorInstanceKey,
   editorScrollContainerRef,
@@ -59,7 +51,10 @@ export const useEditorNoteSearchController = ({
   const [noteSearchReplacement, setNoteSearchReplacement] = useState("");
   const [noteSearchIndex, setNoteSearchIndex] = useState(0);
   const noteSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchContextRef = useRef({ noteSearchOpen, contentSearchQuery });
+  searchContextRef.current = { noteSearchOpen, contentSearchQuery };
   const automaticSelectionRef = useRef<{ editor: Editor; identity: string } | null>(null);
+  const navigationRequestRef = useRef(0);
   const previousEditorInstanceKeyRef = useRef(editorInstanceKey);
   // Reset on a real note switch, not when desktop sync remaps a local id.
   // The editor instance key stays stable across that handoff.
@@ -72,14 +67,19 @@ export const useEditorNoteSearchController = ({
     setNoteSearchIndex(CLOSED_NOTE_SEARCH_STATE.index);
   }
 
+  const searchDocument = isEditorReady(editor) && hydratedMemoId === memoId
+    ? editor.state.doc
+    : null;
   const noteSearchMatches = useMemo(
-    () => getEditorSearchMatches(editor, noteSearchQuery),
-    [dirtyVersion, editor, memoId, noteSearchQuery],
+    () => searchDocument ? getSearchMatchesFromDocument(searchDocument, noteSearchQuery) : [],
+    [searchDocument, noteSearchQuery],
   );
   const contentSearchMatches = useMemo(
-    () => getEditorSearchMatches(editor, contentSearchQuery),
-    [contentSearchQuery, dirtyVersion, editor, memoId],
+    () => searchDocument ? getSearchMatchesFromDocument(searchDocument, contentSearchQuery) : [],
+    [searchDocument, contentSearchQuery],
   );
+  const activeQuery = noteSearchOpen ? noteSearchQuery : contentSearchQuery;
+  const activeMatches = noteSearchOpen ? noteSearchMatches : contentSearchMatches;
 
   const selectMatch = useCallback(
     (index: number, matches: NoteSearchMatch[]) => {
@@ -89,30 +89,30 @@ export const useEditorNoteSearchController = ({
         return;
       }
 
+      const document = editor.state.doc;
+      const requestId = ++navigationRequestRef.current;
       editor.chain().setTextSelection({ from: match.from, to: match.to }).scrollIntoView().run();
 
       window.requestAnimationFrame(() => {
         const scrollContainer = editorScrollContainerRef.current;
-        const domPosition = editor.view.domAtPos(match.from);
-        const node = domPosition.node.nodeType === Node.TEXT_NODE
-          ? domPosition.node.parentElement
-          : domPosition.node instanceof Element
-            ? domPosition.node
-            : domPosition.node.parentElement;
-
-        if (!scrollContainer || !node) {
+        if (
+          !scrollContainer
+          || !isEditorReady(editor)
+          || requestId !== navigationRequestRef.current
+          || editor.state.doc !== document
+        ) {
           return;
         }
 
         const containerRect = scrollContainer.getBoundingClientRect();
-        const nodeRect = node.getBoundingClientRect();
+        const nodeRect = editor.view.coordsAtPos(match.from);
         const padding = 24;
         const isAbove = nodeRect.top < containerRect.top + padding;
         const isBelow = nodeRect.bottom > containerRect.bottom - padding;
 
         if (isAbove || isBelow) {
           const targetTop = scrollContainer.scrollTop + nodeRect.top - containerRect.top
-            - (scrollContainer.clientHeight - nodeRect.height) / 2;
+            - (scrollContainer.clientHeight - (nodeRect.bottom - nodeRect.top)) / 2;
           scrollContainer.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
         }
       });
@@ -126,8 +126,8 @@ export const useEditorNoteSearchController = ({
     }
 
     const searchHighlightPlugin = createNoteSearchHighlightPlugin({
-      getQuery: () => noteSearchOpen ? noteSearchQuery : contentSearchQuery,
-      getActiveIndex: () => noteSearchOpen ? noteSearchIndex : 0,
+      getQuery: () => activeQuery,
+      getActiveIndex: () => noteSearchIndex,
     });
 
     editor.registerPlugin(searchHighlightPlugin);
@@ -137,7 +137,7 @@ export const useEditorNoteSearchController = ({
         editor.unregisterPlugin(NOTE_SEARCH_HIGHLIGHT_PLUGIN_KEY);
       }
     };
-  }, [contentSearchQuery, editor, noteSearchIndex, noteSearchOpen, noteSearchQuery]);
+  }, [activeQuery, editor, noteSearchIndex]);
 
   const focusSearchInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -147,6 +147,10 @@ export const useEditorNoteSearchController = ({
   }, [noteSearchInputRef]);
 
   const openSearch = useCallback((showReplace = false) => {
+    const context = searchContextRef.current;
+    if (!context.noteSearchOpen && context.contentSearchQuery.trim()) {
+      setNoteSearchQuery(context.contentSearchQuery);
+    }
     setNoteSearchOpen(true);
     setNoteSearchReplaceOpen(showReplace);
     focusSearchInput();
@@ -203,16 +207,14 @@ export const useEditorNoteSearchController = ({
   }, [closeSearch, noteSearchOpen]);
 
   const moveMatch = useCallback((direction: 1 | -1) => {
-    if (noteSearchMatches.length === 0) {
+    if (activeMatches.length === 0) {
       return;
     }
 
-    setNoteSearchIndex((current) => {
-      const next = getNextSearchMatchIndex(current, direction, noteSearchMatches.length);
-      selectMatch(next, noteSearchMatches);
-      return next;
-    });
-  }, [noteSearchMatches, selectMatch, setNoteSearchIndex]);
+    const next = getNextSearchMatchIndex(noteSearchIndex, direction, activeMatches.length);
+    setNoteSearchIndex(next);
+    selectMatch(next, activeMatches);
+  }, [activeMatches, noteSearchIndex, selectMatch]);
 
   useEffect(() => {
     if (searchFocusToken !== 0) {
@@ -227,14 +229,12 @@ export const useEditorNoteSearchController = ({
   }, [openReplace, replaceFocusToken]);
 
   useEffect(() => {
-    if (!isEditorReady(editor)) {
+    if (!isEditorReady(editor) || !searchDocument) {
       return;
     }
 
     const source = noteSearchOpen ? "note" : "content";
-    const query = noteSearchOpen ? noteSearchQuery : contentSearchQuery;
-    const matches = noteSearchOpen ? noteSearchMatches : contentSearchMatches;
-    const identity = getSearchNavigationIdentity(memoId, source, query);
+    const identity = getSearchNavigationIdentity(memoId, source, activeQuery);
     const previousSelection = automaticSelectionRef.current;
 
     if (previousSelection?.editor === editor && previousSelection.identity === identity) {
@@ -244,26 +244,25 @@ export const useEditorNoteSearchController = ({
     automaticSelectionRef.current = { editor, identity };
     setNoteSearchIndex(0);
 
-    if (matches[0]) {
-      selectMatch(0, matches);
+    if (activeMatches[0]) {
+      selectMatch(0, activeMatches);
     }
   }, [
-    contentSearchMatches,
-    contentSearchQuery,
+    activeMatches,
+    activeQuery,
     editor,
     memoId,
-    noteSearchMatches,
     noteSearchOpen,
-    noteSearchQuery,
+    searchDocument,
     selectMatch,
     setNoteSearchIndex,
   ]);
 
   useEffect(() => {
-    setNoteSearchIndex((current) => noteSearchMatches.length === 0
+    setNoteSearchIndex((current) => activeMatches.length === 0
       ? 0
-      : Math.min(current, noteSearchMatches.length - 1));
-  }, [noteSearchMatches.length, setNoteSearchIndex]);
+      : Math.min(current, activeMatches.length - 1));
+  }, [activeMatches.length, setNoteSearchIndex]);
 
   const replaceAllMatches = useCallback(() => {
     if (!isEditorReady(editor) || readOnly || noteSearchMatches.length === 0) {
@@ -299,17 +298,17 @@ export const useEditorNoteSearchController = ({
     closeSearch,
     inputRef: noteSearchInputRef,
     matchLabel: formatNoteSearchMatchLabel(
-      noteSearchQuery,
+      activeQuery,
       noteSearchIndex,
-      noteSearchMatches.length,
+      activeMatches.length,
     ),
-    matches: noteSearchMatches,
+    matches: activeMatches,
     moveMatch,
     openFromSelection,
     openReplace,
     openSearch,
     openWithQuery,
-    query: noteSearchQuery,
+    query: activeQuery,
     replaceAllMatches,
     replaceOpen: noteSearchReplaceOpen,
     replacement: noteSearchReplacement,

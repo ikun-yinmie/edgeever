@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "@tiptap/pm/model";
+import { EditorState } from "@tiptap/pm/state";
 import {
+  createNoteSearchHighlightPlugin,
   formatNoteSearchMatchLabel,
   getNextSearchMatchIndex,
   getSearchNavigationIdentity,
@@ -15,6 +17,7 @@ const schema = new Schema({
     paragraph: { content: "text*", group: "block" },
     text: { group: "inline" },
   },
+  marks: { strong: {} },
 });
 
 const documentWithParagraphs = (...paragraphs) => schema.node(
@@ -47,6 +50,37 @@ describe("note search", () => {
       { from: 1, to: 3 },
       { from: 3, to: 5 },
     ]);
+  });
+
+  test("matches across formatting boundaries within a paragraph", () => {
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [
+      schema.text("alp", [schema.mark("strong")]),
+      schema.text("ha alpha"),
+    ])]);
+    expect(getSearchMatchesFromDocument(doc, "alpha")).toEqual([
+      { from: 1, to: 6 },
+      { from: 7, to: 12 },
+    ]);
+  });
+
+  test("moves the active decoration without changing note content", () => {
+    const doc = documentWithParagraphs("alpha beta alpha", "alpha");
+    const state = EditorState.create({ doc });
+    let query = "alpha";
+    let activeIndex = 0;
+    const plugin = createNoteSearchHighlightPlugin({
+      getQuery: () => query,
+      getActiveIndex: () => activeIndex,
+    });
+    const decorations = () => plugin.props.decorations(state).find();
+    expect(decorations().filter((item) => item.type.attrs.class.includes("-active")))
+      .toHaveLength(1);
+    activeIndex = 2;
+    expect(decorations()[2].type.attrs.class).toContain("edgeever-search-match-active");
+    expect(decorations()[0].type.attrs.class).toBe("edgeever-search-match");
+    query = "missing";
+    expect(decorations()).toEqual([]);
+    expect(state.doc).toBe(doc);
   });
 
   test("wraps navigation and formats the result label", () => {

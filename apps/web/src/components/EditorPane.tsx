@@ -2206,7 +2206,7 @@ const RichEditorPane = ({
     setReplacement: setNoteSearchReplacement,
   } = useEditorNoteSearchController({
     contentSearchQuery,
-    dirtyVersion,
+    hydratedMemoId: hydratedEditorMemoId,
     editor,
     editorInstanceKey: editorInstanceMemoKey,
     editorScrollContainerRef,
@@ -2643,7 +2643,7 @@ const RichEditorPane = ({
 
         // A note reopened later should put the caret back where the user last
         // left it instead of at the beginning/end of the document.
-        if (savedCursor && !effectiveReadOnly) {
+        if (savedCursor && !effectiveReadOnly && !contentSearchQuery.trim()) {
           const maxPos = Math.max(1, currentEditor.state.doc.content.size);
           const from = Math.min(Math.max(1, savedCursor.from), maxPos);
           const to = Math.min(Math.max(from, savedCursor.to), maxPos);
@@ -4757,8 +4757,10 @@ const RichEditorPane = ({
             }}
           />
         </div>
-        {noteSearchOpen ? (
+        {noteSearchOpen || (contentSearchQuery.trim() && !useMarkdownSourceEditor && !useMobilePlainTextEditor) ? (
           <EditorNoteSearchBar
+            navigationOnly={!noteSearchOpen}
+            onOpenSearch={openNoteSearch}
             inputRef={noteSearchInputRef}
             query={noteSearchQuery}
             replacement={noteSearchReplacement}

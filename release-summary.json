@@ -1,17 +1,14 @@
 {
-  "version": "1.103.12",
+  "version": "1.103.13",
   "changes": {
     "en-US": [
-      "Windows taskbar and Start menu icons now follow the custom client name and icon instead of keeping the icon embedded in the executable.",
-      "A failed update check no longer dead-ends: the client now shows the exact installer download link and the release page, with the underlying error available on demand."
+      "Support navigating global search match results within the note editor and seamlessly hand off to in-note search."
     ],
     "zh-CN": [
-      "Windows 任务栏与开始菜单图标现在会跟随自定义客户端名称与图标，不再固定显示安装包内嵌图标。",
-      "更新检查失败不再只是报错：客户端会直接给出对应版本的安装包下载链接与发布页，并可展开查看具体错误原因。"
+      "支持在笔记编辑器内直接导航全局搜索匹配结果，并可无缝切换至笔记内搜索。"
     ],
     "ja": [
-      "Windows のタスクバーとスタートメニューのアイコンが、実行ファイル内蔵のアイコンではなくカスタムのクライアント名・アイコンに追従するようになりました。",
-      "更新確認に失敗しても行き止まりになりません。該当バージョンのインストーラーのダウンロードリンクとリリースページを表示し、詳細なエラーも確認できます。"
+      "ノートエディタ内でグローバル検索のマッチ結果をナビゲートし、ノート内検索へシームレスに切り替えられるようになりました。"
     ]
   }
 }
