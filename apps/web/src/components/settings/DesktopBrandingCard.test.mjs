@@ -22,4 +22,21 @@ describe("desktop branding settings card", () => {
     // SiteSettingsCard syncs site branding changes to desktop
     expect(siteSettingsCard).toContain("window.edgeeverDesktop?.syncServerBranding");
   });
+
+  test("keeps long desktop settings sections collapsed and accessible", () => {
+    const brandingCard = readFileSync(new URL("./DesktopBrandingCard.tsx", import.meta.url), "utf8");
+    const updateCard = readFileSync(new URL("./DesktopUpdateCard.tsx", import.meta.url), "utf8");
+
+    for (const source of [brandingCard, updateCard]) {
+      expect(source).toContain("const [expanded, setExpanded] = useState(false);");
+      expect(source).toContain("<Collapsible open={expanded} onOpenChange={setExpanded} asChild>");
+      expect(source).toContain("<CollapsibleTrigger asChild>");
+      expect(source).toContain("<CollapsibleContent asChild>");
+      expect(source).toContain('type="button"');
+      expect(source).toContain("focus-visible:ring-2");
+    }
+
+    expect(updateCard).toContain("const shouldRevealUpdateDetails = downloaded");
+    expect(updateCard).toContain("if (shouldRevealUpdateDetails) setExpanded(true);");
+  });
 });

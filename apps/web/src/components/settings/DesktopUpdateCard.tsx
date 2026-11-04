@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, LoaderCircle, Network, RefreshCw, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -28,6 +29,7 @@ const DesktopUpdateCardContent = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const bridge = window.edgeeverDesktop!;
+  const [expanded, setExpanded] = useState(false);
   const [checkedOnce, setCheckedOnce] = useState(false);
   const [checkFailedOnce, setCheckFailedOnce] = useState(false);
   const [proxy, setProxy] = useState<DesktopProxySettings>(() => getDesktopProxySettings());
@@ -95,6 +97,15 @@ const DesktopUpdateCardContent = () => {
   const updateError = status?.error ?? null;
   const networkFailed = updateError?.kind === "network";
   const checkFailed = checkFailedOnce || statusQuery.isError;
+  const shouldRevealUpdateDetails = downloaded
+    || installUpdate.isError
+    || networkFailed
+    || checkFailed
+    || (preferencesQuery.isError && !preferences);
+
+  useEffect(() => {
+    if (shouldRevealUpdateDetails) setExpanded(true);
+  }, [shouldRevealUpdateDetails]);
 
   const persistProxy = (next: DesktopProxySettings) => {
     setProxy(next);
@@ -176,15 +187,32 @@ const DesktopUpdateCardContent = () => {
         : t("desktopUpdate.check");
 
   return (
-    <Card className="w-full min-w-0 overflow-hidden shadow-none">
-      <CardHeader className={SETTINGS_CARD_HEADER_CLASSNAME}>
-        <CardTitle className={SETTINGS_CARD_TITLE_CLASSNAME}>
-          <RefreshCw className={SETTINGS_CARD_ICON_CLASSNAME} />
-          {t("desktopUpdate.title")}
-        </CardTitle>
-        <CardDescription className={SETTINGS_CARD_DESCRIPTION_CLASSNAME}>{t("desktopUpdate.description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 p-4 pt-0 sm:px-5 sm:pb-5">
+    <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
+      <Card className="w-full min-w-0 overflow-hidden shadow-none">
+        <CardHeader className={SETTINGS_CARD_HEADER_CLASSNAME}>
+          <CollapsibleTrigger asChild>
+            <button
+              className="flex w-full min-w-0 items-start justify-between gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+              type="button"
+            >
+              <span className="min-w-0">
+                <span className={SETTINGS_CARD_TITLE_CLASSNAME}>
+                  <RefreshCw aria-hidden="true" className={SETTINGS_CARD_ICON_CLASSNAME} />
+                  {t("desktopUpdate.title")}
+                </span>
+                <span className={cn(SETTINGS_CARD_DESCRIPTION_CLASSNAME, "block")}>
+                  {t("desktopUpdate.description")}
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn("mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded && "rotate-180")}
+              />
+            </button>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent asChild>
+          <CardContent className="grid gap-3 p-4 pt-0 sm:px-5 sm:pb-5">
         <div className="grid gap-1.5 rounded-md border border-slate-200 px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
@@ -456,8 +484,10 @@ const DesktopUpdateCardContent = () => {
             {t("desktopUpdate.downloadLatest")} <ExternalLink className="h-3 w-3" />
           </a>
         ) : null}
-      </CardContent>
-    </Card>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 };
 

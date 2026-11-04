@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, CheckCircle2, RotateCcw, Upload } from "lucide-react";
+import { AppWindow, CheckCircle2, ChevronDown, RotateCcw, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { setClientOverrideName, useSiteBranding, getSiteDisplayName } from "@/lib/site-branding";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,7 @@ export const DesktopBrandingCard = () => {
   const bridge = window.edgeeverDesktop;
   const siteBranding = useSiteBranding();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const [brandingInfo, setBrandingInfo] = useState<EffectiveBrandingState | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -171,17 +173,32 @@ export const DesktopBrandingCard = () => {
   const displayIcon = draftIcon || brandingInfo?.serverIcon || "/favicon.svg";
 
   return (
-    <Card className="shadow-none">
-      <CardHeader className={SETTINGS_CARD_HEADER_CLASSNAME}>
-        <AppWindow className={cn(SETTINGS_CARD_ICON_CLASSNAME, "text-emerald-600")} />
-        <div className="min-w-0 flex-1">
-          <CardTitle className={SETTINGS_CARD_TITLE_CLASSNAME}>{t("desktopBranding.title")}</CardTitle>
-          <CardDescription className={SETTINGS_CARD_DESCRIPTION_CLASSNAME}>
-            {t("desktopBranding.description")}
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
+      <Card className="w-full min-w-0 overflow-hidden shadow-none">
+        <CardHeader className={SETTINGS_CARD_HEADER_CLASSNAME}>
+          <CollapsibleTrigger asChild>
+            <button
+              className="flex w-full min-w-0 items-start justify-between gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+              type="button"
+            >
+              <span className="flex min-w-0 items-start gap-2">
+                <AppWindow aria-hidden="true" className={cn(SETTINGS_CARD_ICON_CLASSNAME, "mt-0.5 text-emerald-600")} />
+                <span className="min-w-0">
+                  <span className={SETTINGS_CARD_TITLE_CLASSNAME}>{t("desktopBranding.title")}</span>
+                  <span className={cn(SETTINGS_CARD_DESCRIPTION_CLASSNAME, "block")}>
+                    {t("desktopBranding.description")}
+                  </span>
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn("mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded && "rotate-180")}
+              />
+            </button>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent asChild>
+          <CardContent className="space-y-6">
         <label className="block space-y-1.5">
           <span className="text-xs font-semibold text-slate-600">{t("desktopBranding.clientNameLabel")}</span>
           <Input
@@ -314,7 +331,9 @@ export const DesktopBrandingCard = () => {
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 };
