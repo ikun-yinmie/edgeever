@@ -1,14 +1,14 @@
 {
-  "version": "1.103.10",
+  "version": "1.103.11",
   "changes": {
     "en-US": [
-      "Added support for toggling sub-notebooks vs direct notes only in category list, generated multi-resolution Windows taskbar ICO and synchronized shortcuts for custom branding, and fixed image right-click context menu dismiss and bubbling in web browsers."
+      "Supported collapsible desktop client sections in Settings, refreshed Windows taskbar application branding and dynamic icon updates, and added project optimization recommendations."
     ],
     "zh-CN": [
-      "外层笔记本分类支持控制是否显示其下全部子级笔记（含全部子级/仅直属笔记），生成多尺寸 ICO 图标并同步桌面与开始菜单快捷方式以彻底解决 Windows 任务栏图标自定义问题，并优化 Web 端图片右键菜单触发体验与事件冒泡。"
+      "设置中心支持折叠桌面客户端配置分区，完善 Windows 任务栏应用品牌与多尺寸图标动态刷新机制，并补充项目架构与性能优化建议文档。"
     ],
     "ja": [
-      "ノートブックカテゴリでのサブノートブック表示制御のサポート、Windowsタスクバー用のマルチ解像度ICOアイコン生成およびショートカット同期、Webブラウザでの画像右クリックメニューの改善を行いました。"
+      "設定でデスクトップクライアントセクションの折りたたみをサポート、Windowsタスクバーのブランディングとアイコン動的更新を改善、プロジェクト最適化の推奨ドキュメントを追加しました。"
     ]
   }
 }
