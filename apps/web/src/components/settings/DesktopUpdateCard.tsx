@@ -101,6 +101,7 @@ const DesktopUpdateCardContent = () => {
     || installUpdate.isError
     || networkFailed
     || checkFailed
+    || status?.downloadBlocked === "verification"
     || (preferencesQuery.isError && !preferences);
 
   useEffect(() => {
@@ -159,6 +160,13 @@ const DesktopUpdateCardContent = () => {
   const latestVersionTag = latestResolvedVersion
     ? (latestResolvedVersion.startsWith("v") ? latestResolvedVersion : `v${latestResolvedVersion}`)
     : null;
+  // A newer build was discovered but the updater cannot install it itself
+  // (failed signature gate / rejected manifest). Manual download is then the
+  // only path, so it gets its own state instead of a generic failure.
+  const manualDownloadRequired = status?.downloadBlocked === "verification" && Boolean(status?.latestVersion);
+  const manualDownloadUrl = status?.downloadUrl
+    ?? (latestVersionTag ? `https://github.com/ikun-yinmie/edgeever/releases/tag/${latestVersionTag}` : null);
+  const manualDownloadNetwork = manualDownloadRequired && networkFailed;
 
   const statusLabel = installUpdate.isError
     ? t("desktopUpdate.syncBlocked")
@@ -170,13 +178,15 @@ const DesktopUpdateCardContent = () => {
           ? t("desktopUpdate.checking")
           : status?.state === "available"
             ? t("desktopUpdate.downloading")
-            : networkFailed
-              ? t("desktopUpdate.failedNetwork")
-              : checkFailed || updateError
-                ? t("desktopUpdate.failed")
-                : checkedOnce || Boolean(status?.latestVersion)
-                  ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
-                  : null;
+            : manualDownloadRequired
+              ? t("desktopUpdate.manualDownloadTitle", { version: latestVersionTag ?? currentVersionTag })
+              : networkFailed
+                ? t("desktopUpdate.failedNetwork")
+                : checkFailed || updateError
+                  ? t("desktopUpdate.failed")
+                  : checkedOnce || Boolean(status?.latestVersion)
+                    ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
+                    : null;
 
   const actionLabel = installUpdate.isError
     ? t("desktopUpdate.restart")
@@ -261,18 +271,63 @@ const DesktopUpdateCardContent = () => {
             <p
               className={cn(
                 "flex items-center gap-1.5 text-xs",
-                installUpdate.isError || networkFailed || checkFailed || updateError ? "text-red-600" : "text-slate-500",
+                installUpdate.isError || networkFailed || checkFailed || updateError
+                  ? "text-red-600"
+                  : manualDownloadRequired
+                    ? "text-amber-700"
+                    : "text-slate-500",
               )}
               role="status"
               aria-live="polite"
             >
               {installUpdate.isError || networkFailed || (checkFailed && !checkUpdate.isPending) || updateError
                 ? <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                : checkedOnce && !downloaded && status?.state !== "available"
-                  ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                  : <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />}
+                : manualDownloadRequired
+                  ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  : checkedOnce && !downloaded && status?.state !== "available"
+                    ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    : <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />}
               {statusLabel}
             </p>
+          ) : null}
+          {!networkFailed && !manualDownloadRequired && (checkFailed || updateError) ? (
+            <div
+              className="grid gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs leading-5 text-slate-700"
+              role="alert"
+            >
+              <p className="flex items-start gap-1.5">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <span>{t("desktopUpdate.checkFailedWithLink")}</span>
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+                <a
+                  className="inline-flex items-center gap-1 font-semibold text-emerald-700 underline underline-offset-2 hover:text-emerald-900"
+                  href={manualDownloadUrl ?? "https://github.com/ikun-yinmie/edgeever/releases/latest"}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t("desktopUpdate.downloadInstaller")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+                {status?.releasePageUrl ? (
+                  <a
+                    className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-slate-900"
+                    href={status.releasePageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("desktopUpdate.downloadLatest")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                ) : null}
+              </div>
+              {updateError?.message ? (
+                <details className="pl-5">
+                  <summary className="cursor-pointer text-[11px] text-slate-500">
+                    {t("desktopUpdate.lastErrorDetail")}
+                  </summary>
+                  <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{updateError.message}</p>
+                </details>
+              ) : null}
+            </div>
           ) : null}
           {networkFailed ? (
             <div
@@ -281,13 +336,17 @@ const DesktopUpdateCardContent = () => {
             >
               <p className="flex items-start gap-1.5">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{t("desktopUpdate.networkHint")}</span>
+                <span>
+                  {manualDownloadNetwork
+                    ? t("desktopUpdate.manualDownloadNetworkHint", { version: latestVersionTag ?? currentVersionTag })
+                    : t("desktopUpdate.networkHint")}
+                </span>
               </p>
               {updateError?.message ? (
                 <p className="break-all pl-5 font-mono text-[11px] text-amber-800/80">{updateError.message}</p>
               ) : null}
-              {autoUpdateSupported ? (
-                <p className="pl-5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+                {autoUpdateSupported ? (
                   <button
                     className="font-semibold underline underline-offset-2 hover:text-amber-950"
                     type="button"
@@ -295,8 +354,54 @@ const DesktopUpdateCardContent = () => {
                   >
                     {t("desktopUpdate.configureProxy")}
                   </button>
-                </p>
+                ) : null}
+                {manualDownloadUrl ? (
+                  <a
+                    className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:text-amber-950"
+                    href={manualDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("desktopUpdate.downloadInstaller")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {manualDownloadRequired && !networkFailed ? (
+            <div
+              className="grid gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-5 text-amber-900"
+              role="alert"
+            >
+              <p className="flex items-start gap-1.5">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{t("desktopUpdate.manualDownloadHint")}</span>
+              </p>
+              {updateError?.message ? (
+                <p className="break-all pl-5 font-mono text-[11px] text-amber-800/80">{updateError.message}</p>
               ) : null}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-5">
+                {manualDownloadUrl ? (
+                  <a
+                    className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:text-amber-950"
+                    href={manualDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("desktopUpdate.downloadInstaller")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                ) : null}
+                {status?.releasePageUrl ? (
+                  <a
+                    className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-amber-950"
+                    href={status.releasePageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("desktopUpdate.downloadLatest")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  </a>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

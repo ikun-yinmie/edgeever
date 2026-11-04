@@ -442,6 +442,11 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
 
   const desktopUpdateState = desktopUpdateStatusQuery.data?.state ?? "idle";
   const desktopUpdateError = desktopUpdateStatusQuery.data?.error ?? null;
+  // Prefer the exact asset link published by the main process; it already knows
+  // the platform, architecture and discovered version.
+  const desktopDownloadUrl = desktopUpdateStatusQuery.data?.downloadUrl
+    ?? "https://github.com/ikun-yinmie/edgeever/releases/latest";
+  const desktopManualDownloadRequired = desktopUpdateStatusQuery.data?.downloadBlocked === "verification";
   const desktopAutoUpdateSupported = clientRuntimeQuery.data?.autoUpdateSupported !== false;
   const desktopUpdateBusy = desktopUpdateCheckMutation.isPending || desktopUpdateInstallMutation.isPending;
   const desktopUpdateFailed = desktopUpdateInstallMutation.isError || desktopUpdateCheckMutation.isError || desktopUpdateStatusQuery.isError;
@@ -542,13 +547,19 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
                   variant="outline"
                   className="h-7 bg-card px-2.5 text-xs shadow-xs hover:bg-slate-50"
                 >
-                  <a href="https://github.com/ikun-yinmie/edgeever/releases/latest" target="_blank" rel="noreferrer">
+                  <a href={desktopDownloadUrl} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-3.5 w-3.5" />
                     {t("systemInfo.desktopDownloadLatest")}
                   </a>
                 </Button>
               ) : null}
             </div>
+            {desktopManualDownloadRequired ? (
+              <p className="flex items-start gap-1.5 px-0.5 text-[11px] leading-4 text-amber-700" role="status">
+                <Info className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                <span>{t("desktopUpdate.manualDownloadHint")}</span>
+              </p>
+            ) : null}
             {isCloud && active && clientAheadOfInstance ? (
               <p className="flex items-start gap-1.5 px-0.5 text-[11px] leading-4 text-slate-500" role="status">
                 <Info className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />

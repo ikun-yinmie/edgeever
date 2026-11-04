@@ -4,7 +4,7 @@ import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, unlink, w
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { release as operatingSystemRelease } from "node:os";
 import { SidecarRpcClient } from "./rpc.mjs";
@@ -78,6 +78,9 @@ import {
   syncWindowsShortcuts,
   writeClientBranding,
 } from "./client-branding.mjs";
+import {
+  syncWindowsAumidBranding,
+} from "./windows-aumid-branding.mjs";
 import { isAllowedBlankWindowUrl, isAllowedPrintPreviewUrl, isInternalAppWindowUrl } from "./window-open-policy.mjs";
 import { showWindow } from "./window-visibility.mjs";
 import { trayIconPath } from "./tray-icon.mjs";
@@ -94,6 +97,7 @@ import {
   fetchTrustedWindowsUpdate,
   verifyDownloadedWindowsUpdate,
 } from "./windows-update-trust.mjs";
+import { desktopReleaseLinks } from "./update-release-links.mjs";
 import electronUpdater from "electron-updater";
 import { createPluginPublicNetworkRuntime } from "./plugin-public-network.mjs";
 import { createAiDirectRuntime } from "./ai-direct.mjs";
@@ -326,6 +330,31 @@ const updateWindowsShortcutsBranding = (effectiveName, icoPath) => {
   }
 };
 
+const regExeValue = () => join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe");
+
+/**
+ * Electron's app.setAppUserModelId only tags the process. The pinned taskbar
+ * button, Start menu entry and jump list read the shell registration under
+ * HKCU\Software\Classes\AppUserModelId\<aumid>, so the custom icon has to be
+ * written there as well or the taskbar keeps the executable's embedded icon.
+ */
+const registerWindowsAppIdentity = (effectiveName, icoPath) => {
+  if (process.platform !== "win32") return { ok: false, applied: [] };
+  return syncWindowsAumidBranding({
+    aumid: WINDOWS_APP_USER_MODEL_ID,
+    name: effectiveName,
+    iconPath: icoPath && existsSync(icoPath) ? icoPath : null,
+    runReg: (args) => {
+      try {
+        execFileSync(regExeValue(), args, { windowsHide: true, stdio: "ignore" });
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, stderr: String(error?.message || error).slice(0, 500) };
+      }
+    },
+  });
+};
+
 const updateWindowsTaskbarBranding = (targetWindow, effectiveName, icoPath) => {
   if (process.platform !== "win32" || !targetWindow || targetWindow.isDestroyed()) return false;
   if (typeof targetWindow.setAppDetails !== "function") return false;
@@ -360,6 +389,16 @@ const applyClientBrandingToSystem = (branding) => {
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
   updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
+  const aumidRegistration = registerWindowsAppIdentity(effective.effectiveName, icoPath);
+  if (process.platform === "win32") {
+    void writeDiagnostic("branding.windows-identity", {
+      ok: aumidRegistration.ok,
+      applied: aumidRegistration.applied,
+      name: effective.effectiveName,
+      nameSource: effective.nameSource,
+      iconSource: effective.iconSource,
+    });
+  }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -372,7 +411,11 @@ const applyClientBrandingToSystem = (branding) => {
   if (process.platform === "win32" && icoPath && existsSync(icoPath)) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       try {
-        mainWindow.setIcon(icoPath);
+        // A path string is not always reloaded once the shell cached the
+        // previous icon; handing Electron a decoded image forces a fresh
+        // HICON for the window frame and the taskbar button.
+        const brandedIcon = nativeImage.createFromPath(icoPath);
+        mainWindow.setIcon(brandedIcon.isEmpty() ? icoPath : brandedIcon);
       } catch {
         // ignore
       }
@@ -424,6 +467,10 @@ const applyClientBrandingToSystem = (branding) => {
   }
 };
 let windowsDownloadedUpdateVerified = false;
+// Set when a newer version was discovered but could not be handed to the
+// updater (missing/invalid signed manifest). The status layer then offers the
+// release download link instead of only reporting a failed check.
+let updateDownloadBlocked = null;
 let lastUpdateError = null;
 let sidecarScopeKey = "anonymous";
 let activeAccountId = null;
@@ -1483,13 +1530,31 @@ const refreshTrayMenu = () => {
   createTray();
 };
 
-const desktopUpdateStatus = () => ({
-  state: updateState,
-  version: downloadedUpdateVersion,
-  latestVersion: latestCheckedVersion || (updateState === "downloaded" ? downloadedUpdateVersion : null) || (lastUpdateCheckAt > 0 && !lastUpdateError ? app.getVersion() : null),
-  currentVersion: app.getVersion(),
-  error: lastUpdateError,
-});
+const desktopUpdateStatus = () => {
+  const resolvedLatestVersion = latestCheckedVersion
+    || (updateState === "downloaded" ? downloadedUpdateVersion : null)
+    || (lastUpdateCheckAt > 0 && !lastUpdateError ? app.getVersion() : null);
+  // Publish concrete release URLs so a failed check or download still leaves
+  // the user with a working way to get the build, instead of only an error.
+  const links = desktopReleaseLinks({
+    platform: process.platform,
+    arch: process.arch,
+    version: resolvedLatestVersion,
+  });
+  return {
+    state: updateState,
+    version: downloadedUpdateVersion,
+    latestVersion: resolvedLatestVersion,
+    currentVersion: app.getVersion(),
+    error: lastUpdateError,
+    downloadUrl: links.downloadUrl,
+    releasePageUrl: links.releasePageUrl,
+    assetName: links.assetName,
+    // "verification" means a newer build exists but cannot be installed by the
+    // updater itself, so the UI must offer the release download.
+    downloadBlocked: updateDownloadBlocked,
+  };
+};
 
 const publishDesktopUpdateStatus = () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1677,6 +1742,14 @@ const applyUpdaterProxy = async () => {
 
 const AUTOMATIC_UPDATE_REASONS = new Set(["startup", "interval", "resume", "activate", "window", "preferences", "proxy"]);
 
+/**
+ * Route auxiliary update traffic (signed manifest, release metadata) through the
+ * same session the updater uses. net.fetch follows the default session, whose
+ * "auto" mode stays direct until a probe runs, so it silently bypassed a
+ * configured proxy and failed exactly where the updater succeeded.
+ */
+const updaterFetch = (url, init) => autoUpdater.netSession.fetch(url, init);
+
 const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } = {}) => {
   if (!app.isPackaged || process.env.EDGE_EVER_DISABLE_AUTO_UPDATE === "1" || updateState === "downloaded") {
     return Promise.resolve(null);
@@ -1695,6 +1768,7 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
   if (!force && now - lastUpdateCheckAt < updateCheckFocusThrottleMs) return Promise.resolve(null);
   lastUpdateCheckAt = now;
   lastUpdateError = null;
+  updateDownloadBlocked = null;
   void writeDiagnostic("update.check-started", { reason });
   updateCheckInFlight = applyUpdaterProxy()
     .then(() => autoUpdater.checkForUpdates())
@@ -1706,19 +1780,49 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
         latestCheckedVersion = app.getVersion();
       }
       if (process.platform === "win32" && result?.isUpdateAvailable) {
-        trustedWindowsUpdate = await fetchTrustedWindowsUpdate({
-          version: result.updateInfo.version,
-          updateInfo: result.updateInfo,
-          fetchImpl: net.fetch,
-        });
-        windowsDownloadedUpdateVerified = false;
-        void writeDiagnostic("update.windows-manifest-verified", {
-          version: trustedWindowsUpdate.version,
-          keyId: trustedWindowsUpdate.keyId,
-        });
-        void downloadTrustedDesktopUpdate(reason);
+        // The signed manifest lives on the same GitHub host as the feed. It used
+        // to be fetched through net.fetch, which follows the default session and
+        // therefore ignored the configured proxy in "auto" mode, so a working
+        // update check failed at the verification step. Fetch it through the
+        // updater's own session, and treat a verification failure as "manual
+        // download required" instead of discarding the discovered version.
+        try {
+          trustedWindowsUpdate = await fetchTrustedWindowsUpdate({
+            version: result.updateInfo.version,
+            updateInfo: result.updateInfo,
+            fetchImpl: updaterFetch,
+          });
+          windowsDownloadedUpdateVerified = false;
+          updateDownloadBlocked = null;
+          void writeDiagnostic("update.windows-manifest-verified", {
+            version: trustedWindowsUpdate.version,
+            keyId: trustedWindowsUpdate.keyId,
+          });
+          void downloadTrustedDesktopUpdate(reason);
+        } catch (error) {
+          trustedWindowsUpdate = null;
+          windowsDownloadedUpdateVerified = false;
+          // Nothing is downloading now, so leaving the state at "available"
+          // would render an endless "downloading" spinner and keep the 3s
+          // status poll alive. The discovered version stays in
+          // latestCheckedVersion so the UI can show it with a manual link.
+          updateState = "idle";
+          updateDownloadBlocked = "verification";
+          lastUpdateError = classifyUpdateError(error);
+          refreshTrayMenu();
+          publishDesktopUpdateStatus();
+          await writeDiagnostic("update.windows-manifest-rejected", {
+            reason,
+            kind: lastUpdateError.kind,
+            message: lastUpdateError.message,
+            version: result.updateInfo.version,
+          });
+        }
       }
-      if (result?.downloadPromise) {
+      // electron-updater only produces a downloadPromise when autoDownload is
+      // on (macOS/Linux). On Windows the download is started explicitly above
+      // after the signature gate, so a rejected manifest never downloads.
+      if (result?.downloadPromise && !(process.platform === "win32" && updateDownloadBlocked)) {
         trackDesktopUpdateDownload(result.downloadPromise, reason);
       }
       return result;
@@ -1778,6 +1882,7 @@ const configureAutoUpdater = () => {
     downloadedUpdateVersion = null;
     latestCheckedVersion = info?.version || app.getVersion();
     lastUpdateError = null;
+    updateDownloadBlocked = null;
     trustedWindowsUpdate = null;
     windowsDownloadedUpdateVerified = false;
     refreshTrayMenu();
@@ -2073,6 +2178,7 @@ const createWindow = async () => {
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
   updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
+  registerWindowsAppIdentity(effective.effectiveName, icoPath);
 
   const windowIcon = (process.platform === "win32" && icoPath && existsSync(icoPath))
     ? icoPath
@@ -2216,6 +2322,7 @@ const startApplication = async () => {
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
   updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
+  registerWindowsAppIdentity(effective.effectiveName, icoPath);
   applyMacDockIcon();
   if (app.isPackaged && isMountedInstallerPath(app.getAppPath())) {
     const isChinese = app.getLocale().toLowerCase().startsWith("zh");

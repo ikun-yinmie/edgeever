@@ -144,11 +144,42 @@ describe("desktop update flow", () => {
   });
 
   test("displays the latest checked version when client is already up to date", () => {
-    expect(mainSource).toContain("latestVersion: latestCheckedVersion");
+    expect(mainSource).toContain("const resolvedLatestVersion = latestCheckedVersion");
+    expect(mainSource).toContain("latestVersion: resolvedLatestVersion");
     expect(updateCardSource).toContain("latestResolvedVersion = status?.latestVersion");
     expect(updateCardSource).toContain("latestVersionTag ?? t(\"desktopUpdate.notChecked\")");
     expect(updateCardSource).toContain('t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })');
     expect(systemInfoSource).toContain("desktopLatestVersionTag");
     expect(systemInfoSource).toContain('t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })');
+  });
+
+  test("fetches the signed Windows manifest through the updater's proxy session", () => {
+    // net.fetch follows the default session, which stays direct in "auto" mode,
+    // so the verification step used to fail while the update check succeeded.
+    expect(mainSource).toContain("const updaterFetch = (url, init) => autoUpdater.netSession.fetch(url, init);");
+    expect(mainSource).toContain("fetchImpl: updaterFetch");
+    expect(mainSource).not.toContain("fetchImpl: net.fetch");
+  });
+
+  test("keeps a discovered version usable when the signed manifest is rejected", () => {
+    expect(mainSource).toContain("updateDownloadBlocked = \"verification\"");
+    expect(mainSource).toContain('writeDiagnostic("update.windows-manifest-rejected"');
+    // The failure is recorded, but the check itself must not throw away the
+    // version it just discovered: the rejection is handled inside the check
+    // instead of falling through to the outer catch that clears the state.
+    expect(mainSource).toContain("updateDownloadBlocked = \"verification\"");
+    expect(mainSource).toContain("await writeDiagnostic(\"update.windows-manifest-rejected\"");
+    expect(mainSource).toContain("void downloadTrustedDesktopUpdate(reason);");
+  });
+
+  test("publishes a concrete download link with every update status", () => {
+    expect(mainSource).toContain("import { desktopReleaseLinks } from \"./update-release-links.mjs\";");
+    expect(mainSource).toContain("downloadUrl: links.downloadUrl");
+    expect(mainSource).toContain("releasePageUrl: links.releasePageUrl");
+    expect(updateCardSource).toContain('t("desktopUpdate.downloadInstaller")');
+    expect(updateCardSource).toContain("manualDownloadRequired");
+    expect(updateCardSource).toContain('t("desktopUpdate.manualDownloadHint")');
+    expect(updateCardSource).toContain('t("desktopUpdate.checkFailedWithLink")');
+    expect(systemInfoSource).toContain("desktopDownloadUrl");
   });
 });

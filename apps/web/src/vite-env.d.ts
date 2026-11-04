@@ -210,6 +210,14 @@ interface DesktopUpdateStatus {
     message: string;
     at: string;
   } | null;
+  // Concrete release links so the UI can always offer a manual download, even
+  // when the updater cannot reach or verify the release.
+  downloadUrl?: string;
+  releasePageUrl?: string;
+  assetName?: string | null;
+  // "verification": a newer build exists but its signed manifest failed, so the
+  // restart path is unavailable and the release download is the way forward.
+  downloadBlocked?: "verification" | null;
 }
 
 interface DesktopUpdatePreferenceInput {
