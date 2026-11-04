@@ -121,6 +121,8 @@ describe("desktop client-branding", () => {
     expect(mainSource).toContain('ipcMain.handle("desktop:set-client-custom-branding"');
     expect(mainSource).toContain('ipcMain.handle("desktop:sync-server-branding"');
     expect(mainSource).toContain("applyClientBrandingToSystem");
+    expect(mainSource).toContain("updateWindowsTaskbarBranding");
+    expect(mainSource).toContain("setAppDetails");
   });
 
   it("exposes client relaunch capability to restart the desktop app", () => {
@@ -149,33 +151,46 @@ describe("desktop client-branding", () => {
     expect(decoded.toString("utf8")).toBe("sample image content");
   });
 
-  it("materializes branding icon to disk and cleans up when reset", () => {
+  it("materializes cache-busting branding icons and preserves referenced ICO files on reset", () => {
+    const { basename } = require("node:path");
     const { existsSync } = require("node:fs");
     const {
       BRANDING_ICON_FILE,
-      BRANDING_ICON_ICO_FILE,
+      BRANDING_ICON_ICO_PREFIX,
       BRANDING_TRAY_ICON_FILE,
       materializeBrandingFiles,
     } = require("./client-branding.mjs");
     const tempDir = mkdtempSync(join(tmpdir(), "branding-mat-test-"));
     try {
-      const sample = Buffer.from("png-bytes", "utf8");
+      const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+      const sample = Buffer.from([...pngSignature, 0x01]);
       const sampleDataUrl = `data:image/png;base64,${sample.toString("base64")}`;
 
       const res = materializeBrandingFiles(tempDir, sampleDataUrl);
       expect(res.hasIcon).toBe(true);
       expect(res.iconPath).toBe(join(tempDir, BRANDING_ICON_FILE));
-      expect(res.icoPath).toBe(join(tempDir, BRANDING_ICON_ICO_FILE));
+      expect(basename(res.icoPath)).toMatch(new RegExp(`^${BRANDING_ICON_ICO_PREFIX}[a-f0-9]{16}\\.ico$`));
       expect(res.trayIconPath).toBe(join(tempDir, BRANDING_TRAY_ICON_FILE));
       expect(existsSync(res.iconPath)).toBe(true);
       expect(existsSync(res.icoPath)).toBe(true);
       expect(existsSync(res.trayIconPath)).toBe(true);
 
+      const same = materializeBrandingFiles(tempDir, sampleDataUrl);
+      expect(same.icoPath).toBe(res.icoPath);
+
+      const changed = Buffer.from([...pngSignature, 0x02]);
+      const changedResult = materializeBrandingFiles(
+        tempDir,
+        `data:image/png;base64,${changed.toString("base64")}`,
+      );
+      expect(changedResult.icoPath).not.toBe(res.icoPath);
+
       const resetRes = materializeBrandingFiles(tempDir, null);
       expect(resetRes.hasIcon).toBe(false);
       expect(existsSync(join(tempDir, BRANDING_ICON_FILE))).toBe(false);
-      expect(existsSync(join(tempDir, BRANDING_ICON_ICO_FILE))).toBe(false);
       expect(existsSync(join(tempDir, BRANDING_TRAY_ICON_FILE))).toBe(false);
+      expect(existsSync(res.icoPath)).toBe(true);
+      expect(existsSync(changedResult.icoPath)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -258,6 +273,71 @@ describe("desktop client-branding", () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it("restores Windows shortcut icons to the executable when custom branding is cleared", () => {
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    const { syncWindowsShortcuts } = require("./client-branding.mjs");
+    const tempRoot = mkdtempSync(join(tmpdir(), "win-shortcuts-reset-test-"));
+    try {
+      const appData = join(tempRoot, "AppData");
+      const startMenu = join(appData, "Microsoft", "Windows", "Start Menu", "Programs");
+      mkdirSync(startMenu, { recursive: true });
+      writeFileSync(join(startMenu, "EdgeEver.lnk"), "dummy");
+      const execPath = "C:\\Program Files\\EdgeEver\\EdgeEver.exe";
+      const written = [];
+
+      const result = syncWindowsShortcuts({
+        appDataDir: appData,
+        desktopDir: null,
+        execPath,
+        name: "EdgeEver",
+        icoPath: null,
+        shellWriter: (shortcutPath, operation, options) => {
+          written.push({ shortcutPath, operation, options });
+          return true;
+        },
+      });
+
+      expect(result).toEqual({ updated: 1, failed: 0 });
+      expect(written[0].options.icon).toBe(execPath);
+      expect(written[0].options.iconIndex).toBe(0);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("builds Windows taskbar details with a stable app identity and versioned icon", () => {
+    const {
+      WINDOWS_APP_USER_MODEL_ID,
+      buildWindowsTaskbarAppDetails,
+    } = require("./client-branding.mjs");
+    const execPath = "C:\\Program Files\\EdgeEver\\EdgeEver.exe";
+    const iconPath = "C:\\Users\\me\\AppData\\Roaming\\EdgeEver\\branding-icon-a1b2c3d4.ico";
+
+    expect(buildWindowsTaskbarAppDetails({
+      iconPath,
+      execPath,
+      name: "岁玥史书",
+      packaged: true,
+    })).toEqual({
+      appId: WINDOWS_APP_USER_MODEL_ID,
+      appIconPath: iconPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${execPath}"`,
+      relaunchDisplayName: "岁玥史书",
+    });
+
+    expect(buildWindowsTaskbarAppDetails({
+      iconPath: null,
+      execPath,
+      name: "EdgeEver",
+      packaged: false,
+    })).toEqual({
+      appId: WINDOWS_APP_USER_MODEL_ID,
+      appIconPath: execPath,
+      appIconIndex: 0,
+    });
   });
 
   it("builds and synchronizes linux desktop entry with custom branding", () => {

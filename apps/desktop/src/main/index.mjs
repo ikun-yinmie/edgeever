@@ -67,6 +67,8 @@ import {
 import {
   CLIENT_BRANDING_FILE,
   DEFAULT_CLIENT_NAME,
+  WINDOWS_APP_USER_MODEL_ID,
+  buildWindowsTaskbarAppDetails,
   dataUrlToBuffer,
   materializeBrandingFiles,
   normalizeClientBranding,
@@ -305,22 +307,41 @@ const updateLinuxDesktopBranding = (effectiveName, iconPath) => {
 };
 
 const updateWindowsShortcutsBranding = (effectiveName, icoPath) => {
-  if (process.platform !== "win32") return;
+  if (process.platform !== "win32") return { updated: 0, failed: 0 };
   try {
     const appDataDir = app.getPath("appData");
     const desktopDir = app.getPath("desktop");
     const execPath = process.execPath;
-    syncWindowsShortcuts({
+    return syncWindowsShortcuts({
       appDataDir,
       desktopDir,
       execPath,
       name: effectiveName,
       icoPath,
-      appUserModelId: "org.edgeever.desktop",
+      appUserModelId: WINDOWS_APP_USER_MODEL_ID,
       shellWriter: (shortcutPath, operation, options) => shell.writeShortcutLink(shortcutPath, operation, options),
     });
   } catch {
-    // ignore
+    return { updated: 0, failed: 1 };
+  }
+};
+
+const updateWindowsTaskbarBranding = (targetWindow, effectiveName, icoPath) => {
+  if (process.platform !== "win32" || !targetWindow || targetWindow.isDestroyed()) return false;
+  if (typeof targetWindow.setAppDetails !== "function") return false;
+  try {
+    const customIconPath = icoPath && existsSync(icoPath) ? icoPath : null;
+    if (!app.isPackaged && !customIconPath) return false;
+    targetWindow.setAppDetails(buildWindowsTaskbarAppDetails({
+      appUserModelId: WINDOWS_APP_USER_MODEL_ID,
+      iconPath: customIconPath,
+      execPath: process.execPath,
+      name: effectiveName,
+      packaged: app.isPackaged,
+    }));
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -375,6 +396,8 @@ const applyClientBrandingToSystem = (branding) => {
       }
     }
   }
+
+  updateWindowsTaskbarBranding(mainWindow, effective.effectiveName, icoPath);
 
   if (tray && !tray.isDestroyed()) {
     try {
@@ -2072,6 +2095,7 @@ const createWindow = async () => {
       sandbox: true,
     },
   });
+  updateWindowsTaskbarBranding(mainWindow, effective.effectiveName, icoPath);
   rendererReady = false;
   armRendererStartupGuard();
   if (state.isMaximized) mainWindow.maximize();
@@ -2178,7 +2202,7 @@ const confirmMacInstallation = async () => {
 const startApplication = async () => {
   if (process.platform === "win32") {
     try {
-      app.setAppUserModelId("org.edgeever.desktop");
+      app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
     } catch {
       // ignore
     }

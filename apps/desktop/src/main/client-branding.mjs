@@ -1,12 +1,15 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const CLIENT_BRANDING_FILE = "client-branding.json";
 export const BRANDING_ICON_FILE = "branding-icon.png";
 export const BRANDING_ICON_ICO_FILE = "branding-icon.ico";
+export const BRANDING_ICON_ICO_PREFIX = "branding-icon-";
 export const BRANDING_TRAY_ICON_FILE = "branding-tray-icon.png";
 export const CLIENT_BRANDING_VERSION = 1;
 export const DEFAULT_CLIENT_NAME = "EdgeEver";
+export const WINDOWS_APP_USER_MODEL_ID = "org.edgeever.desktop";
 
 export const dataUrlToBuffer = (dataUrl) => {
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return null;
@@ -57,23 +60,33 @@ export const createIcoBufferFromPngBuffers = (pngEntries) => {
   return Buffer.concat([header, ...directoryEntries, ...imageBuffers]);
 };
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+const isPngBuffer = (buffer) => Buffer.isBuffer(buffer)
+  && buffer.length >= PNG_SIGNATURE.length
+  && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+
+const brandingIconHash = (buffer) => createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+
 export const materializeBrandingFiles = (userDataDir, effectiveIcon, { nativeImageProvider } = {}) => {
   if (!userDataDir || typeof userDataDir !== "string") {
     return { iconPath: null, icoPath: null, trayIconPath: null, hasIcon: false };
   }
   const iconPath = join(userDataDir, BRANDING_ICON_FILE);
-  const icoPath = join(userDataDir, BRANDING_ICON_ICO_FILE);
   const trayIconPath = join(userDataDir, BRANDING_TRAY_ICON_FILE);
+
+  if (!effectiveIcon) {
+    try {
+      if (existsSync(iconPath)) rmSync(iconPath, { force: true });
+      if (existsSync(trayIconPath)) rmSync(trayIconPath, { force: true });
+    } catch {
+      // Keep existing ICO files because older pinned shortcuts can still reference them.
+    }
+    return { iconPath: null, icoPath: null, trayIconPath: null, hasIcon: false };
+  }
 
   const buffer = dataUrlToBuffer(effectiveIcon);
   if (!buffer || buffer.length === 0) {
-    try {
-      if (existsSync(iconPath)) rmSync(iconPath, { force: true });
-      if (existsSync(icoPath)) rmSync(icoPath, { force: true });
-      if (existsSync(trayIconPath)) rmSync(trayIconPath, { force: true });
-    } catch {
-      // ignore
-    }
     return { iconPath: null, icoPath: null, trayIconPath: null, hasIcon: false };
   }
 
@@ -81,23 +94,24 @@ export const materializeBrandingFiles = (userDataDir, effectiveIcon, { nativeIma
     if (!existsSync(userDataDir)) {
       mkdirSync(userDataDir, { recursive: true });
     }
-    writeFileSync(iconPath, buffer);
 
-    // Build multi-resolution ICO if a nativeImageProvider is supplied (in Electron runtime),
-    // otherwise wrap original buffer as fallback ICO.
+    let normalizedPng = null;
     let icoBuffer = null;
     let trayBuffer = null;
     if (typeof nativeImageProvider === "function") {
       try {
         const nativeImg = nativeImageProvider(buffer);
         if (nativeImg && !nativeImg.isEmpty()) {
+          const sourcePng = nativeImg.toPNG();
+          if (sourcePng && sourcePng.length > 0) normalizedPng = sourcePng;
+
           const sizes = [16, 24, 32, 48, 64, 128, 256];
           const entries = [];
-          for (const s of sizes) {
-            const resized = nativeImg.resize({ width: s, height: s, quality: "high" });
-            const pngBuf = resized.toPNG();
-            if (pngBuf && pngBuf.length > 0) {
-              entries.push({ width: s, height: s, buffer: pngBuf });
+          for (const size of sizes) {
+            const resized = nativeImg.resize({ width: size, height: size, quality: "high" });
+            const pngBuffer = resized.toPNG();
+            if (pngBuffer && pngBuffer.length > 0) {
+              entries.push({ width: size, height: size, buffer: pngBuffer });
             }
           }
           if (entries.length > 0) {
@@ -107,21 +121,25 @@ export const materializeBrandingFiles = (userDataDir, effectiveIcon, { nativeIma
           trayBuffer = trayResized.toPNG();
         }
       } catch {
-        // ignore resize error, fallback to raw buffer
+        // A valid PNG can still use the file-level fallback below.
       }
     }
 
+    if (!normalizedPng && isPngBuffer(buffer)) normalizedPng = buffer;
+    if (!normalizedPng) {
+      return { iconPath: null, icoPath: null, trayIconPath: null, hasIcon: false };
+    }
     if (!icoBuffer) {
-      icoBuffer = createIcoBufferFromPngBuffers([{ width: 256, height: 256, buffer }]);
+      icoBuffer = createIcoBufferFromPngBuffers([{ width: 256, height: 256, buffer: normalizedPng }]);
     }
-    if (icoBuffer) {
-      writeFileSync(icoPath, icoBuffer);
+    if (!icoBuffer) {
+      return { iconPath: null, icoPath: null, trayIconPath: null, hasIcon: false };
     }
-    if (trayBuffer) {
-      writeFileSync(trayIconPath, trayBuffer);
-    } else {
-      writeFileSync(trayIconPath, buffer);
-    }
+
+    const icoPath = join(userDataDir, `${BRANDING_ICON_ICO_PREFIX}${brandingIconHash(normalizedPng)}.ico`);
+    writeFileSync(iconPath, normalizedPng);
+    writeFileSync(icoPath, icoBuffer);
+    writeFileSync(trayIconPath, trayBuffer && trayBuffer.length > 0 ? trayBuffer : normalizedPng);
 
     return { iconPath, icoPath, trayIconPath, hasIcon: true };
   } catch {
@@ -135,15 +153,17 @@ export const syncWindowsShortcuts = ({
   execPath,
   name,
   icoPath,
-  appUserModelId = "org.edgeever.desktop",
+  appUserModelId = WINDOWS_APP_USER_MODEL_ID,
   shellWriter,
 }) => {
-  if (typeof shellWriter !== "function" || !icoPath || !existsSync(icoPath)) {
+  const safeName = (typeof name === "string" && name.trim()) ? name.trim() : DEFAULT_CLIENT_NAME;
+  const safeExec = (typeof execPath === "string" && execPath.trim()) ? execPath.trim() : "";
+  const customIconPath = (typeof icoPath === "string" && icoPath.trim() && existsSync(icoPath)) ? icoPath.trim() : null;
+  const shortcutIconPath = customIconPath || safeExec;
+  if (typeof shellWriter !== "function" || !shortcutIconPath) {
     return { updated: 0, failed: 0 };
   }
 
-  const safeName = (typeof name === "string" && name.trim()) ? name.trim() : DEFAULT_CLIENT_NAME;
-  const safeExec = (typeof execPath === "string" && execPath.trim()) ? execPath.trim() : "";
   const targetShortcutNames = new Set([
     "EdgeEver.lnk",
     `${safeName}.lnk`,
@@ -179,7 +199,7 @@ export const syncWindowsShortcuts = ({
           const ok = shellWriter(shortcutPath, "update", {
             target: safeExec || undefined,
             description: safeName,
-            icon: icoPath,
+            icon: shortcutIconPath,
             iconIndex: 0,
             appUserModelId,
           });
@@ -198,6 +218,28 @@ export const syncWindowsShortcuts = ({
   }
 
   return { updated, failed };
+};
+
+export const buildWindowsTaskbarAppDetails = ({
+  appUserModelId = WINDOWS_APP_USER_MODEL_ID,
+  iconPath,
+  execPath,
+  name,
+  packaged = false,
+}) => {
+  const safeExec = typeof execPath === "string" ? execPath.trim() : "";
+  const safeIcon = typeof iconPath === "string" ? iconPath.trim() : "";
+  const safeName = typeof name === "string" && name.trim() ? name.trim() : DEFAULT_CLIENT_NAME;
+  const details = {
+    appId: appUserModelId,
+    ...(safeIcon || safeExec ? { appIconPath: safeIcon || safeExec, appIconIndex: 0 } : {}),
+  };
+
+  if (packaged && safeExec) {
+    details.relaunchCommand = `"${safeExec}"`;
+    details.relaunchDisplayName = safeName;
+  }
+  return details;
 };
 
 export const buildLinuxDesktopEntryContent = ({ name, execPath, iconPath }) => {
