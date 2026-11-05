@@ -1,17 +1,14 @@
 {
-  "version": "1.103.15",
+  "version": "1.103.16",
   "changes": {
     "en-US": [
-      "Code blocks keep an empty paragraph below and stay editable inside tasks: Enter/Shift-Enter always add a newline, Tab indents, long blocks scroll with a pinned header, and HTML previews stay scrollable in edit mode",
-      "Line spacing accepts a signed -12px to 32px adjustment applied to the selection or the whole note, as a single undo step"
+      "Right-clicking a block now offers the convert-to menu, targeting the block under the pointer or the current selection, and the drag handle converts the correct block instead of its container"
     ],
     "zh-CN": [
-      "代码块下方自动保留空段落，任务内也能正常编辑：回车/Shift+回车始终换行、Tab 缩进、长代码块内部滚动且头部固定，HTML 预览在编辑模式下可直接滚动",
-      "行距支持 -12px 到 32px 的有符号微调，可作用于选中段落或整篇文章，一次拖动只产生一步撤销"
+      "笔记正文右键菜单新增「转化为」，作用于指针所在块或当前选区；同时修复块手柄转换时误改外层容器的问题"
     ],
     "ja": [
-      "コードブロックの下に空段落を確保し、タスク内でも編集可能に。Enter/Shift+Enter は常に改行、Tab はインデント、長いコードは固定ヘッダー付きで内部スクロール、HTML プレビューは編集モードでもスクロール可能",
-      "行間は -12px〜32px の符号付き微調整に対応し、選択段落またはノート全体に適用可能。1 回のドラッグは 1 回の元に戻す操作になります"
+      "本文の右クリックメニューに「変換」を追加し、ポインター下のブロックまたは選択範囲に適用。ドラッグハンドルが外側コンテナではなく正しいブロックを変換するよう修正しました"
     ]
   }
 }
