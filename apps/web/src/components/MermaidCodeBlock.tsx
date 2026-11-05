@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Ellipsis, ListOrdered, Maximize2, WrapText } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Ellipsis, Eye, ListOrdered, Maximize2, WrapText } from "lucide-react";
 import { MERMAID_THEME_PALETTES, useMermaidTheme } from "./ThemeProvider";
 import { MermaidViewer } from "./MermaidViewer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CODE_BLOCK_LANGUAGES } from "@/lib/code-block";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { renderMarkdownCodePreview } from "@/lib/markdown-code-preview";
+import { buildHtmlCodePreviewDocument, getCodeBlockPreviewLanguage } from "@/lib/code-block-preview";
 import { renderMermaidWithFallback } from "@/lib/mermaid-renderer";
 import { getOfficialMermaidThemeVariables } from "@/lib/mermaid-theme";
 
@@ -87,12 +89,16 @@ const LanguagePicker = ({ language, onPick, label }: LanguagePickerProps) => {
   );
 };
 
-export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewProps) => {
+export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: NodeViewProps) => {
   const { t } = useTranslation();
   const { mermaidTheme } = useMermaidTheme();
+  const focusFrameRef = useRef<number | null>(null);
   const language = typeof node.attrs.language === "string" ? node.attrs.language.toLowerCase() : "plaintext";
-  const source = node.textContent.trim();
+  const rawSource = node.textContent;
+  const source = rawSource.trim();
   const isMermaid = language === "mermaid";
+  const previewLanguage = getCodeBlockPreviewLanguage(language);
+  const hasPreview = previewLanguage !== null;
   const meta = (node.attrs.meta ?? {}) as {
     title?: string;
     width?: string;
@@ -106,12 +112,20 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   // Defaults match Yuque: line numbers on, wrapping off.
   const showLineNumbers = meta.lineNumbers !== false;
   const wrapLines = meta.wrap === true;
-  const lineCount = useMemo(() => node.childCount > 0 ? node.textContent.split("\n").length : 1, [node]);
+  const lineCount = useMemo(() => node.childCount > 0 ? rawSource.split("\n").length : 1, [node.childCount, rawSource]);
   const lineNumbers = useMemo(
     () => Array.from({ length: lineCount }, (_, index) => index + 1),
     [lineCount],
   );
-  const canEdit = editor.isEditable;
+  const [canEdit, setCanEdit] = useState(editor.isEditable);
+  useEffect(() => {
+    // setEditable emits update without changing the node, so the node view would
+    // otherwise keep stale controls (and an inert HTML iframe) until clicked.
+    const syncEditable = () => setCanEdit(editor.isEditable);
+    syncEditable();
+    editor.on("update", syncEditable);
+    return () => { editor.off("update", syncEditable); };
+  }, [editor]);
   // Read mode keeps the header view-only: collapse, width, line numbers and
   // wrapping toggle per viewer without ever editing the document.
   const [viewCollapsed, setViewCollapsed] = useState(isCollapsed);
@@ -124,6 +138,29 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
   const wrapLinesVisible = canEdit ? wrapLines : viewWrap;
   const [svg, setSvg] = useState("");
   const [sourceVisible, setSourceVisible] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(true);
+  const previewMarkup = useMemo(() => {
+    if (!previewLanguage || !previewVisible || collapsed || !source) return "";
+    return previewLanguage === "html"
+      ? buildHtmlCodePreviewDocument(rawSource)
+      : renderMarkdownCodePreview(rawSource);
+  }, [previewLanguage, previewVisible, collapsed, source, rawSource]);
+  const previewLabels = previewLanguage === "html" ? {
+    preview: t("editorToolbar.htmlPreview"),
+    edit: t("editorToolbar.htmlEdit"),
+    showSource: t("editorToolbar.htmlShowSource"),
+    source: t("editorToolbar.htmlSource"),
+    empty: t("editorToolbar.htmlEmpty"),
+  } : {
+    preview: t("editorToolbar.markdownPreview"),
+    edit: t("editorToolbar.markdownEdit"),
+    showSource: t("editorToolbar.markdownShowSource"),
+    source: t("editorToolbar.markdownSource"),
+    empty: t("editorToolbar.markdownEmpty"),
+  };
+  const previewToggleLabel = previewVisible
+    ? canEdit ? previewLabels.edit : previewLabels.showSource
+    : previewLabels.preview;
   const [viewerOpen, setViewerOpen] = useState(false);
   const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -143,11 +180,92 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
 
   const handleCopy = async () => {
     try {
-      const copied = await copyTextToClipboard(node.textContent);
+      const copied = await copyTextToClipboard(rawSource);
       setCopyState(copied ? "copied" : "error");
     } catch {
       setCopyState("error");
     }
+  };
+
+  useEffect(() => {
+    if (!hasPreview) return;
+    if (!canEdit) {
+      setPreviewVisible(true);
+      return;
+    }
+
+    const syncPreviewWithSelection = () => {
+      if (!editor.isFocused) {
+        setPreviewVisible(true);
+        return;
+      }
+
+      const position = getPos();
+      if (typeof position !== "number") {
+        setPreviewVisible(true);
+        return;
+      }
+
+      const contentFrom = position + 1;
+      const contentTo = contentFrom + (editor.state.doc.nodeAt(position)?.content.size ?? 0);
+      const { from, to } = editor.state.selection;
+      setPreviewVisible(!(from >= contentFrom && to <= contentTo));
+    };
+    const handleEditorBlur = () => setPreviewVisible(true);
+
+    syncPreviewWithSelection();
+    editor.on("selectionUpdate", syncPreviewWithSelection);
+    editor.on("focus", syncPreviewWithSelection);
+    editor.on("blur", handleEditorBlur);
+    return () => {
+      editor.off("selectionUpdate", syncPreviewWithSelection);
+      editor.off("focus", syncPreviewWithSelection);
+      editor.off("blur", handleEditorBlur);
+    };
+  }, [canEdit, editor, getPos, hasPreview]);
+
+  useEffect(() => () => {
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
+  }, []);
+
+  const focusPreviewSource = () => {
+    setPreviewVisible(false);
+    if (!canEdit) return;
+
+    if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
+    // Wait for the source DOM to be visible before restoring the caret.
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = null;
+      if (editor.isDestroyed || !editor.isEditable) return;
+      const position = getPos();
+      if (typeof position !== "number") return;
+      const currentNode = editor.state.doc.nodeAt(position);
+      if (currentNode?.type.name !== "codeBlock") return;
+
+      const contentFrom = position + 1;
+      const contentTo = position + currentNode.nodeSize - 1;
+      const { from, to } = editor.state.selection;
+      const selectionIsInside = from >= contentFrom && to <= contentTo;
+      editor.commands.setTextSelection(selectionIsInside ? { from, to } : contentTo);
+      editor.view.focus();
+    });
+  };
+
+  const toggleCodePreview = () => {
+    if (collapsed) {
+      if (canEdit) {
+        updateAttributes({ meta: { ...meta, collapsed: false } });
+      } else {
+        setViewCollapsed(false);
+      }
+    }
+
+    if (previewVisible) {
+      focusPreviewSource();
+      return;
+    }
+
+    setPreviewVisible(true);
   };
 
   useEffect(() => {
@@ -223,8 +341,9 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
         showHeader ? "edgeever-code-block-has-header" : "",
         wide ? "edgeever-code-block-wide" : "",
         collapsed ? "edgeever-code-block-collapsed" : "",
-        !isMermaid && lineNumbersVisible && !collapsed ? "edgeever-code-block-numbered" : "",
-        !isMermaid && wrapLinesVisible && !collapsed ? "edgeever-code-block-wrap" : "",
+        hasPreview && previewVisible ? "is-code-preview" : "",
+        !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && !collapsed ? "edgeever-code-block-numbered" : "",
+        !isMermaid && !(hasPreview && previewVisible) && wrapLinesVisible && !collapsed ? "edgeever-code-block-wrap" : "",
       ].filter(Boolean).join(" ")}
       data-language={language}
     >
@@ -232,7 +351,7 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
         <div className="edgeever-code-header" contentEditable={false}>
           {canEdit ? (
             <LanguagePicker
-              language={language}
+              language={previewLanguage ?? language}
               onPick={(value) => updateAttributes({ language: value })}
               label={t("editorToolbar.codeLanguage")}
             />
@@ -260,6 +379,30 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
             blockTitle && <span className="edgeever-code-title-label">{blockTitle}</span>
           )}
           <div className="edgeever-code-header-actions">
+            {hasPreview && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className={`edgeever-code-tool-button edgeever-code-preview-toggle edgeever-${previewLanguage}-preview-toggle`}
+                    aria-label={previewToggleLabel}
+                    aria-pressed={previewVisible}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!previewVisible) event.currentTarget.focus();
+                      toggleCodePreview();
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    <Eye aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {previewToggleLabel}
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -492,7 +635,47 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
           )}
         </div>
       )}
-      {!collapsed && !isMermaid && lineNumbersVisible && (
+      {hasPreview && previewVisible && !collapsed && (
+        <div
+          className={`edgeever-code-preview edgeever-${previewLanguage}-preview${previewLanguage === "markdown" ? " markdown-content" : ""}`}
+          contentEditable={false}
+          aria-label={previewLabels.preview}
+          role="region"
+          tabIndex={canEdit ? 0 : undefined}
+          onFocus={(event) => {
+            if (canEdit && event.target === event.currentTarget) focusPreviewSource();
+          }}
+          onMouseDown={(event) => {
+            // Links keep their normal behavior; other clicks enter source editing.
+            if (canEdit && !(event.target as Element).closest("a")) event.preventDefault();
+          }}
+          onClick={(event) => {
+            if (!canEdit || (event.target as Element).closest("a")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            focusPreviewSource();
+          }}
+        >
+          {!source ? (
+            <p className="edgeever-code-preview-empty">{previewLabels.empty}</p>
+          ) : previewLanguage === "html" ? (
+            <iframe
+              className="edgeever-html-preview-frame"
+              aria-label={previewLabels.preview}
+              sandbox=""
+              referrerPolicy="no-referrer"
+              srcDoc={previewMarkup}
+              // In edit mode the containing preview receives clicks and focus.
+              // In read mode the frame can be scrolled without editing the note.
+              inert={canEdit}
+              tabIndex={canEdit ? -1 : 0}
+            />
+          ) : (
+            <div className="edgeever-markdown-preview-content" dangerouslySetInnerHTML={{ __html: previewMarkup }} />
+          )}
+        </div>
+      )}
+      {!collapsed && !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && (
         <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
           {lineNumbers.map((value) => (
             <span key={value}>{value}</span>
@@ -500,12 +683,20 @@ export const MermaidCodeBlock = ({ editor, node, updateAttributes }: NodeViewPro
         </div>
       )}
       <NodeViewContent
-        className={isMermaid ? "edgeever-code-source edgeever-mermaid-source" : "edgeever-code-source"}
+        className={isMermaid
+          ? "edgeever-code-source edgeever-mermaid-source"
+          : hasPreview
+            ? `edgeever-code-source edgeever-preview-source edgeever-${previewLanguage}-source`
+            : "edgeever-code-source"}
         role="textbox"
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        aria-label={isMermaid ? t("editorToolbar.mermaidSource") : undefined}
+        aria-label={isMermaid
+          ? t("editorToolbar.mermaidSource")
+          : hasPreview
+            ? previewLabels.source
+            : undefined}
         aria-multiline="true"
         aria-readonly={!editor.isEditable}
       />

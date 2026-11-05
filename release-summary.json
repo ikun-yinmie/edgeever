@@ -1,14 +1,14 @@
 {
-  "version": "1.103.13",
+  "version": "1.103.14",
   "changes": {
     "en-US": [
-      "Support navigating global search match results within the note editor and seamlessly hand off to in-note search."
+      "Support live HTML and Markdown preview and edit toggle directly within editor code blocks."
     ],
     "zh-CN": [
-      "支持在笔记编辑器内直接导航全局搜索匹配结果，并可无缝切换至笔记内搜索。"
+      "支持在笔记编辑器代码块内直接预览与编辑切换 HTML 和 Markdown 内容。"
     ],
     "ja": [
-      "ノートエディタ内でグローバル検索のマッチ結果をナビゲートし、ノート内検索へシームレスに切り替えられるようになりました。"
+      "ノートエディタのコードブロック内で HTML および Markdown のプレビューと編集切り替えに対応しました。"
     ]
   }
 }

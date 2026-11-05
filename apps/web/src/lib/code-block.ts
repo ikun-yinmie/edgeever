@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { createEdgeEverCodeBlock } from "@edgeever/shared";
 import { MermaidCodeBlock } from "@/components/MermaidCodeBlock";
+import { getCodeBlockPreviewLanguage } from "./code-block-preview";
 
 export const codeBlockLowlight = createLowlight(common);
 
@@ -21,6 +22,23 @@ export const selectCurrentCodeBlockContent = (editor: Editor) => {
   return editor.commands.setTextSelection({ from: blockFrom, to: blockTo });
 };
 
+/** Hidden contentDOMs are skipped by native arrow navigation; enter explicitly. */
+export const enterAdjacentPreviewCodeBlock = (editor: Editor, direction: -1 | 1, vertical = false) => {
+  const { $from, empty } = editor.state.selection;
+  if (!editor.isEditable || !empty || $from.depth === 0 || !$from.parent.isTextblock) return false;
+  const boundary = direction === 1 ? $from.after() : $from.before();
+  const $boundary = editor.state.doc.resolve(boundary);
+  const adjacent = direction === 1 ? $boundary.nodeAfter : $boundary.nodeBefore;
+  if (adjacent?.type.name !== "codeBlock"
+    || !getCodeBlockPreviewLanguage(adjacent.attrs.language)
+    || adjacent.attrs.meta?.collapsed === true) return false;
+
+  const atBoundary = vertical
+    ? editor.view.endOfTextblock(direction === 1 ? "down" : "up")
+    : $from.parentOffset === (direction === 1 ? $from.parent.content.size : 0);
+  return atBoundary && editor.commands.setTextSelection(boundary + direction);
+};
+
 /**
  * The shared codeBlock (meta attrs + markdown round-trip) wired to the React
  * node view and the desktop lowlight highlighter. The options cast is needed
@@ -36,9 +54,18 @@ export const EdgeEverCodeBlock = createEdgeEverCodeBlock().extend<any>({
   },
 
   addKeyboardShortcuts() {
+    const inherited = this.parent?.() ?? {};
+    const navigate = (key: string, direction: -1 | 1, vertical = false) =>
+      enterAdjacentPreviewCodeBlock(this.editor, direction, vertical)
+      || inherited[key]?.({ editor: this.editor })
+      || false;
     return {
-      ...this.parent?.(),
+      ...inherited,
       "Mod-a": () => selectCurrentCodeBlockContent(this.editor),
+      ArrowRight: () => navigate("ArrowRight", 1),
+      ArrowLeft: () => navigate("ArrowLeft", -1),
+      ArrowDown: () => navigate("ArrowDown", 1, true),
+      ArrowUp: () => navigate("ArrowUp", -1, true),
     };
   },
 
@@ -48,6 +75,8 @@ export const EdgeEverCodeBlock = createEdgeEverCodeBlock().extend<any>({
 });
 
 export const getCodeBlockLanguageValue = (language: unknown) => {
+  const previewLanguage = getCodeBlockPreviewLanguage(language);
+  if (previewLanguage) return previewLanguage;
   if (typeof language !== "string" || !language) {
     return "plaintext";
   }
