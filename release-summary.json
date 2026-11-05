@@ -1,14 +1,17 @@
 {
-  "version": "1.103.14",
+  "version": "1.103.15",
   "changes": {
     "en-US": [
-      "Support live HTML and Markdown preview and edit toggle directly within editor code blocks."
+      "Code blocks keep an empty paragraph below and stay editable inside tasks: Enter/Shift-Enter always add a newline, Tab indents, long blocks scroll with a pinned header, and HTML previews stay scrollable in edit mode",
+      "Line spacing accepts a signed -12px to 32px adjustment applied to the selection or the whole note, as a single undo step"
     ],
     "zh-CN": [
-      "支持在笔记编辑器代码块内直接预览与编辑切换 HTML 和 Markdown 内容。"
+      "代码块下方自动保留空段落，任务内也能正常编辑：回车/Shift+回车始终换行、Tab 缩进、长代码块内部滚动且头部固定，HTML 预览在编辑模式下可直接滚动",
+      "行距支持 -12px 到 32px 的有符号微调，可作用于选中段落或整篇文章，一次拖动只产生一步撤销"
     ],
     "ja": [
-      "ノートエディタのコードブロック内で HTML および Markdown のプレビューと編集切り替えに対応しました。"
+      "コードブロックの下に空段落を確保し、タスク内でも編集可能に。Enter/Shift+Enter は常に改行、Tab はインデント、長いコードは固定ヘッダー付きで内部スクロール、HTML プレビューは編集モードでもスクロール可能",
+      "行間は -12px〜32px の符号付き微調整に対応し、選択段落またはノート全体に適用可能。1 回のドラッグは 1 回の元に戻す操作になります"
     ]
   }
 }
