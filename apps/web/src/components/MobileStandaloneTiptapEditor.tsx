@@ -266,6 +266,7 @@ export const MobileStandaloneTiptapEditor = ({
           }
         }
         if (event.key === "Tab") {
+          if (view.state.selection.$from.parent.type.spec.code) return false;
           if (!event.shiftKey) {
             if (wrapIndentedParagraphInList(view.state, view.dispatch)) {
               event.preventDefault();
@@ -277,7 +278,7 @@ export const MobileStandaloneTiptapEditor = ({
             }
           }
         }
-        if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && (event.key.toLowerCase() === "t" || event.key.toLowerCase() === "c")) {
+        if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {
           if (toggleTaskItemCollapseAtSelection(view.state, view.dispatch)) {
             event.preventDefault();
             return true;

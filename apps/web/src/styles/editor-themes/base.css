@@ -115,7 +115,7 @@
   --edgeever-code-band-border: var(--editor-theme-border);
   --edgeever-code-band-bg: color-mix(in srgb, var(--editor-theme-code-bg) 55%, transparent);
   border-color: var(--editor-theme-border);
-  background: var(--edgeever-code-band-bg);
+  background: linear-gradient(var(--edgeever-code-band-bg), var(--edgeever-code-band-bg)), var(--editor-theme-bg);
 }
 
 /* Table geometry (padding, line-height, column widths) lives in globals.css. */

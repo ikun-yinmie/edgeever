@@ -64,9 +64,6 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       "Mod-Alt-t": () => this.editor.commands.command(({ state, dispatch }) => {
         return toggleTaskItemCollapseAtSelection(state, dispatch);
       }),
-      "Mod-Alt-c": () => this.editor.commands.command(({ state, dispatch }) => {
-        return toggleTaskItemCollapseAtSelection(state, dispatch);
-      }),
     };
   },
   addNodeView() {

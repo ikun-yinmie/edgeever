@@ -3,7 +3,7 @@ import type { Editor } from "@tiptap/core";
 
 test.use({ actionTimeout: 10_000 });
 
-const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: () => Promise<void>) => {
+const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: (memoId: string) => Promise<void>) => {
   const notebooksResponse = await page.request.get("/api/v1/notebooks");
   expect(notebooksResponse.ok()).toBe(true);
   const { notebooks } = await notebooksResponse.json() as { notebooks: Array<{ id: string }> };
@@ -19,14 +19,75 @@ const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: () 
     await page.goto("/");
     await page.getByRole("button", { name: "全部笔记", exact: true }).click();
     await page.locator(`[data-memo-id="${memo.id}"]`).locator("button").first().click({ timeout: 30_000 });
-    await page.getByRole("radio", { name: "编辑", exact: true }).click();
-    await run();
+    await page.getByRole("radio", { name: "编辑", exact: true }).click({ timeout: 30_000 });
+    await run(memo.id);
     expect(errors).toEqual([]);
   } finally {
     await page.request.delete(`/api/v1/memos/${memo.id}`);
     await page.request.delete(`/api/v1/memos/${memo.id}?permanent=1`);
   }
 };
+
+test("new code blocks include a following blank paragraph for consecutive insertion", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withCodePreviewMemo(page, "Before block\n\nInsert here\n\nAfter block", async () => {
+    const editor = page.locator(".ProseMirror").first();
+    const insert = page.getByRole("button", { name: "代码块", exact: true });
+    if (!await insert.isVisible()) await page.getByRole("button", { name: "显示更多编辑工具", exact: true }).click();
+    await editor.getByRole("paragraph").filter({ hasText: "Insert here" }).click();
+    const original = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+    await insert.click();
+    await expect(editor.locator(".edgeever-code-block")).toHaveCount(1);
+    const empty = editor.locator(":scope > p").filter({ hasText: /^$/ });
+    await expect(empty).toHaveCount(1);
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.state.selection.$from.parent.type.name)).toBe("codeBlock");
+    await page.keyboard.press("ControlOrMeta+z");
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(editor.locator(".edgeever-code-block")).toHaveCount(1);
+    await empty.click();
+    await insert.click();
+    await expect(editor.locator(".edgeever-code-block")).toHaveCount(2);
+    await expect(empty).toHaveCount(1);
+    await page.keyboard.insertText("Second code block");
+    await expect(editor.locator(".edgeever-code-block").last().locator(".edgeever-code-source")).toHaveText("Second code block");
+    await expect(editor.getByRole("paragraph").filter({ hasText: "After block" })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("consecutive-code-blocks.png") });
+  });
+});
+
+test("heading collapse and block conversion have separate click targets", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withCodePreviewMemo(page, "## Foldable heading\n\nHeading body\n\n## Next heading\n\nNext body", async () => {
+    const editor = page.locator(".ProseMirror").first();
+    const heading = editor.getByRole("heading", { name: "Foldable heading" });
+    const toggle = heading.locator(".edgeever-heading-collapse-toggle");
+    const menu = page.getByRole("button", { name: "块操作", exact: true });
+    await heading.hover();
+    await page.locator(".edgeever-block-drag-handle").hover();
+    await expect(menu).toBeVisible();
+    await expect.poll(async () => {
+      const button = await menu.boundingBox();
+      const fold = await toggle.boundingBox();
+      return button && fold ? fold.x - (button.x + button.width) : -1;
+    }).toBeGreaterThanOrEqual(8);
+    await menu.click();
+    await page.getByRole("menuitem", { name: "转化为", exact: true }).hover();
+    await expect(page.getByRole("menuitem", { name: "标题 3", exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "标题 3", exact: true }).click();
+    await expect(editor.locator("h3").filter({ hasText: "Foldable heading" })).toBeVisible();
+    await expect(editor.getByRole("paragraph").filter({ hasText: "Heading body" })).toBeVisible();
+    await toggle.click();
+    await expect(editor.getByRole("paragraph").filter({ hasText: "Heading body" })).toBeHidden();
+    await expect(editor.getByRole("paragraph").filter({ hasText: "Next body" })).toBeVisible();
+    await toggle.click();
+    await expect(editor.getByRole("paragraph").filter({ hasText: "Heading body" })).toBeVisible();
+    await heading.hover();
+    await page.locator(".edgeever-block-drag-handle").hover();
+    await expect(menu).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("heading-buttons-separated.png") });
+  });
+});
 
 test("Markdown fences preview on blur and edit on click, keyboard focus and cursor entry", async ({ page }) => {
   test.setTimeout(90_000);
@@ -188,12 +249,17 @@ test("HTML code blocks render isolated styles and switch between preview and sou
     const documentBefore = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
     await page.screenshot({ path: test.info().outputPath("html-code-preview.png") });
 
-    await preview.click({ position: { x: 30, y: 30 } });
+    await frame.getByRole("heading", { name: "HTML preview heading" }).click();
+    await expect(preview).toBeVisible();
+    await expect(sourceView).toBeHidden();
+    await toggle.click();
     await expect(sourceView).toBeVisible();
     await expect(sourceView).toHaveText(source);
     await toggle.click();
     await expect(preview).toBeVisible();
-    await preview.focus();
+    await iframe.focus();
+    await expect(preview).toBeVisible();
+    await toggle.click();
     await expect(sourceView).toBeVisible();
     await page.getByPlaceholder("搜索笔记", { exact: true }).focus();
     await expect(preview).toBeVisible();
@@ -220,6 +286,141 @@ test("HTML code blocks render isolated styles and switch between preview and sou
     await page.keyboard.press("ControlOrMeta+z");
     await after.click();
     await expect(frame.getByRole("heading", { name: "HTML preview heading" })).toBeVisible();
+  });
+});
+
+test("HTML previews scroll in edit and read mode without opening source", async ({ page }) => {
+  test.setTimeout(90_000);
+  const source = `<h1>Scrollable HTML</h1>${Array.from({ length: 120 }, (_, index) => `<p>Preview row ${index + 1}</p>`).join("\n")}`;
+  await withCodePreviewMemo(page, `Before block\n\n\`\`\`html\n${source}\n\`\`\`\n\nAfter block`, async () => {
+    const editor = page.locator(".ProseMirror").first();
+    const block = editor.locator('[data-language="html"]');
+    const iframe = block.locator("iframe");
+    const frame = block.frameLocator("iframe");
+    await editor.getByText("Before block", { exact: true }).click();
+    const documentBefore = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+    for (const mode of ["编辑", "预览"]) {
+      await page.getByRole("radio", { name: mode, exact: true }).click();
+      await expect(frame.getByRole("heading", { name: "Scrollable HTML" })).toBeVisible();
+      await expect(iframe).not.toHaveAttribute("inert", "");
+      await frame.locator("body").evaluate(() => window.scrollTo(0, 0));
+      await iframe.hover();
+      await page.mouse.wheel(0, 500);
+      await expect.poll(() => frame.locator("body").evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBeGreaterThan(100);
+      await iframe.focus();
+      const scrollBefore = await frame.locator("body").evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+      await page.keyboard.press("PageDown");
+      await expect.poll(() => frame.locator("body").evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBeGreaterThan(scrollBefore);
+      await expect(block.locator(".edgeever-html-source")).toBeHidden();
+      await expect(block.locator(".edgeever-html-preview-toggle")).toHaveAttribute("aria-pressed", "true");
+    }
+    await page.screenshot({ path: test.info().outputPath("html-preview-scrolled.png") });
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(documentBefore);
+  });
+});
+
+test("long code scrolls inside the block while header actions stay accessible", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const source = Array.from({ length: 160 }, (_, index) => `const line${index + 1} = "${"long code ".repeat(20)}";`).join("\n");
+  await withCodePreviewMemo(page, `Before block\n\n\`\`\`javascript\n${source}\n\`\`\`\n\nAfter block`, async () => {
+    const editor = page.locator(".ProseMirror").first();
+    const block = editor.locator('[data-language="javascript"]');
+    const scroll = block.locator(".edgeever-code-scroll");
+    const sourceView = block.locator(".edgeever-code-source");
+    const header = block.locator(".edgeever-code-header");
+    await editor.getByText("Before block", { exact: true }).click();
+    const textBefore = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getText());
+    for (const mode of ["编辑", "预览"]) {
+      await page.getByRole("radio", { name: mode, exact: true }).click();
+      const documentBefore = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+      await scroll.scrollIntoViewIfNeeded();
+      const dimensions = await scroll.evaluate((element) => ({ height: element.clientHeight, content: element.scrollHeight }));
+      expect(dimensions.content).toBeGreaterThan(dimensions.height * 3);
+      expect(dimensions.height).toBeLessThanOrEqual(576);
+      const headerBefore = await header.boundingBox();
+      await sourceView.hover({ position: { x: 100, y: 60 } });
+      await page.mouse.wheel(0, 900);
+      await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(200);
+      expect((await header.boundingBox())?.y).toBe(headerBefore?.y);
+      await expect(block.getByRole("button", { name: "收起代码块", exact: true })).toBeInViewport();
+      await block.getByRole("button", { name: "复制代码", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(source);
+      await block.getByRole("button", { name: "收起代码块", exact: true }).click();
+      await expect(sourceView).toBeHidden();
+      await block.getByRole("button", { name: "展开代码块", exact: true }).click();
+      await expect(sourceView).toBeVisible();
+      await scroll.evaluate((element) => { element.scrollTop = 0; });
+      if (mode === "预览") {
+        expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(documentBefore);
+      }
+    }
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getText())).toBe(textBefore);
+    await sourceView.hover({ position: { x: 100, y: 60 } });
+    await page.mouse.wheel(500, 0);
+    await expect.poll(() => sourceView.evaluate((element) => element.scrollLeft)).toBeGreaterThan(100);
+    await block.getByRole("button", { name: "更多代码块操作", exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: "自动换行", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(sourceView).toHaveCSS("white-space", "pre-wrap");
+    await page.screenshot({ path: test.info().outputPath("long-code-toolbar.png") });
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await page.screenshot({ path: test.info().outputPath("long-code-toolbar-dark.png") });
+  });
+});
+
+test("task sub-content supports code creation, newlines, indentation and folding", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withCodePreviewMemo(page, "- [ ] Previous task\n- [ ] Parent task\n\nAfter block", async () => {
+    const editor = page.locator(".ProseMirror").first();
+    const tasks = editor.locator('li[data-type="taskItem"]');
+    const task = tasks.nth(1);
+    await task.getByRole("paragraph").filter({ hasText: "Parent task" }).click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.press("ControlOrMeta+Alt+c");
+    const block = task.locator(".edgeever-code-block");
+    const sourceView = block.locator(".edgeever-code-source");
+    await expect(block).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(block).toBeVisible();
+    await page.keyboard.insertText("first");
+    await page.keyboard.press("Enter");
+    await page.keyboard.insertText("second");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.press("Tab");
+    await page.keyboard.insertText("third");
+    await expect.poll(() => sourceView.textContent()).toBe("\nfirst\nsecond\n    third");
+    await page.keyboard.press("Shift+Tab");
+    await expect.poll(() => sourceView.textContent()).toBe("\nfirst\nsecond\nthird");
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Tab");
+    await expect.poll(() => sourceView.textContent()).toBe("    \n    first\n    second\n    third");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Shift+Tab");
+    await expect.poll(() => sourceView.textContent()).toBe("\nfirst\nsecond\nthird");
+    await expect(tasks).toHaveCount(2);
+    await expect(editor.locator('ul[data-type="taskList"] ul')).toHaveCount(0);
+    await task.getByRole("button", { name: "收起子项", exact: true }).click();
+    await expect(block).toBeHidden();
+    await task.getByRole("button", { name: "展开子项", exact: true }).click();
+    await expect(sourceView).toBeVisible();
+    await expect.poll(() => sourceView.textContent()).toBe("\nfirst\nsecond\nthird");
+    await sourceView.click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.insertText("<h1>Nested HTML</h1>");
+    await block.locator(".edgeever-code-lang-picker").click();
+    await page.getByRole("menuitem", { name: "HTML", exact: true }).click();
+    await task.getByRole("paragraph").filter({ hasText: "Parent task" }).click();
+    await expect(block.frameLocator("iframe").getByRole("heading", { name: "Nested HTML" })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+Alt+t");
+    await expect(block).toBeHidden();
+    await page.keyboard.press("ControlOrMeta+Alt+t");
+    await expect(block.frameLocator("iframe").getByRole("heading", { name: "Nested HTML" })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("task-code-preview.png") });
+    await expect(tasks.nth(0).getByRole("paragraph").filter({ hasText: "Previous task" })).toBeVisible();
+    await expect(editor.getByText("After block", { exact: true })).toBeVisible();
   });
 });
 

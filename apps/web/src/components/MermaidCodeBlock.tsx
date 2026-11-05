@@ -119,8 +119,7 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
   );
   const [canEdit, setCanEdit] = useState(editor.isEditable);
   useEffect(() => {
-    // setEditable emits update without changing the node, so the node view would
-    // otherwise keep stale controls (and an inert HTML iframe) until clicked.
+    // setEditable emits update without changing the node view's props.
     const syncEditable = () => setCanEdit(editor.isEditable);
     syncEditable();
     editor.on("update", syncEditable);
@@ -161,6 +160,7 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
   const previewToggleLabel = previewVisible
     ? canEdit ? previewLabels.edit : previewLabels.showSource
     : previewLabels.preview;
+  const previewClickEdits = canEdit && (previewLanguage !== "html" || !source);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -641,16 +641,16 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
           contentEditable={false}
           aria-label={previewLabels.preview}
           role="region"
-          tabIndex={canEdit ? 0 : undefined}
+          tabIndex={previewClickEdits ? 0 : undefined}
           onFocus={(event) => {
-            if (canEdit && event.target === event.currentTarget) focusPreviewSource();
+            if (previewClickEdits && event.target === event.currentTarget) focusPreviewSource();
           }}
           onMouseDown={(event) => {
             // Links keep their normal behavior; other clicks enter source editing.
-            if (canEdit && !(event.target as Element).closest("a")) event.preventDefault();
+            if (previewClickEdits && !(event.target as Element).closest("a")) event.preventDefault();
           }}
           onClick={(event) => {
-            if (!canEdit || (event.target as Element).closest("a")) return;
+            if (!previewClickEdits || (event.target as Element).closest("a")) return;
             event.preventDefault();
             event.stopPropagation();
             focusPreviewSource();
@@ -665,41 +665,43 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
               sandbox=""
               referrerPolicy="no-referrer"
               srcDoc={previewMarkup}
-              // In edit mode the containing preview receives clicks and focus.
-              // In read mode the frame can be scrolled without editing the note.
-              inert={canEdit}
-              tabIndex={canEdit ? -1 : 0}
+              tabIndex={0}
             />
           ) : (
             <div className="edgeever-markdown-preview-content" dangerouslySetInnerHTML={{ __html: previewMarkup }} />
           )}
         </div>
       )}
-      {!collapsed && !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && (
-        <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
-          {lineNumbers.map((value) => (
-            <span key={value}>{value}</span>
-          ))}
+      <div className="edgeever-code-scroll">
+        <div className="edgeever-code-body">
+          {!collapsed && !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && (
+            <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
+              {lineNumbers.map((value) => (
+                <span key={value}>{value}</span>
+              ))}
+            </div>
+          )}
+          <NodeViewContent
+            className={isMermaid
+              ? "edgeever-code-source edgeever-mermaid-source"
+              : hasPreview
+                ? `edgeever-code-source edgeever-preview-source edgeever-${previewLanguage}-source`
+                : "edgeever-code-source"}
+            role="textbox"
+            style={{ whiteSpace: wrapLinesVisible ? "pre-wrap" : "pre" }}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label={isMermaid
+              ? t("editorToolbar.mermaidSource")
+              : hasPreview
+                ? previewLabels.source
+                : undefined}
+            aria-multiline="true"
+            aria-readonly={!editor.isEditable}
+          />
         </div>
-      )}
-      <NodeViewContent
-        className={isMermaid
-          ? "edgeever-code-source edgeever-mermaid-source"
-          : hasPreview
-            ? `edgeever-code-source edgeever-preview-source edgeever-${previewLanguage}-source`
-            : "edgeever-code-source"}
-        role="textbox"
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
-        aria-label={isMermaid
-          ? t("editorToolbar.mermaidSource")
-          : hasPreview
-            ? previewLabels.source
-            : undefined}
-        aria-multiline="true"
-        aria-readonly={!editor.isEditable}
-      />
+      </div>
       {syncToast && (
         <div
           className="edgeever-code-sync-toast"

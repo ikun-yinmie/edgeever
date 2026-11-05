@@ -829,6 +829,10 @@ textarea {
   .edgeever-block-drag-handle {
     display: flex;
   }
+
+  .ProseMirror .edgeever-heading-collapse-toggle {
+    left: -1.25rem;
+  }
 }
 
 .ProseMirror-selectednoderange {
@@ -851,9 +855,7 @@ textarea {
   gap: 0.1rem;
 }
 
-/* Details blocks park their fold toggle at the same left edge the floating
- * handle hovers over; nudge the handle into the gutter so one click can never
- * hit the wrong control. */
+/* Keep floating block actions clear of fold toggles. */
 .edgeever-block-drag-handle-shift {
   margin-left: -1.9em;
 }
@@ -1752,12 +1754,15 @@ textarea {
 
 /* When the header shows, it fuses with the body below into one rounded card. */
 .ProseMirror .edgeever-code-block-has-header .edgeever-code-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   margin-bottom: 0;
   padding: 0.15rem 0.45rem 0.15rem 0.3rem;
   border: 1px solid var(--edgeever-code-band-border);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
-  background: var(--edgeever-code-band-bg);
+  background: linear-gradient(var(--edgeever-code-band-bg), var(--edgeever-code-band-bg)), var(--workspace-editor);
 }
 
 .ProseMirror .edgeever-code-block.edgeever-code-block-has-header .edgeever-code-source,
@@ -1960,6 +1965,17 @@ textarea {
   }
 }
 
+.ProseMirror .edgeever-code-scroll {
+  max-height: min(60vh, 36rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.ProseMirror .edgeever-code-body {
+  position: relative;
+}
+
 .ProseMirror .edgeever-code-block-collapsed .edgeever-code-source {
   display: none;
 }
@@ -2008,10 +2024,6 @@ textarea {
   background: #fff;
 }
 
-.ProseMirror .edgeever-html-preview-frame[inert] {
-  pointer-events: none;
-}
-
 .ProseMirror .edgeever-markdown-preview-content > :first-child {
   margin-top: 0;
 }
@@ -2036,7 +2048,7 @@ textarea {
 }
 
 /* Yuque-style line-number gutter, absolutely positioned inside the block. */
-.ProseMirror .edgeever-code-block-numbered {
+.ProseMirror .edgeever-code-block-numbered .edgeever-code-body {
   padding-left: 3rem;
 }
 
@@ -2058,7 +2070,7 @@ textarea {
   border-bottom-left-radius: 8px;
   color: rgb(var(--slate-400-rgb));
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.75em;
+  font-size: 0.875em;
   line-height: 1.65;
   text-align: right;
   user-select: none;

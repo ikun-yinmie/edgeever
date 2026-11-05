@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import { ensureCodeBlockTrailingParagraph } from "@edgeever/shared";
 import DragHandle from "@tiptap/extension-drag-handle-react";
 import {
   Braces,
@@ -329,7 +330,7 @@ const getAddBelowOptions = (t: (key: string) => string): AddBelowOption[] => [
     icon: Braces,
     label: t("editorToolbar.codeBlock"),
     insert: (editor, position) =>
-      editor.chain().focus().insertContentAt(position, { type: "codeBlock" }).run(),
+      editor.chain().focus().insertContentAt(position, { type: "codeBlock" }).command(ensureCodeBlockTrailingParagraph).run(),
   },
   {
     id: "divider",
@@ -399,29 +400,13 @@ const cutBlock = (editor: Editor, hoveredBlockPos: number | null) => {
 export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [overDetailsBlock, setOverDetailsBlock] = useState(false);
+  const [overCollapsibleBlock, setOverCollapsibleBlock] = useState(false);
   const hoveredBlockPosRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.addEventListener("dragstart", retainBlockDragDataTransfer);
     return () => document.removeEventListener("dragstart", retainBlockDragDataTransfer);
   }, []);
-
-  useEffect(() => {
-    if (editor.isDestroyed) return;
-    // The details fold toggle lives at the block's left edge, exactly where the
-    // floating handle parks; track hover so the handle can shift into the
-    // gutter and the two controls stay clickable apart.
-    const onMouseOver = (event: Event) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const overDetails = Boolean(target?.closest('[data-type="details"]'));
-      setOverDetailsBlock((current) => (current === overDetails ? current : overDetails));
-    };
-    editor.view.dom.addEventListener("mouseover", onMouseOver);
-    return () => {
-      editor.view.dom.removeEventListener("mouseover", onMouseOver);
-    };
-  }, [editor]);
 
   if (editor.isDestroyed || !editor.isEditable) {
     return null;
@@ -455,10 +440,13 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   return (
     <DragHandle
       editor={editor}
-      className={cn(BLOCK_DRAG_HANDLE_CLASS_NAME, overDetailsBlock && "edgeever-block-drag-handle-shift")}
+      className={cn(BLOCK_DRAG_HANDLE_CLASS_NAME, overCollapsibleBlock && "edgeever-block-drag-handle-shift")}
       nested
-      onNodeChange={({ pos }) => {
+      onNodeChange={({ node, pos }) => {
         hoveredBlockPosRef.current = pos >= 0 ? pos : null;
+        const dom = pos >= 0 ? editor.view.nodeDOM(pos) : null;
+        setOverCollapsibleBlock(node?.type.name === "details"
+          || (dom instanceof HTMLElement && Boolean(dom.closest('[data-type="details"], .edgeever-heading-collapsible'))));
       }}
     >
       <span className="sr-only">{t("editor.dragHandle")}</span>

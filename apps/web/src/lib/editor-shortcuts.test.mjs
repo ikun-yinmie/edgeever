@@ -1,10 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { Schema } from "@tiptap/pm/model";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem } from "@tiptap/extension-list";
-import { EdgeEverTaskList, EdgeEverTaskItem } from "@edgeever/shared";
+import { EdgeEverTaskList, EdgeEverTaskItem, createEdgeEverCodeBlock } from "@edgeever/shared";
 import {
   applyPlainTextTab,
   getAiSlashCommandStart,
@@ -52,6 +52,177 @@ const runListBackspace = (state) => {
   });
   return { handled, state: nextState };
 };
+
+describe("code blocks inside task sub-content", () => {
+  let navigatorDescriptor;
+  beforeEach(() => {
+    navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { platform: "Linux", userAgent: "Bun" },
+    });
+  });
+  afterEach(() => {
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else delete globalThis.navigator;
+  });
+
+  const createEditor = (text = "", { nested = false, blockType = "codeBlock" } = {}) => {
+    const paragraph = (value) => ({ type: "paragraph", content: [{ type: "text", text: value }] });
+    const taskList = {
+      type: "taskList",
+      attrs: { numbered: true },
+      content: [
+        { type: "taskItem", content: [paragraph("Before")] },
+        {
+          type: "taskItem",
+          attrs: { checked: true, collapsed: false },
+          content: [paragraph("Task"), {
+            type: blockType,
+            content: text ? [{ type: "text", text }] : [],
+          }],
+        },
+      ],
+    };
+    const editor = new Editor({
+      extensions: [
+        StarterKit.configure({ codeBlock: false }),
+        EdgeEverTaskList,
+        EdgeEverTaskItem.configure({ nested: true }),
+        createEdgeEverCodeBlock(),
+      ],
+      content: {
+        type: "doc",
+        content: [nested ? {
+          type: "taskList",
+          content: [{ type: "taskItem", content: [paragraph("Parent"), taskList] }],
+        } : taskList],
+      },
+    });
+    editor.state.doc.descendants((node, position) => {
+      if (node.type.name === blockType && node.textContent === text) {
+        editor.commands.setTextSelection(position + 1 + node.content.size);
+      }
+    });
+    return editor;
+  };
+
+  const pressKey = (editor, key, modifiers = {}) => {
+    const event = { key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...modifiers };
+    return editor.extensionManager.plugins.some((plugin) => plugin.props.handleKeyDown?.(editor.view, event));
+  };
+
+  for (const [name, command] of [
+    ["consecutive Enter", handleConsecutiveListEnter],
+    ["task Enter", splitTaskItemWithoutInheritedMarks],
+    ["task Shift-Enter", insertListItemChildParagraph],
+  ]) {
+    test(`${name} leaves empty and non-empty code blocks unchanged`, () => {
+      for (const text of ["", "first\nsecond"]) {
+        const editor = createEditor(text);
+        const before = editor.getJSON();
+        let dispatched = false;
+        expect(command(editor.state, undefined)).toBe(false);
+        expect(command(editor.state, () => { dispatched = true; })).toBe(false);
+        expect(dispatched).toBe(false);
+        expect(editor.getJSON()).toEqual(before);
+        editor.destroy();
+      }
+    });
+  }
+
+  test("Mod-Alt-c creates and toggles code blocks while preserving task attributes and text", () => {
+    const editor = createEditor("detail", { blockType: "paragraph" });
+    const before = editor.getJSON();
+    before.content[0].content[1].content.push({ type: "paragraph" });
+    expect(pressKey(editor, "c", { ctrlKey: true, altKey: true })).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+    expect(editor.state.doc.child(0).child(1).attrs.collapsed).toBe(false);
+    expect(editor.state.doc.child(0).child(1).firstChild.textContent).toBe("Task");
+    expect(pressKey(editor, "c", { ctrlKey: true, altKey: true })).toBe(true);
+    expect(editor.getJSON()).toEqual(before);
+    editor.destroy();
+  });
+
+  for (const nested of [false, true]) {
+    test(`Enter and Shift-Enter stay inside ${nested ? "nested " : ""}task code blocks`, () => {
+      for (const text of ["", "first"]) {
+        const editor = createEditor(text, { nested });
+        expect(pressKey(editor, "Enter")).toBe(true);
+        expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+        expect(editor.state.selection.$from.parent.textContent).toBe(`${text}\n`);
+        expect(pressKey(editor, "Enter", { shiftKey: true })).toBe(true);
+        expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+        expect(editor.state.selection.$from.parent.textContent).toBe(`${text}\n\n`);
+        expect(editor.state.selection.$from.node(-1).childCount).toBe(2);
+        editor.destroy();
+      }
+    });
+
+    test(`Tab and Shift-Tab indent code instead of ${nested ? "nested " : ""}tasks`, () => {
+      const editor = createEditor("first\nsecond", { nested });
+      const before = editor.getJSON();
+      const { $from } = editor.state.selection;
+      const from = $from.start();
+      const to = $from.end();
+      editor.commands.setTextSelection({ from, to });
+      expect(pressKey(editor, "Tab")).toBe(true);
+      expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+      expect(editor.state.selection.$from.parent.textContent).toBe("    first\n    second");
+      expect(editor.state.selection.from).toBe(from);
+      expect(editor.state.selection.to).toBe(to + 8);
+      expect(editor.state.selection.$from.node(-1).childCount).toBe(2);
+      expect(pressKey(editor, "Tab", { shiftKey: true })).toBe(true);
+      expect(editor.getJSON()).toEqual(before);
+      expect(editor.state.selection.from).toBe(from);
+      expect(editor.state.selection.to).toBe(to);
+      expect(pressKey(editor, "Tab", { shiftKey: true })).toBe(true);
+      expect(editor.getJSON()).toEqual(before);
+      expect(editor.state.selection.from).toBe(from);
+      expect(editor.state.selection.to).toBe(to);
+      editor.destroy();
+    });
+  }
+
+  test("unindented Shift-Tab at the caret does not move or lift the task", () => {
+    for (const text of ["", "first\nsecond"]) {
+      const editor = createEditor(text, { nested: true });
+      const before = editor.getJSON();
+      const cursor = editor.state.selection.from;
+      expect(pressKey(editor, "Tab", { shiftKey: true })).toBe(true);
+      expect(editor.getJSON()).toEqual(before);
+      expect(editor.state.selection.from).toBe(cursor);
+      expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
+      editor.destroy();
+    }
+  });
+
+  test("triple Enter still exits to a paragraph inside the same task", () => {
+    const editor = createEditor("first");
+    expect(pressKey(editor, "Enter")).toBe(true);
+    expect(pressKey(editor, "Enter")).toBe(true);
+    expect(pressKey(editor, "Enter")).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    const task = editor.state.selection.$from.node(-1);
+    expect(task.type.name).toBe("taskItem");
+    expect(task.childCount).toBe(3);
+    expect(task.child(1).type.name).toBe("codeBlock");
+    expect(task.child(1).textContent).toBe("first");
+    expect(editor.state.doc.child(0).childCount).toBe(2);
+    editor.destroy();
+  });
+
+  test("ordinary task paragraphs retain their Enter and Tab keymaps", () => {
+    const editor = createEditor("detail", { blockType: "paragraph" });
+    expect(pressKey(editor, "Enter")).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.doc.child(0).childCount).toBe(3);
+    expect(pressKey(editor, "Tab")).toBe(true);
+    expect(editor.state.doc.child(0).childCount).toBe(2);
+    expect(editor.state.selection.$from.node(-2).type.name).toBe("taskList");
+    editor.destroy();
+  });
+});
 
 describe("editor shortcut actions", () => {
   test("inserts a tab at the caret in a plain paragraph", () => {

@@ -21,6 +21,7 @@ export const handleConsecutiveListEnter = (
   if (
     !selection.empty
     || !selection.$from.parent.isTextblock
+    || selection.$from.parent.type.spec.code
     || selection.$from.parent.content.size !== 0
     || selection.$from.parentOffset !== 0
   ) {
@@ -102,7 +103,7 @@ export const insertListItemChildParagraph = (
   dispatch: ((transaction: Transaction) => void) | undefined,
 ): boolean => {
   const { selection } = state;
-  if (!selection.empty || !selection.$from.parent.isTextblock) {
+  if (!selection.empty || !selection.$from.parent.isTextblock || selection.$from.parent.type.spec.code) {
     return false;
   }
 
@@ -237,6 +238,7 @@ export const splitTaskItemWithoutInheritedMarks = (
   dispatch: ((transaction: Transaction) => void) | undefined,
 ): boolean => {
   const { selection } = state;
+  if (selection.$from.parent.type.spec.code) return false;
   let taskItemDepth = -1;
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
     if (selection.$from.node(depth).type.name === "taskItem") {

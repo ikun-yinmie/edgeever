@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
+import { ensureCodeBlockTrailingParagraph } from "@edgeever/shared";
 import { useTranslation } from "react-i18next";
 import {
   Undo2,
@@ -138,6 +139,7 @@ const toggleCodeBlock = (editor: Editor) => {
         content: selectedText ? [{ type: "text", text: selectedText }] : undefined,
       }
     )
+    .command(ensureCodeBlockTrailingParagraph)
     .run();
 };
 
@@ -162,6 +164,7 @@ const insertMermaidDiagram = (editor: Editor) => {
         content: [{ type: "text", text: source }],
       }
     )
+    .command(ensureCodeBlockTrailingParagraph)
     .run();
 };
 
