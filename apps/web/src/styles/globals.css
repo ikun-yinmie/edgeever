@@ -1276,16 +1276,6 @@ textarea {
   padding: 0;
 }
 
-/* Paragraph formatting is stored as safe data attributes so line-height and
- * indentation survive JSON/HTML/Markdown round trips without clobbering one
- * another's inline style attribute. */
-.ProseMirror [data-line-height="1"] { line-height: 1 !important; }
-.ProseMirror [data-line-height="1.15"] { line-height: 1.15 !important; }
-.ProseMirror [data-line-height="1.5"] { line-height: 1.5 !important; }
-.ProseMirror [data-line-height="1.75"] { line-height: 1.75 !important; }
-.ProseMirror [data-line-height="2"] { line-height: 2 !important; }
-.ProseMirror [data-line-height="2.5"] { line-height: 2.5 !important; }
-.ProseMirror [data-line-height="3"] { line-height: 3 !important; }
 .ProseMirror [data-indent-left="1"] { margin-left: 1em !important; }
 .ProseMirror [data-indent-left="2"] { margin-left: 2em !important; }
 .ProseMirror [data-indent-left="3"] { margin-left: 3em !important; }

@@ -28,6 +28,80 @@ const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: (me
   }
 };
 
+test("line spacing drag applies to the selection or whole note and survives saving", async ({ page }) => {
+  test.setTimeout(120_000);
+  await withCodePreviewMemo(page, "Selected first line  \nSelected second line\n\nOther paragraph\n\n## Section heading\n\n- List paragraph\n\n```javascript\nconst value = 1;\n```", async (memoId) => {
+    const editor = page.locator(".ProseMirror").first();
+    const first = editor.locator("p").filter({ hasText: "Selected first line" });
+    const other = editor.locator("p").filter({ hasText: "Other paragraph" });
+    const format = page.getByRole("button", { name: "段落格式", exact: true });
+    if (!await format.isVisible()) await page.getByRole("button", { name: "显示更多编辑工具", exact: true }).click();
+    const slider = page.getByRole("slider", { name: "行距微调", exact: true });
+    const dragSpacing = async (value: number) => {
+      const box = (await slider.boundingBox())!;
+      const current = Number(await slider.inputValue());
+      const x = (number: number) => box.x + 8 + (box.width - 16) * (number + 12) / 44;
+      await page.mouse.move(x(current), box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(x(value), box.y + box.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await expect(slider).toHaveValue(String(value));
+    };
+    await first.click();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+End");
+    const original = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+    const selection = await editor.evaluate((element) => {
+      const { from, to } = (element as HTMLElement & { editor: Editor }).editor.state.selection;
+      return { from, to };
+    });
+    expect(selection.from).not.toBe(selection.to);
+    await format.click();
+    await expect(page.getByText("应用于选中段落", { exact: true })).toBeVisible();
+    await dragSpacing(-8);
+    await expect(first).toHaveAttribute("data-line-spacing", "-8");
+    await expect(first).toHaveCSS("line-height", "16px");
+    await expect(other).not.toHaveAttribute("data-line-spacing");
+    expect(await editor.evaluate((element) => {
+      const { from, to } = (element as HTMLElement & { editor: Editor }).editor.state.selection;
+      return { from, to };
+    })).toEqual(selection);
+    await page.screenshot({ path: test.info().outputPath("negative-line-spacing.png") });
+    await page.keyboard.press("Escape");
+    await first.click();
+    await page.keyboard.press("ControlOrMeta+z");
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
+
+    await other.click();
+    await format.click();
+    await expect(page.getByText("应用于整篇文章", { exact: true })).toBeVisible();
+    await dragSpacing(6);
+    await expect(first).toHaveCSS("line-height", "30px");
+    for (const block of [first, other, editor.locator("h2").filter({ hasText: "Section heading" }), editor.locator("p").filter({ hasText: "List paragraph" })]) {
+      await expect(block).toHaveAttribute("data-line-spacing", "6");
+    }
+    await expect(editor.locator(".edgeever-code-block")).not.toHaveAttribute("data-line-spacing");
+    await page.keyboard.press("Escape");
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/v1/memos/${memoId}`);
+      const body = await response.json() as { memo: { contentJson: unknown } };
+      return JSON.stringify(body.memo.contentJson);
+    }, { timeout: 30_000 }).toContain('"lineSpacing":6');
+    await page.reload();
+    await page.locator(`[data-memo-id="${memoId}"]`).locator("button").first().click({ timeout: 30_000 });
+    await expect(first).toHaveAttribute("data-line-spacing", "6", { timeout: 30_000 });
+    await expect(first).toHaveCSS("line-height", "30px");
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    if (!await format.isVisible()) await page.getByRole("button", { name: "显示更多编辑工具", exact: true }).click();
+    await other.click();
+    await format.click();
+    await page.getByRole("menuitem", { name: "恢复默认行距", exact: true }).click();
+    await expect(first).not.toHaveAttribute("data-line-spacing");
+    await expect(other).not.toHaveAttribute("data-line-spacing");
+    await expect(first).toHaveCSS("line-height", "24px");
+  });
+});
+
 test("new code blocks include a following blank paragraph for consecutive insertion", async ({ page }) => {
   test.setTimeout(90_000);
   await withCodePreviewMemo(page, "Before block\n\nInsert here\n\nAfter block", async () => {
