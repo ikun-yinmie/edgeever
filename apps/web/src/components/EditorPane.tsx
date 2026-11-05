@@ -131,7 +131,7 @@ import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { ExternalLinkDialog } from "./dialogs/ExternalLinkDialog";
 import { MathFormulaDialog } from "./dialogs/MathFormulaDialog";
 import { VideoEmbedDialog } from "./editor/VideoEmbedDialog";
-import { EditorBlockDragHandle } from "./editor/EditorBlockDragHandle";
+import { EditorBlockDragHandle, EditorBlockTransformMenu } from "./editor/EditorBlockDragHandle";
 import {
   applyMathFormula,
   deleteMathFormula,
@@ -4990,7 +4990,18 @@ const RichEditorPane = ({
                   <EditorBlockDragHandle editor={editor} />
                 ) : null}
                 <ContextMenu>
-                  <ContextMenuTrigger asChild>
+                  <ContextMenuTrigger
+                    asChild
+                    onContextMenuCapture={(event) => {
+                      if (!editor || editor.isDestroyed || effectiveReadOnly) return;
+                      const position = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+                      if (!position) return;
+                      const { from, to, empty } = editor.state.selection;
+                      if (empty || position.pos < from || position.pos > to) {
+                        editor.commands.setTextSelection(position.pos);
+                      }
+                    }}
+                  >
                     <div className="contents">
                       <EditorContent editor={editor} />
                     </div>
@@ -5045,6 +5056,12 @@ const RichEditorPane = ({
                           <ClipboardPaste className="mr-2 h-4 w-4" />
                           {t("editorToolbar.pastePlainText")}
                         </ContextMenuItem>
+                      </>
+                    )}
+                    {!effectiveReadOnly && editor && (
+                      <>
+                        <ContextMenuSeparator />
+                        <EditorBlockTransformMenu editor={editor} context />
                       </>
                     )}
                     <ContextMenuSeparator />

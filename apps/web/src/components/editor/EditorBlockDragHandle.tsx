@@ -43,6 +43,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenuItem,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
 const BLOCK_DRAG_HANDLE_CLASS_NAME = "edgeever-block-drag-handle";
@@ -188,14 +194,9 @@ const resolveBlockRange = (editor: Editor, hoveredBlockPos: number | null) => {
     };
   }
   if (hoveredBlockPos !== null && hoveredBlockPos >= 0) {
-    const $pos = editor.state.doc.resolve(hoveredBlockPos);
-    const depth = $pos.depth > 0 ? $pos.depth - 1 : 0;
-    const node = $pos.node(depth + 1);
-    if (node) {
-      return {
-        from: $pos.before(depth + 1),
-        to: $pos.before(depth + 1) + node.nodeSize,
-      };
+    const node = editor.state.doc.nodeAt(hoveredBlockPos);
+    if (node?.isBlock) {
+      return { from: hoveredBlockPos, to: hoveredBlockPos + node.nodeSize };
     }
   }
   // Fallback: the block around the caret.
@@ -397,6 +398,46 @@ const cutBlock = (editor: Editor, hoveredBlockPos: number | null) => {
   return editor.chain().focus().deleteRange({ from, to }).run();
 };
 
+export const EditorBlockTransformMenu = ({ editor, context = false, getTargetPosition }: {
+  editor: Editor;
+  context?: boolean;
+  getTargetPosition?: () => number | null;
+}) => {
+  const { t } = useTranslation();
+  const Sub = context ? ContextMenuSub : DropdownMenuSub;
+  const Trigger = context ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
+  const Content = context ? ContextMenuSubContent : DropdownMenuSubContent;
+  const Item = context ? ContextMenuItem : DropdownMenuItem;
+
+  return (
+    <Sub>
+      <Trigger className="gap-2">
+        <RefreshCw className="h-4 w-4 text-slate-500" aria-hidden="true" />
+        <span>{t("editor.blockMenu.transform")}</span>
+      </Trigger>
+      <Content className="max-h-80 min-w-44 overflow-y-auto">
+        {getBlockTransformOptions(t).map((option) => {
+          const Icon = option.icon;
+          return (
+            <Item
+              key={option.id}
+              className="gap-2"
+              onSelect={() => {
+                if (editor.isDestroyed || !editor.isEditable) return;
+                focusBlockRange(editor, resolveBlockRange(editor, getTargetPosition?.() ?? null));
+                option.run(editor);
+              }}
+            >
+              <Icon className="h-4 w-4 text-slate-500" aria-hidden="true" />
+              {option.label}
+            </Item>
+          );
+        })}
+      </Content>
+    </Sub>
+  );
+};
+
 export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -434,7 +475,6 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
     window.requestAnimationFrame(() => editor.commands.focus(to));
   };
 
-  const transformOptions = getBlockTransformOptions(t);
   const addBelowOptions = getAddBelowOptions(t);
 
   return (
@@ -465,30 +505,7 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="right" sideOffset={6} className="min-w-52">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              <RefreshCw className="h-4 w-4 text-slate-500" aria-hidden="true" />
-              <span>{t("editor.blockMenu.transform")}</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-80 min-w-44 overflow-y-auto">
-              {transformOptions.map((option) => {
-                const Icon = option.icon;
-                return (
-                  <DropdownMenuItem
-                    key={option.id}
-                    onSelect={() => {
-                      const range = resolveBlockRange(editor, hoveredBlockPosRef.current);
-                      focusBlockRange(editor, range);
-                      option.run(editor);
-                    }}
-                  >
-                    <Icon className="h-4 w-4 text-slate-500" aria-hidden="true" />
-                    {option.label}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <EditorBlockTransformMenu editor={editor} getTargetPosition={() => hoveredBlockPosRef.current} />
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={deleteBlock}>
             <Trash2 className="h-4 w-4 text-slate-500" aria-hidden="true" />

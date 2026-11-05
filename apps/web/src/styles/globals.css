@@ -832,6 +832,7 @@ textarea {
 
   .ProseMirror .edgeever-heading-collapse-toggle {
     left: -1.25rem;
+    z-index: 11;
   }
 }
 
@@ -858,6 +859,16 @@ textarea {
 /* Keep floating block actions clear of fold toggles. */
 .edgeever-block-drag-handle-shift {
   margin-left: -1.9em;
+}
+
+/* The hover bridge keeps TipTap's handle alive across the fold-button gutter. */
+.edgeever-block-drag-handle-shift::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: 1.9em;
+  height: 100%;
 }
 
 .edgeever-block-menu-trigger {

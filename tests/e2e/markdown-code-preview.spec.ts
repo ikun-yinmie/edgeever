@@ -137,8 +137,12 @@ test("heading collapse and block conversion have separate click targets", async 
     const heading = editor.getByRole("heading", { name: "Foldable heading" });
     const toggle = heading.locator(".edgeever-heading-collapse-toggle");
     const menu = page.getByRole("button", { name: "块操作", exact: true });
+    await editor.getByRole("paragraph").filter({ hasText: "Next body" }).click();
     await heading.hover();
-    await page.locator(".edgeever-block-drag-handle").hover();
+    const handle = page.locator(".edgeever-block-drag-handle");
+    await expect(handle).toBeVisible();
+    const handleBox = (await handle.boundingBox())!;
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2, { steps: 30 });
     await expect(menu).toBeVisible();
     await expect.poll(async () => {
       const button = await menu.boundingBox();
@@ -160,6 +164,72 @@ test("heading collapse and block conversion have separate click targets", async 
     await page.locator(".edgeever-block-drag-handle").hover();
     await expect(menu).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("heading-buttons-separated.png") });
+  });
+});
+
+test("body context menu transforms the clicked block or selection and respects preview mode", async ({ page }) => {
+  test.setTimeout(120_000);
+  await withCodePreviewMemo(page, "First paragraph\n\nTarget paragraph\n\nOther paragraph\n\n## Existing heading\n\nHeading body", async (memoId) => {
+    const editor = page.locator(".ProseMirror").first();
+    const first = editor.getByRole("paragraph").filter({ hasText: "First paragraph" });
+    const target = editor.getByRole("paragraph").filter({ hasText: "Target paragraph" });
+    const other = editor.getByRole("paragraph").filter({ hasText: "Other paragraph" });
+    const original = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+    const transform = page.getByRole("menuitem", { name: "转化为", exact: true });
+
+    await first.click();
+    await target.click({ button: "right", position: { x: 8, y: 8 } });
+    await transform.hover();
+    await page.getByRole("menuitem", { name: "标题 3", exact: true }).click();
+    const heading = editor.getByRole("heading", { name: "Target paragraph", level: 3 });
+    await expect(heading).toBeVisible();
+    await expect(first).toBeVisible();
+    await expect(other).toBeVisible();
+    await expect(editor.getByRole("heading", { name: "Existing heading", level: 2 })).toBeVisible();
+    const convertedDocument = await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON());
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/v1/memos/${memoId}`);
+      const body = await response.json() as { memo: { contentJson: unknown } };
+      return body.memo.contentJson;
+    }, { timeout: 30_000 }).toEqual(convertedDocument);
+    await page.keyboard.press("ControlOrMeta+z");
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(heading).toBeVisible();
+
+    await heading.click({ button: "right", position: { x: 8, y: 8 } });
+    await transform.hover();
+    await page.getByRole("menuitem", { name: "正文", exact: true }).click();
+    await expect(target).toBeVisible();
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
+
+    await first.click();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Shift+End");
+    const selection = await editor.evaluate((element) => {
+      const { from, to } = (element as HTMLElement & { editor: Editor }).editor.state.selection;
+      return { from, to };
+    });
+    expect(selection.from).not.toBe(selection.to);
+    await first.click({ button: "right", position: { x: 8, y: 8 } });
+    await transform.hover();
+    await expect(page.getByRole("menuitem", { name: "无序列表", exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("body-context-conversion.png") });
+    await page.getByRole("menuitem", { name: "无序列表", exact: true }).click();
+    await expect(editor.locator("ul > li")).toHaveCount(2);
+    await expect(editor.locator("ul").first()).toContainText("First paragraph");
+    await expect(editor.locator("ul").first()).toContainText("Target paragraph");
+    await expect(other).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+z");
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
+
+    await page.getByRole("radio", { name: "预览", exact: true }).click();
+    await target.click({ button: "right", position: { x: 8, y: 8 } });
+    await expect(page.getByRole("menuitem", { name: "复制", exact: true })).toBeVisible();
+    await expect(transform).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    expect(await editor.evaluate((element) => (element as HTMLElement & { editor: Editor }).editor.getJSON())).toEqual(original);
   });
 });
 
