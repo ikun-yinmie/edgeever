@@ -1,14 +1,17 @@
 {
-  "version": "1.103.18",
+  "version": "1.103.19",
   "changes": {
     "en-US": [
-      "Windows now renames the installed shortcut to the current client name, merges duplicate launchers, refreshes the Start menu and pinned entries, and notifies the shell so the custom icon and name appear immediately"
+      "Desktop updates are now downloaded only after you confirm them; background checks still run inside your configured window and the release notes stay one click away",
+      "Code block titles now survive fast typing, caret edits and Chinese/Japanese IME composition without losing characters or scroll position"
     ],
     "zh-CN": [
-      "Windows 端现在会把快捷方式重命名为当前客户端名称、合并重复启动项、刷新开始菜单与固定项，并通知系统外壳，让自定义图标与名称立即生效"
+      "桌面端更新改为确认后才下载：后台仍按设定的时间段自动检查，发现新版本后可手动确认下载",
+      "代码块标题在快速输入、光标编辑和中文/日文输入法组词时不再丢字或错位"
     ],
     "ja": [
-      "Windows でインストール済みショートカットを現在のクライアント名に変更し、重複するランチャーを統合、スタートメニューとピン留めを更新してシェルに通知するため、カスタムアイコンと名前がすぐに反映されます"
+      "デスクトップ版の更新は確認後にのみダウンロードされるようになりました。バックグラウンドの確認は設定した時間帯に実行され、新バージョンは手動で確認してからダウンロードできます",
+      "コードブロックのタイトルは、高速入力・カーソル編集・日本語/中国語 IME の変換中でも文字が欠けたりずれたりしなくなりました"
     ]
   }
 }
