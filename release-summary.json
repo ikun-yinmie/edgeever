@@ -1,14 +1,17 @@
 {
-  "version": "1.103.16",
+  "version": "1.103.17",
   "changes": {
     "en-US": [
-      "Right-clicking a block now offers the convert-to menu, targeting the block under the pointer or the current selection, and the drag handle converts the correct block instead of its container"
+      "Paper editor themes now keep the note text inset from the article background, with a narrower inset on phones",
+      "The desktop update status line no longer keeps spinning after a check finishes without an update"
     ],
     "zh-CN": [
-      "笔记正文右键菜单新增「转化为」，作用于指针所在块或当前选区；同时修复块手柄转换时误改外层容器的问题"
+      "纸张主题下正文与文章背景之间保留左右留白，手机端使用更窄的留白",
+      "桌面端更新状态在检查结束后不再持续转圈，无更新时显示完成图标"
     ],
     "ja": [
-      "本文の右クリックメニューに「変換」を追加し、ポインター下のブロックまたは選択範囲に適用。ドラッグハンドルが外側コンテナではなく正しいブロックを変換するよう修正しました"
+      "ペーパーテーマで本文と記事背景の間に左右の余白を確保し、スマートフォンでは狭い余白を使用します",
+      "アップデート確認が更新なしで終了した後、デスクトップのステータス行が回転し続けないよう修正しました"
     ]
   }
 }
