@@ -78,6 +78,7 @@ import {
   syncWindowsShortcuts,
   writeClientBranding,
 } from "./client-branding.mjs";
+import { notifyWindowsShell } from "./windows-shell-refresh.mjs";
 import {
   syncWindowsAumidBranding,
 } from "./windows-aumid-branding.mjs";
@@ -319,25 +320,25 @@ const updateWindowsShortcutsBranding = (effectiveName, icoPath) => {
     return syncWindowsShortcuts({
       appDataDir,
       desktopDir,
+      commonProgramsDir: process.env.ProgramData
+        ? join(process.env.ProgramData, "Microsoft", "Windows", "Start Menu", "Programs") : undefined,
+      publicDesktopDir: process.env.PUBLIC ? join(process.env.PUBLIC, "Desktop") : undefined,
       execPath,
       name: effectiveName,
       icoPath,
       appUserModelId: WINDOWS_APP_USER_MODEL_ID,
+      shellReader: (shortcutPath) => shell.readShortcutLink(shortcutPath),
       shellWriter: (shortcutPath, operation, options) => shell.writeShortcutLink(shortcutPath, operation, options),
     });
-  } catch {
-    return { updated: 0, failed: 1 };
+  } catch (error) {
+    return { updated: 0, renamed: 0, failed: 1, changes: [], errors: [{ message: String(error?.message || error) }] };
   }
 };
 
 const regExeValue = () => join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe");
 
-/**
- * Electron's app.setAppUserModelId only tags the process. The pinned taskbar
- * button, Start menu entry and jump list read the shell registration under
- * HKCU\Software\Classes\AppUserModelId\<aumid>, so the custom icon has to be
- * written there as well or the taskbar keeps the executable's embedded icon.
- */
+// Registration supplements the shortcut metadata; it cannot override a stale
+// pinned .lnk by itself. Both paths must be updated and the shell notified.
 const registerWindowsAppIdentity = (effectiveName, icoPath) => {
   if (process.platform !== "win32") return { ok: false, applied: [] };
   return syncWindowsAumidBranding({
@@ -346,7 +347,7 @@ const registerWindowsAppIdentity = (effectiveName, icoPath) => {
     iconPath: icoPath && existsSync(icoPath) ? icoPath : null,
     runReg: (args) => {
       try {
-        execFileSync(regExeValue(), args, { windowsHide: true, stdio: "ignore" });
+        execFileSync(regExeValue(), args, { windowsHide: true, stdio: "pipe", timeout: 5000 });
         return { ok: true };
       } catch (error) {
         return { ok: false, stderr: String(error?.message || error).slice(0, 500) };
@@ -374,7 +375,41 @@ const updateWindowsTaskbarBranding = (targetWindow, effectiveName, icoPath) => {
   }
 };
 
-const applyClientBrandingToSystem = (branding) => {
+let lastWindowsShellBranding = null;
+const syncWindowsShellBrandingNow = async (effective, icoPath) => {
+  // Development Electron must never take over the installed app's shortcuts or registry identity.
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  const identity = JSON.stringify([effective.effectiveName, icoPath]);
+  const identityChanged = identity !== lastWindowsShellBranding;
+  const shortcuts = updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
+  const registration = identityChanged
+    ? registerWindowsAppIdentity(effective.effectiveName, icoPath) : { ok: true, skipped: true };
+  const refresh = await notifyWindowsShell({
+    changes: shortcuts.changes,
+    associationsChanged: identityChanged || shortcuts.changes.length > 0,
+  });
+  if (registration.ok && shortcuts.failed === 0 && refresh.ok) lastWindowsShellBranding = identity;
+  void writeDiagnostic("branding.windows-shell", {
+    name: effective.effectiveName,
+    nameSource: effective.nameSource,
+    iconSource: effective.iconSource,
+    shortcuts,
+    registration,
+    refresh,
+  });
+};
+
+let windowsShellBrandingQueue = Promise.resolve();
+const syncWindowsShellBranding = (effective, icoPath) => {
+  // Server sync and personal settings can arrive together. Preserve shell
+  // notification order and do not let an older refresh overwrite the cache.
+  windowsShellBrandingQueue = windowsShellBrandingQueue
+    .then(() => syncWindowsShellBrandingNow(effective, icoPath))
+    .catch((error) => { void writeDiagnostic("branding.windows-shell-failed", { message: String(error?.message || error) }); });
+  return windowsShellBrandingQueue;
+};
+
+const applyClientBrandingToSystem = async (branding) => {
   const effective = resolveEffectiveBranding(branding);
   try {
     app.setName(effective.effectiveName);
@@ -388,17 +423,6 @@ const applyClientBrandingToSystem = (branding) => {
     { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
-  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
-  const aumidRegistration = registerWindowsAppIdentity(effective.effectiveName, icoPath);
-  if (process.platform === "win32") {
-    void writeDiagnostic("branding.windows-identity", {
-      ok: aumidRegistration.ok,
-      applied: aumidRegistration.applied,
-      name: effective.effectiveName,
-      nameSource: effective.nameSource,
-      iconSource: effective.iconSource,
-    });
-  }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -465,6 +489,7 @@ const applyClientBrandingToSystem = (branding) => {
       // ignore
     }
   }
+  await syncWindowsShellBranding(effective, icoPath);
 };
 let windowsDownloadedUpdateVerified = false;
 // Set when a newer version was discovered but could not be handed to the
@@ -2177,14 +2202,15 @@ const createWindow = async () => {
     { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
-  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
-  registerWindowsAppIdentity(effective.effectiveName, icoPath);
+  await syncWindowsShellBranding(effective, icoPath);
 
   const windowIcon = (process.platform === "win32" && icoPath && existsSync(icoPath))
     ? icoPath
     : (initialIcon && !initialIcon.isEmpty() ? initialIcon : null);
 
   mainWindow = new BrowserWindow({
+    // Set the explicit taskbar identity before Windows sees the first UI.
+    ...(process.platform === "win32" ? { show: false } : {}),
     title: effective.effectiveName,
     ...(process.platform === "linux" ? { wmClass: "EdgeEver" } : {}),
     ...(windowIcon ? { icon: windowIcon } : {}),
@@ -2205,6 +2231,7 @@ const createWindow = async () => {
   rendererReady = false;
   armRendererStartupGuard();
   if (state.isMaximized) mainWindow.maximize();
+  if (process.platform === "win32") mainWindow.show();
   mainWindow.on("resize", () => void saveWindowState());
   mainWindow.on("move", () => void saveWindowState());
   mainWindow.on("close", (event) => {
@@ -2321,8 +2348,7 @@ const startApplication = async () => {
     { nativeImageProvider: (buf) => nativeImage.createFromBuffer(buf) },
   );
   updateLinuxDesktopBranding(effective.effectiveName, iconPath);
-  updateWindowsShortcutsBranding(effective.effectiveName, icoPath);
-  registerWindowsAppIdentity(effective.effectiveName, icoPath);
+  // Windows shell branding is applied once, immediately before createWindow.
   applyMacDockIcon();
   if (app.isPackaged && isMountedInstallerPath(app.getAppPath())) {
     const isChinese = app.getLocale().toLowerCase().startsWith("zh");
@@ -2680,7 +2706,7 @@ const startApplication = async () => {
     };
     clientBrandingState = normalizeClientBranding(updated);
     writeClientBranding(app.getPath("userData"), clientBrandingState);
-    applyClientBrandingToSystem(clientBrandingState);
+    await applyClientBrandingToSystem(clientBrandingState);
     return resolveEffectiveBranding(clientBrandingState);
   });
   ipcMain.handle("desktop:sync-server-branding", async (_event, input) => {
@@ -2692,7 +2718,7 @@ const startApplication = async () => {
     };
     clientBrandingState = normalizeClientBranding(updated);
     writeClientBranding(app.getPath("userData"), clientBrandingState);
-    applyClientBrandingToSystem(clientBrandingState);
+    await applyClientBrandingToSystem(clientBrandingState);
     return resolveEffectiveBranding(clientBrandingState);
   });
   ipcMain.handle("desktop:set-api-base-url", async (_event, value) => {

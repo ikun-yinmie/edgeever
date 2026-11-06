@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { join, win32 } from "node:path";
 
 export const CLIENT_BRANDING_FILE = "client-branding.json";
 export const BRANDING_ICON_FILE = "branding-icon.png";
@@ -147,77 +147,122 @@ export const materializeBrandingFiles = (userDataDir, effectiveIcon, { nativeIma
   }
 };
 
+// Windows displays the .lnk filename, not its description.
+export const windowsShortcutFileName = (name) => {
+  let stem = (typeof name === "string" ? name.trim() : "")
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .slice(0, 100).replace(/[. ]+$/g, "");
+  if (!stem) stem = DEFAULT_CLIENT_NAME;
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(stem)) stem = `_${stem}`;
+  return `${stem}.lnk`;
+};
+
+const windowsPathKey = (value) => typeof value === "string" && value.trim()
+  ? win32.normalize(value.trim().replace(/^"(.*)"$/, "$1")).toLowerCase()
+  : "";
+
 export const syncWindowsShortcuts = ({
   appDataDir,
   desktopDir,
+  commonProgramsDir,
+  publicDesktopDir,
   execPath,
   name,
   icoPath,
   appUserModelId = WINDOWS_APP_USER_MODEL_ID,
+  shellReader,
   shellWriter,
 }) => {
-  const safeName = (typeof name === "string" && name.trim()) ? name.trim() : DEFAULT_CLIENT_NAME;
-  const safeExec = (typeof execPath === "string" && execPath.trim()) ? execPath.trim() : "";
-  const customIconPath = (typeof icoPath === "string" && icoPath.trim() && existsSync(icoPath)) ? icoPath.trim() : null;
-  const shortcutIconPath = customIconPath || safeExec;
-  if (typeof shellWriter !== "function" || !shortcutIconPath) {
-    return { updated: 0, failed: 0 };
-  }
+  const result = { updated: 0, renamed: 0, deduplicated: 0, failed: 0, changes: [], errors: [], pinnedNameChanges: [] };
+  const safeName = typeof name === "string" && name.trim() ? name.trim() : DEFAULT_CLIENT_NAME;
+  const safeExec = typeof execPath === "string" ? execPath.trim() : "";
+  const shortcutIconPath = typeof icoPath === "string" && icoPath.trim() && existsSync(icoPath) ? icoPath : safeExec;
+  if (!safeExec || typeof shellReader !== "function" || typeof shellWriter !== "function") return result;
 
-  const targetShortcutNames = new Set([
-    "EdgeEver.lnk",
-    `${safeName}.lnk`,
-  ]);
-
-  const candidateDirectories = [];
-  if (appDataDir && typeof appDataDir === "string") {
-    candidateDirectories.push(
-      join(appDataDir, "Microsoft", "Windows", "Start Menu", "Programs"),
-      join(appDataDir, "Microsoft", "Windows", "Start Menu", "Programs", "EdgeEver"),
-      join(appDataDir, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar"),
+  const roots = [];
+  if (appDataDir) {
+    roots.push(
+      { dir: join(appDataDir, "Microsoft", "Windows", "Start Menu", "Programs"), pinned: false, recursive: true },
+      { dir: join(appDataDir, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned"), pinned: true, recursive: true },
     );
   }
-  if (desktopDir && typeof desktopDir === "string") {
-    candidateDirectories.push(desktopDir);
-  }
-
-  let updated = 0;
-  let failed = 0;
-
-  for (const dir of candidateDirectories) {
-    if (!existsSync(dir)) continue;
-    try {
-      const files = readdirSync(dir);
-      for (const file of files) {
-        if (!file.toLowerCase().endsWith(".lnk")) continue;
-        const matchesName = targetShortcutNames.has(file);
-        const matchesEdgeEver = file.toLowerCase().includes("edgeever");
-        if (!matchesName && !matchesEdgeEver) continue;
-
-        const shortcutPath = join(dir, file);
-        try {
-          const ok = shellWriter(shortcutPath, "update", {
-            target: safeExec || undefined,
+  roots.push({ dir: desktopDir }, { dir: publicDesktopDir }, { dir: commonProgramsDir, recursive: true });
+  const visited = new Set();
+  const fail = (path, error) => {
+    result.failed++;
+    result.errors.push({ path, message: String(error?.message || error).slice(0, 500) });
+  };
+  const scan = (dir, pinned = false, recursive = false) => {
+    if (!dir || visited.has(windowsPathKey(dir)) || !existsSync(dir)) return;
+    visited.add(windowsPathKey(dir));
+    let files;
+    try { files = readdirSync(dir, { withFileTypes: true }); }
+    catch (error) { fail(dir, error); return; }
+    for (const file of files) {
+      const shortcutPath = join(dir, file.name);
+      // Never follow junctions/symlinks out of these shell folders.
+      // Recurse only through Start Menu/pin folders, not arbitrary desktop projects.
+      if (file.isDirectory() && !file.isSymbolicLink()) {
+        if (recursive) scan(shortcutPath, pinned, true);
+        continue;
+      }
+      if (!file.isFile() || !file.name.toLowerCase().endsWith(".lnk")) continue;
+      let details;
+      try { details = shellReader(shortcutPath); }
+      catch { continue; }
+      // Filename/AUMID alone cannot establish ownership. Uninstallers and
+      // other installations must never be retargeted to this executable.
+      if (windowsPathKey(details?.target) !== windowsPathKey(safeExec)) continue;
+      try {
+        if (details.description !== safeName || windowsPathKey(details.icon) !== windowsPathKey(shortcutIconPath)
+          || details.iconIndex !== 0 || details.appUserModelId !== appUserModelId) {
+          // Updating only branding preserves target, args, cwd and toast CLSID.
+          if (!shellWriter(shortcutPath, "update", {
             description: safeName,
             icon: shortcutIconPath,
             iconIndex: 0,
             appUserModelId,
-          });
-          if (ok) {
-            updated++;
-          } else {
-            failed++;
-          }
-        } catch {
-          failed++;
+          })) throw new Error("Windows refused the shortcut update (check folder permissions)");
+          result.updated++;
+          result.changes.push({ type: "update", path: shortcutPath });
         }
-      }
-    } catch {
-      // ignore directory access error
+        const newPath = join(dir, windowsShortcutFileName(safeName));
+        if (windowsPathKey(newPath) === windowsPathKey(shortcutPath)) continue;
+        if (pinned) {
+          // Taskband stores the pinned path separately. Renaming/deleting this
+          // .lnk can orphan a pin; update its icon in place and report a legacy
+          // label that may need user re-pinning from the renamed launcher.
+          result.pinnedNameChanges.push({ path: shortcutPath, name: safeName });
+          continue;
+        }
+        // An upgrade may recreate EdgeEver.lnk alongside our renamed launcher.
+        // Merge only identical launch commands, never another app/profile.
+        if (existsSync(newPath)) {
+          const existing = shellReader(newPath);
+          if (windowsPathKey(existing.target) !== windowsPathKey(details.target)
+            || (existing.args || "") !== (details.args || "")
+            || windowsPathKey(existing.cwd) !== windowsPathKey(details.cwd)
+            || (existing.toastActivatorClsid || "") !== (details.toastActivatorClsid || "")) {
+            throw new Error(`Shortcut name already exists: ${newPath}`);
+          }
+          if (!shellWriter(newPath, "update", {
+            description: safeName, icon: shortcutIconPath, iconIndex: 0, appUserModelId,
+          })) throw new Error(`Windows refused the existing shortcut update: ${newPath}`);
+          result.updated++;
+          result.changes.push({ type: "update", path: newPath });
+          rmSync(shortcutPath);
+          result.deduplicated++;
+          result.changes.push({ type: "delete", path: shortcutPath });
+          continue;
+        }
+        renameSync(shortcutPath, newPath);
+        result.renamed++;
+        result.changes.push({ type: "rename", path: shortcutPath, newPath });
+      } catch (error) { fail(shortcutPath, error); }
     }
-  }
-
-  return { updated, failed };
+  };
+  for (const { dir, pinned, recursive } of roots) scan(dir, pinned, recursive);
+  return result;
 };
 
 export const buildWindowsTaskbarAppDetails = ({

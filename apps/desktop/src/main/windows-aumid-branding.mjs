@@ -1,15 +1,4 @@
-// Windows resolves a taskbar button's icon from the running window for the
-// session, but the Start menu entry, the pinned shortcut and the "restart"
-// affordance of a grouped button all read the AppUserModelId registration under
-// HKCU\Software\Classes\AppUserModelId\<aumid>. Electron's app.setAppUserModelId
-// only sets the process identity; it never writes that key, so a custom client
-// icon updated the window title bar while the taskbar kept showing the icon
-// embedded in the executable.
-//
-// See "Application User Model IDs" in the Windows shell documentation: the
-// per-AUMID key carries DisplayName and IconUri, and the shell prefers IconUri
-// over the executable's embedded icon.
-
+// Per-user shell identity metadata supplements, but does not replace, .lnk icons/names.
 export const WINDOWS_AUMID_REGISTRY_ROOT = "HKCU\\Software\\Classes\\AppUserModelId";
 
 export const windowsAppUserModelIdRegistryKey = (aumid) => {
@@ -17,27 +6,15 @@ export const windowsAppUserModelIdRegistryKey = (aumid) => {
   return `${WINDOWS_AUMID_REGISTRY_ROOT}\\${aumid.trim()}`;
 };
 
-/**
- * Builds the reg.exe argument list for the current user only (no elevation).
- * `values` is ordered so the same call both creates the key and sets values.
- */
+// reg.exe accepts ONE /v value per invocation, not repeated /v /t /d groups.
 export const buildAumidRegistrationArgs = ({ aumid, name, iconPath }) => {
   const key = windowsAppUserModelIdRegistryKey(aumid);
-  if (!key) return null;
-  const args = ["add", key, "/f"];
-  if (typeof name === "string" && name.trim()) {
-    args.push("/v", "DisplayName", "/t", "REG_SZ", "/d", name.trim());
-  }
-  if (typeof iconPath === "string" && iconPath.trim()) {
-    args.push("/v", "IconUri", "/t", "REG_SZ", "/d", iconPath.trim());
-  }
-  return args.length > 3 ? args : null;
+  if (!key) return [];
+  return [["DisplayName", name], ["IconUri", iconPath]]
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .map(([valueName, value]) => ["add", key, "/f", "/v", valueName, "/t", "REG_SZ", "/d", value.trim()]);
 };
 
-/**
- * Reset path: drop the value instead of the key so other shell metadata that
- * Windows may have added stays intact, then let the executable icon win again.
- */
 export const buildAumidResetArgs = ({ aumid, value }) => {
   const key = windowsAppUserModelIdRegistryKey(aumid);
   if (!key || typeof value !== "string" || !value.trim()) return null;
@@ -49,46 +26,31 @@ export const buildAumidDeleteKeyArgs = (aumid) => {
   return key ? ["delete", key, "/f"] : null;
 };
 
-/**
- * Applies the branding to the shell registration. `runReg` returns
- * { ok, stderr } so callers can log a diagnostic without throwing during
- * startup. Every call is best-effort: a locked-down registry must never stop
- * the desktop app from launching.
- */
-export const syncWindowsAumidBranding = ({
-  aumid,
-  name,
-  iconPath,
-  runReg,
-}) => {
-  if (typeof runReg !== "function") return { ok: false, applied: [] };
+export const syncWindowsAumidBranding = ({ aumid, name, iconPath, runReg }) => {
   const applied = [];
-
-  const write = (args) => {
-    if (!args) return true;
-    const result = runReg(args);
-    return result?.ok !== false;
+  const errors = [];
+  const key = windowsAppUserModelIdRegistryKey(aumid);
+  if (typeof runReg !== "function" || !key) return { ok: false, applied, errors: ["Invalid registry runner or app ID"] };
+  const run = (args) => {
+    try { return runReg(args) || { ok: false, stderr: "Registry runner returned no result" }; }
+    catch (error) { return { ok: false, stderr: String(error?.message || error) }; }
   };
-
-  if (iconPath) {
-    if (!write(buildAumidRegistrationArgs({ aumid, name, iconPath }))) {
-      return { ok: false, applied };
-    }
-    applied.push("IconUri");
+  for (const args of buildAumidRegistrationArgs({ aumid, name, iconPath })) {
+    const value = args[args.indexOf("/v") + 1];
+    const result = run(args);
+    if (result.ok) applied.push(value);
+    else errors.push(`${value}: ${result.stderr || "Registry write failed"}`);
   }
-
-  if (name && !iconPath) {
-    const args = buildAumidRegistrationArgs({ aumid, name, iconPath: null });
-    if (!write(args)) return { ok: false, applied };
-    applied.push("DisplayName");
-  }
-
   if (!iconPath) {
-    // The custom icon is gone: make the shell fall back to the executable's
-    // own icon instead of keeping the last custom one cached.
-    write(buildAumidResetArgs({ aumid, value: "IconUri" }));
-    applied.push("IconUri(reset)");
+    const result = run(buildAumidResetArgs({ aumid, value: "IconUri" }));
+    if (result.ok) applied.push("IconUri(reset)");
+    else {
+      // A missing value is an idempotent reset, but a failed delete of an
+      // existing value (or an inaccessible key) is not success.
+      const query = run(["query", key, "/v", "IconUri"]);
+      if (query.ok) errors.push(`IconUri(reset): ${result.stderr || "Registry delete failed"}`);
+      else if (!run(["query", key]).ok) errors.push(`IconUri(reset): ${result.stderr || "Registry key inaccessible"}`);
+    }
   }
-
-  return { ok: true, applied };
+  return { ok: errors.length === 0, applied, errors };
 };

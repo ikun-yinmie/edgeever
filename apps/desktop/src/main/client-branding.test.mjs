@@ -258,10 +258,14 @@ describe("desktop client-branding", () => {
         name: "岁玥史书",
         icoPath: fakeIcoPath,
         appUserModelId: "org.edgeever.desktop",
+        shellReader: () => ({ target: "C:\\Program Files\\EdgeEver\\EdgeEver.exe" }),
         shellWriter: fakeWriter,
       });
 
       expect(result.updated).toBe(3);
+      expect(result.renamed).toBe(2);
+      expect(result.pinnedNameChanges).toHaveLength(1);
+      expect(result.changes.filter((change) => change.type === "rename")).toHaveLength(2);
       expect(result.failed).toBe(0);
       expect(written.length).toBe(3);
       for (const item of written) {
@@ -293,13 +297,16 @@ describe("desktop client-branding", () => {
         execPath,
         name: "EdgeEver",
         icoPath: null,
+        shellReader: () => ({ target: execPath }),
         shellWriter: (shortcutPath, operation, options) => {
           written.push({ shortcutPath, operation, options });
           return true;
         },
       });
 
-      expect(result).toEqual({ updated: 1, failed: 0 });
+      expect(result.updated).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.renamed).toBe(0);
       expect(written[0].options.icon).toBe(execPath);
       expect(written[0].options.iconIndex).toBe(0);
     } finally {
