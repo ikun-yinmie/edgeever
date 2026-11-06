@@ -1,17 +1,14 @@
 {
-  "version": "1.103.17",
+  "version": "1.103.18",
   "changes": {
     "en-US": [
-      "Paper editor themes now keep the note text inset from the article background, with a narrower inset on phones",
-      "The desktop update status line no longer keeps spinning after a check finishes without an update"
+      "Windows now renames the installed shortcut to the current client name, merges duplicate launchers, refreshes the Start menu and pinned entries, and notifies the shell so the custom icon and name appear immediately"
     ],
     "zh-CN": [
-      "纸张主题下正文与文章背景之间保留左右留白，手机端使用更窄的留白",
-      "桌面端更新状态在检查结束后不再持续转圈，无更新时显示完成图标"
+      "Windows 端现在会把快捷方式重命名为当前客户端名称、合并重复启动项、刷新开始菜单与固定项，并通知系统外壳，让自定义图标与名称立即生效"
     ],
     "ja": [
-      "ペーパーテーマで本文と記事背景の間に左右の余白を確保し、スマートフォンでは狭い余白を使用します",
-      "アップデート確認が更新なしで終了した後、デスクトップのステータス行が回転し続けないよう修正しました"
+      "Windows でインストール済みショートカットを現在のクライアント名に変更し、重複するランチャーを統合、スタートメニューとピン留めを更新してシェルに通知するため、カスタムアイコンと名前がすぐに反映されます"
     ]
   }
 }
