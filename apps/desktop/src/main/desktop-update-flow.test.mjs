@@ -153,6 +153,11 @@ describe("desktop update flow", () => {
     expect(systemInfoSource).toContain('t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })');
   });
 
+  test("only animates the status icon while checking, downloading, or installing", () => {
+    expect(updateCardSource).not.toContain('checkedOnce && !downloaded && status?.state !== "available"');
+    expect(updateCardSource).toMatch(/installUpdate\.isPending \|\| checkUpdate\.isPending \|\| status\?\.state === "available"\s*\? <LoaderCircle[^>]+animate-spin[^>]+\/>\s*: <CheckCircle2/);
+  });
+
   test("fetches the signed Windows manifest through the updater's proxy session", () => {
     // net.fetch follows the default session, which stays direct in "auto" mode,
     // so the verification step used to fail while the update check succeeded.

@@ -284,9 +284,9 @@ const DesktopUpdateCardContent = () => {
                 ? <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 : manualDownloadRequired
                   ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                  : checkedOnce && !downloaded && status?.state !== "available"
-                    ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                    : <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />}
+                  : installUpdate.isPending || checkUpdate.isPending || status?.state === "available"
+                    ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
               {statusLabel}
             </p>
           ) : null}
