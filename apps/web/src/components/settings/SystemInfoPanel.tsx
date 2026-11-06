@@ -302,9 +302,15 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
     queryKey: ["desktop-update-status"],
     queryFn: () => desktopBridge!.updateStatus(),
     enabled: active && desktopAvailable,
-    refetchInterval: (query) => query.state.data?.state === "available" ? 1_000 : false,
+    refetchInterval: (query) => query.state.data?.state === "downloading" ? 1_000 : false,
     retry: 1,
   });
+  useEffect(() => {
+    if (!active || !desktopBridge?.onUpdateStatus) return;
+    return desktopBridge.onUpdateStatus((status) => {
+      queryClient.setQueryData(["desktop-update-status"], status);
+    });
+  }, [active, desktopBridge, queryClient]);
   useEffect(() => {
     if (!active) return;
     const onResize = () => setViewportRevision((value) => value + 1);
@@ -321,6 +327,12 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
       setDesktopUpdateChecked(true);
     },
     onError: () => {
+      void desktopUpdateStatusQuery.refetch();
+    },
+  });
+  const desktopUpdateDownloadMutation = useMutation({
+    mutationFn: () => desktopBridge!.downloadUpdate(),
+    onSettled: () => {
       void desktopUpdateStatusQuery.refetch();
     },
   });
@@ -448,26 +460,29 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
     ?? "https://github.com/ikun-yinmie/edgeever/releases/latest";
   const desktopManualDownloadRequired = desktopUpdateStatusQuery.data?.downloadBlocked === "verification";
   const desktopAutoUpdateSupported = clientRuntimeQuery.data?.autoUpdateSupported !== false;
-  const desktopUpdateBusy = desktopUpdateCheckMutation.isPending || desktopUpdateInstallMutation.isPending;
-  const desktopUpdateFailed = desktopUpdateInstallMutation.isError || desktopUpdateCheckMutation.isError || desktopUpdateStatusQuery.isError;
+  const desktopUpdateBusy = desktopUpdateCheckMutation.isPending || desktopUpdateDownloadMutation.isPending || desktopUpdateInstallMutation.isPending;
+  const desktopUpdateFailed = desktopUpdateInstallMutation.isError || desktopUpdateCheckMutation.isError || desktopUpdateDownloadMutation.isError || desktopUpdateStatusQuery.isError || Boolean(desktopUpdateError);
   const desktopUpdateStatus = desktopUpdateFailed
     ? t(desktopUpdateError?.kind === "network" ? "systemInfo.desktopUpdateNetworkFailed" : "systemInfo.desktopUpdateFailed")
     : desktopUpdateInstallMutation.isPending
       ? t("systemInfo.desktopUpdateInstalling")
-      : desktopUpdateCheckMutation.isPending
-        ? t("systemInfo.desktopUpdateChecking")
+      : desktopUpdateState === "downloading"
+        ? t("systemInfo.desktopUpdateDownloading")
         : desktopUpdateState === "available"
-          ? t("systemInfo.desktopUpdateDownloading")
+          ? t(desktopUpdateCheckMutation.isPending || desktopUpdateDownloadMutation.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
           : desktopUpdateState === "downloaded"
             ? t("systemInfo.desktopUpdateReady")
-            : desktopUpdateChecked
-              ? (desktopLatestVersionTag
-                ? t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })
-                : t("systemInfo.desktopUpdateCurrent"))
-              : null;
+            : desktopUpdateCheckMutation.isPending
+              ? t("systemInfo.desktopUpdateChecking")
+              : desktopUpdateChecked
+                ? (desktopLatestVersionTag
+                  ? t("systemInfo.desktopUpdateCurrent", { version: desktopLatestVersionTag })
+                  : t("systemInfo.desktopUpdateCurrent"))
+                : null;
 
   const handleDesktopUpdate = () => {
     if (desktopUpdateState === "downloaded") desktopUpdateInstallMutation.mutate();
+    else if (desktopUpdateState === "available") desktopUpdateDownloadMutation.mutate();
     else desktopUpdateCheckMutation.mutate();
   };
 
@@ -524,21 +539,23 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
                   variant="outline"
                   className="h-7 bg-card px-2.5 text-xs shadow-xs hover:bg-slate-50"
                   type="button"
-                  disabled={desktopUpdateBusy || desktopUpdateState === "available"}
+                  disabled={desktopUpdateBusy || desktopUpdateState === "downloading"}
                   onClick={handleDesktopUpdate}
                 >
-                  {desktopUpdateBusy || desktopUpdateState === "available"
+                  {desktopUpdateBusy || desktopUpdateState === "downloading"
                     ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                     : desktopUpdateState === "downloaded"
                       ? <RotateCcw className="h-3.5 w-3.5" />
                       : <RefreshCw className="h-3.5 w-3.5" />}
                   {desktopUpdateState === "downloaded"
                     ? t("systemInfo.desktopUpdateRestart")
-                    : desktopUpdateState === "available"
+                    : desktopUpdateState === "downloading"
                       ? t("systemInfo.desktopUpdateDownloading")
-                      : desktopUpdateCheckMutation.isPending
-                        ? t("systemInfo.desktopUpdateChecking")
-                        : t("systemInfo.desktopCheckForUpdates")}
+                      : desktopUpdateState === "available"
+                        ? t("desktopUpdate.download")
+                        : desktopUpdateCheckMutation.isPending
+                          ? t("systemInfo.desktopUpdateChecking")
+                          : t("systemInfo.desktopCheckForUpdates")}
                 </Button>
               ) : isClient && desktopAvailable ? (
                 <Button

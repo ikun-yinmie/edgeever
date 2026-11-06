@@ -47,7 +47,7 @@ const DesktopUpdateCardContent = () => {
     queryKey: UPDATE_STATUS_QUERY_KEY,
     queryFn: () => bridge.updateStatus(),
     retry: 1,
-    refetchInterval: (query) => query.state.data?.state === "available" ? 3_000 : false,
+    refetchInterval: (query) => query.state.data?.state === "downloading" ? 3_000 : false,
   });
 
   useEffect(() => {
@@ -79,6 +79,18 @@ const DesktopUpdateCardContent = () => {
     },
   });
 
+  const downloadUpdate = useMutation({
+    mutationFn: () => bridge.downloadUpdate(),
+    onSuccess: () => {
+      setCheckFailedOnce(false);
+      void statusQuery.refetch();
+    },
+    onError: () => {
+      setCheckFailedOnce(true);
+      void statusQuery.refetch();
+    },
+  });
+
   const installUpdate = useMutation({
     mutationFn: async () => {
       const result = await bridge.installUpdate();
@@ -89,15 +101,17 @@ const DesktopUpdateCardContent = () => {
 
   const preferences = preferencesQuery.data;
   const status = statusQuery.data;
+  const available = status?.state === "available" && !status.downloadBlocked;
+  const downloading = status?.state === "downloading";
   const downloaded = status?.state === "downloaded";
   const autoUpdateSupported = preferences?.autoUpdateSupported !== false;
   const proxySupported = typeof bridge.getProxySettings === "function" && typeof bridge.setProxySettings === "function";
-  const busy = checkUpdate.isPending || installUpdate.isPending || savePreferences.isPending;
+  const busy = checkUpdate.isPending || downloadUpdate.isPending || downloading || installUpdate.isPending || savePreferences.isPending;
   const savingPreferences = savePreferences.isPending;
   const updateError = status?.error ?? null;
   const networkFailed = updateError?.kind === "network";
   const checkFailed = checkFailedOnce || statusQuery.isError;
-  const shouldRevealUpdateDetails = downloaded
+  const shouldRevealUpdateDetails = available || downloading || downloaded
     || installUpdate.isError
     || networkFailed
     || checkFailed
@@ -174,27 +188,31 @@ const DesktopUpdateCardContent = () => {
       ? t("desktopUpdate.installing")
       : downloaded
         ? t("desktopUpdate.ready")
+        : downloading
+          ? t("desktopUpdate.downloading")
+          : available
+            ? t(checkUpdate.isPending || downloadUpdate.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
+            : checkUpdate.isPending
+              ? t("desktopUpdate.checking")
+              : manualDownloadRequired
+                ? t("desktopUpdate.manualDownloadTitle", { version: latestVersionTag ?? currentVersionTag })
+                : networkFailed
+                  ? t("desktopUpdate.failedNetwork")
+                  : checkFailed || updateError
+                    ? t("desktopUpdate.failed")
+                    : checkedOnce || Boolean(status?.latestVersion)
+                      ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
+                      : null;
+
+  const actionLabel = downloaded
+    ? t("desktopUpdate.restart")
+    : downloading
+      ? t("desktopUpdate.downloading")
+      : available
+        ? t("desktopUpdate.download")
         : checkUpdate.isPending
           ? t("desktopUpdate.checking")
-          : status?.state === "available"
-            ? t("desktopUpdate.downloading")
-            : manualDownloadRequired
-              ? t("desktopUpdate.manualDownloadTitle", { version: latestVersionTag ?? currentVersionTag })
-              : networkFailed
-                ? t("desktopUpdate.failedNetwork")
-                : checkFailed || updateError
-                  ? t("desktopUpdate.failed")
-                  : checkedOnce || Boolean(status?.latestVersion)
-                    ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
-                    : null;
-
-  const actionLabel = installUpdate.isError
-    ? t("desktopUpdate.restart")
-    : downloaded
-      ? t("desktopUpdate.restart")
-      : checkUpdate.isPending || status?.state === "available"
-        ? t("desktopUpdate.downloading")
-        : t("desktopUpdate.check");
+          : t("desktopUpdate.check");
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
@@ -248,10 +266,14 @@ const DesktopUpdateCardContent = () => {
                 size="sm"
                 variant="outline"
                 type="button"
-                disabled={busy || !autoUpdateSupported || (!downloaded && status?.state === "available") || (statusQuery.isError && !status)}
-                onClick={() => (downloaded ? installUpdate.mutate() : checkUpdate.mutate())}
+                disabled={busy || !autoUpdateSupported || (statusQuery.isError && !status)}
+                onClick={() => {
+                  if (downloaded) installUpdate.mutate();
+                  else if (available) downloadUpdate.mutate();
+                  else checkUpdate.mutate();
+                }}
               >
-                {installUpdate.isPending || checkUpdate.isPending
+                {installUpdate.isPending || checkUpdate.isPending || downloadUpdate.isPending || downloading
                   ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   : downloaded
                     ? <RotateCcw className="h-3.5 w-3.5" />
@@ -284,7 +306,7 @@ const DesktopUpdateCardContent = () => {
                 ? <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 : manualDownloadRequired
                   ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                  : installUpdate.isPending || checkUpdate.isPending || status?.state === "available"
+                  : installUpdate.isPending || checkUpdate.isPending || downloadUpdate.isPending || downloading
                     ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
                     : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
               {statusLabel}

@@ -36,7 +36,7 @@ describe("desktop branding settings card", () => {
       expect(source).toContain("focus-visible:ring-2");
     }
 
-    expect(updateCard).toContain("const shouldRevealUpdateDetails = downloaded");
+    expect(updateCard).toContain("const shouldRevealUpdateDetails = available || downloading || downloaded");
     expect(updateCard).toContain("if (shouldRevealUpdateDetails) setExpanded(true);");
   });
 });

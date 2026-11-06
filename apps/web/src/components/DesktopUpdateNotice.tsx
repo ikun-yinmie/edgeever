@@ -15,6 +15,12 @@ export const DesktopUpdateNotice = () => {
     refetchInterval: (query) => query.state.data?.state === "downloaded" ? false : 5_000,
     retry: 1,
   });
+  const downloadMutation = useMutation({
+    mutationFn: () => bridge!.downloadUpdate(),
+    onSettled: () => {
+      void statusQuery.refetch();
+    },
+  });
   const installMutation = useMutation({
     mutationFn: async () => {
       const result = await bridge!.installUpdate();
@@ -25,35 +31,35 @@ export const DesktopUpdateNotice = () => {
 
   useEffect(() => {
     if (!bridge?.onUpdateStatus) return;
-    return bridge.onUpdateStatus((status) => {
+    return bridge.onUpdateStatus(() => {
       void statusQuery.refetch();
-      if (status.state === "downloaded") window.focus();
     });
   }, [bridge, statusQuery.refetch]);
 
   const downloaded = bridge?.isAvailable === true && statusQuery.data?.state === "downloaded";
-  if (!downloaded) return null;
+  const available = bridge?.isAvailable === true && statusQuery.data?.state === "available" && !statusQuery.data.downloadBlocked;
+  if (!downloaded && !available) return null;
 
-  const label = installMutation.isError
+  const pending = installMutation.isPending || downloadMutation.isPending;
+  const label = installMutation.isError || downloadMutation.isError
     ? t("systemInfo.desktopUpdateFailed")
-    : t("systemInfo.desktopUpdateRestart");
+    : t(downloaded ? "systemInfo.desktopUpdateRestart" : "desktopUpdate.download");
 
   return (
     <Button
-      className="h-8 shrink-0 animate-in rounded-full px-4 text-xs font-semibold shadow-sm fade-in slide-in-from-left-2"
+      className="h-8 shrink-0 rounded-full px-4 text-xs font-semibold shadow-sm"
       size="sm"
-      variant="solid"
-      role="alert"
-      aria-live="assertive"
+      variant={downloaded ? "solid" : "outline"}
+      aria-live="polite"
       aria-label={statusQuery.data?.version ? `${label} v${statusQuery.data.version}` : label}
-      disabled={installMutation.isPending}
-      onClick={() => installMutation.mutate()}
+      disabled={pending}
+      onClick={() => downloaded ? installMutation.mutate() : downloadMutation.mutate()}
     >
-      {installMutation.isPending
+      {pending
         ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
         : null}
       {label}
-      {!installMutation.isPending ? <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+      {!pending ? <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /> : null}
     </Button>
   );
 };

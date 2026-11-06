@@ -190,6 +190,7 @@ let isQuitting = false;
 let updateState = "idle";
 let updateCheckInFlight = null;
 let updateDownloadInFlight = null;
+let updateDownloadPromptInFlight = null;
 let updateCheckTimer = null;
 let updateWindowTimer = null;
 let updateInstallInProgress = false;
@@ -1717,7 +1718,49 @@ const downloadTrustedDesktopUpdate = (reason) => {
   if (process.platform === "win32" && !trustedWindowsUpdate) {
     return Promise.reject(new Error("Windows update metadata has not passed the signature gate"));
   }
-  return trackDesktopUpdateDownload(autoUpdater.downloadUpdate(), reason);
+  updateState = "downloading";
+  lastUpdateError = null;
+  refreshTrayMenu();
+  publishDesktopUpdateStatus();
+  return trackDesktopUpdateDownload(Promise.resolve().then(() => autoUpdater.downloadUpdate()), reason);
+};
+
+const requestDesktopUpdateDownload = (reason) => {
+  if (updateDownloadPromptInFlight) return updateDownloadPromptInFlight;
+  updateDownloadPromptInFlight = Promise.resolve().then(async () => {
+    if (updateCheckInFlight) await updateCheckInFlight;
+    const window = mainWindow;
+    const version = downloadedUpdateVersion;
+    if (isQuitting || !window || window.isDestroyed()) return { started: false, reason: "unavailable" };
+    if (updateDownloadInFlight || updateState !== "available" || !version || updateDownloadBlocked) {
+      return { started: false, reason: "not-ready" };
+    }
+    if (process.platform === "win32" && trustedWindowsUpdate?.version !== version) {
+      return { started: false, reason: "verification" };
+    }
+    const isChinese = app.getLocale().toLowerCase().startsWith("zh");
+    const result = await dialog.showMessageBox(window, {
+      type: "info",
+      title: isChinese ? "发现 EdgeEver 新版本" : "EdgeEver update available",
+      message: isChinese ? `是否下载 EdgeEver v${version}？` : `Download EdgeEver v${version}?`,
+      detail: isChinese
+        ? `当前版本：v${app.getVersion()}\n新版本：v${version}\n确认后才会下载安装包，下载完成后可选择重启安装。`
+        : `Current version: v${app.getVersion()}\nNew version: v${version}\nThe download starts only after confirmation. You can choose when to restart and install.`,
+      buttons: [isChinese ? "下载更新" : "Download update", isChinese ? "稍后" : "Later"],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (result.response !== 0) return { started: false, reason: "cancelled" };
+    if (isQuitting || window.isDestroyed() || window !== mainWindow
+      || updateState !== "available" || downloadedUpdateVersion !== version || updateDownloadBlocked
+      || (process.platform === "win32" && trustedWindowsUpdate?.version !== version)) {
+      return { started: false, reason: "not-ready" };
+    }
+    void downloadTrustedDesktopUpdate(reason).catch(() => undefined);
+    return { started: true };
+  }).finally(() => { updateDownloadPromptInFlight = null; });
+  return updateDownloadPromptInFlight;
 };
 
 const promptForDownloadedUpdate = async (version) => {
@@ -1779,16 +1822,14 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
   if (!app.isPackaged || process.env.EDGE_EVER_DISABLE_AUTO_UPDATE === "1" || updateState === "downloaded") {
     return Promise.resolve(null);
   }
-  // Manual checks stay available at any time; background checks (and the
-  // downloads they start) only run when the user enabled them and the current
-  // local time is inside the configured window.
+  // Manual checks remain available outside the automatic-check time window.
   if (AUTOMATIC_UPDATE_REASONS.has(reason) && !shouldAutoUpdateNow(updatePreferences)) {
     return Promise.resolve(null);
   }
   if (updateCheckInFlight) {
     return throwOnError ? updateCheckInFlight : updateCheckInFlight.catch(() => null);
   }
-  if (updateDownloadInFlight) return Promise.resolve(null);
+  if (updateDownloadInFlight || updateDownloadPromptInFlight) return Promise.resolve(null);
   const now = Date.now();
   if (!force && now - lastUpdateCheckAt < updateCheckFocusThrottleMs) return Promise.resolve(null);
   lastUpdateCheckAt = now;
@@ -1823,14 +1864,10 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
             version: trustedWindowsUpdate.version,
             keyId: trustedWindowsUpdate.keyId,
           });
-          void downloadTrustedDesktopUpdate(reason);
         } catch (error) {
           trustedWindowsUpdate = null;
           windowsDownloadedUpdateVerified = false;
-          // Nothing is downloading now, so leaving the state at "available"
-          // would render an endless "downloading" spinner and keep the 3s
-          // status poll alive. The discovered version stays in
-          // latestCheckedVersion so the UI can show it with a manual link.
+          // Keep the discovered version available through its manual release link.
           updateState = "idle";
           updateDownloadBlocked = "verification";
           lastUpdateError = classifyUpdateError(error);
@@ -1844,11 +1881,8 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
           });
         }
       }
-      // electron-updater only produces a downloadPromise when autoDownload is
-      // on (macOS/Linux). On Windows the download is started explicitly above
-      // after the signature gate, so a rejected manifest never downloads.
-      if (result?.downloadPromise && !(process.platform === "win32" && updateDownloadBlocked)) {
-        trackDesktopUpdateDownload(result.downloadPromise, reason);
+      if (linuxUpdateTestMode && result?.isUpdateAvailable) {
+        void downloadTrustedDesktopUpdate("linux-update-test").catch(() => undefined);
       }
       return result;
     })
@@ -1884,7 +1918,7 @@ const configureAutoUpdater = () => {
       appImage: process.env.APPIMAGE || null,
     });
   }
-  autoUpdater.autoDownload = process.platform !== "win32";
+  autoUpdater.autoDownload = false;
   // Installing on quit would bypass the renderer sync gate, so every install
   // goes through the explicit restart flow instead.
   autoUpdater.autoInstallOnAppQuit = false;
@@ -2856,9 +2890,10 @@ const startApplication = async () => {
   });
   ipcMain.handle("desktop:check-update", async () => {
     await checkForDesktopUpdate("manual", { force: true, throwOnError: true });
+    await requestDesktopUpdateDownload("manual-check");
     return desktopUpdateStatus();
   });
-  ipcMain.handle("desktop:download-update", () => downloadTrustedDesktopUpdate("manual-download"));
+  ipcMain.handle("desktop:download-update", () => requestDesktopUpdateDownload("manual-download"));
   ipcMain.handle("desktop:install-update", () => installDownloadedUpdate());
   ipcMain.handle("desktop:relaunch", async () => {
     await relaunchDesktopApp();

@@ -201,7 +201,7 @@ type DesktopMarkdownMirrorResult = DesktopMarkdownMirrorStatus & {
 };
 
 interface DesktopUpdateStatus {
-  state: "idle" | "available" | "downloaded";
+  state: "idle" | "available" | "downloading" | "downloaded";
   version: string | null;
   latestVersion?: string | null;
   currentVersion: string;
