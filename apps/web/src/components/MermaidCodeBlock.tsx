@@ -107,6 +107,26 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
     wrap?: boolean;
   };
   const blockTitle = typeof meta.title === "string" ? meta.title : "";
+  const [titleDraft, setTitleDraft] = useState(blockTitle);
+  const titleFocusedRef = useRef(false);
+  const titleComposingRef = useRef(false);
+
+  useEffect(() => {
+    // Node-view props arrive asynchronously; never overwrite an active input's caret or IME draft.
+    if (!titleFocusedRef.current && !titleComposingRef.current) setTitleDraft(blockTitle);
+  }, [blockTitle]);
+
+  const commitTitle = (value: string) => {
+    const title = value.slice(0, 300);
+    setTitleDraft(title);
+    if (editor.isDestroyed || !editor.isEditable) return;
+    const position = getPos();
+    if (typeof position !== "number") return;
+    const currentNode = editor.state.doc.nodeAt(position);
+    if (currentNode?.type.name !== "codeBlock" || (currentNode.attrs.meta?.title ?? "") === title) return;
+    updateAttributes({ meta: { ...currentNode.attrs.meta, title } });
+  };
+
   const isWide = meta.width === "wide";
   const isCollapsed = meta.collapsed === true;
   // Defaults match Yuque: line numbers on, wrapping off.
@@ -362,17 +382,32 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
             <input
               type="text"
               className="edgeever-code-title-input"
-              value={blockTitle}
+              value={titleDraft}
               placeholder={t("editorToolbar.codeTitlePlaceholder")}
               aria-label={t("editorToolbar.codeTitle")}
-              onChange={(event) => updateAttributes({ meta: { ...meta, title: event.target.value.slice(0, 300) } })}
+              onFocus={() => { titleFocusedRef.current = true; }}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                if (titleComposingRef.current) setTitleDraft(value);
+                else commitTitle(value);
+              }}
+              onCompositionStart={() => { titleComposingRef.current = true; }}
+              onCompositionEnd={(event) => {
+                titleComposingRef.current = false;
+                commitTitle(event.currentTarget.value);
+              }}
+              onBlur={(event) => {
+                titleFocusedRef.current = false;
+                if (!titleComposingRef.current) commitTitle(event.currentTarget.value);
+              }}
               onMouseDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
+                event.stopPropagation();
+                if (titleComposingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) return;
                 if (event.key === "Enter" || event.key === "Escape") {
                   event.preventDefault();
-                  (event.target as HTMLInputElement).blur();
+                  event.currentTarget.blur();
                 }
-                event.stopPropagation();
               }}
             />
           ) : (

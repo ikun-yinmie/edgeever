@@ -28,6 +28,86 @@ const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: (me
   }
 };
 
+test("code block titles keep fast typing, caret edits and saved content intact", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withCodePreviewMemo(page, "```javascript\nconst value = 1;\n```", async (memoId) => {
+    const title = page.locator(".edgeever-code-title-input");
+    await title.click();
+    await title.pressSequentially("example-title-1234567890");
+    await expect(title).toHaveValue("example-title-1234567890");
+    await expect(title).toBeFocused();
+    await title.press("Home");
+    await title.pressSequentially("prefix-");
+    await title.press("Delete");
+    await expect(title).toHaveValue("prefix-xample-title-1234567890");
+    await expect(title).toBeFocused();
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/v1/memos/${memoId}`);
+      const body = await response.json() as { memo: { contentMarkdown: string } };
+      return body.memo.contentMarkdown;
+    }, { timeout: 30_000 }).toContain("prefix-xample-title-1234567890");
+    await title.press("Enter");
+    await expect(title).not.toBeFocused();
+    await page.reload();
+    await page.locator(`[data-memo-id="${memoId}"]`).locator("button").first().click({ timeout: 30_000 });
+    await page.getByRole("radio", { name: "编辑", exact: true }).click({ timeout: 30_000 });
+    await expect(title).toHaveValue("prefix-xample-title-1234567890");
+    await title.fill("x".repeat(310));
+    await expect(title).toHaveValue("x".repeat(300));
+    await title.fill("");
+    await expect(title).toHaveValue("");
+    await expect(page.locator(".edgeever-code-source")).toHaveText("const value = 1;");
+  });
+});
+
+test("code block titles preserve IME composition and do not blur when choosing candidates", async ({ page }) => {
+  await withCodePreviewMemo(page, "```javascript\nconst value = 1;\n```", async () => {
+    const title = page.locator(".edgeever-code-title-input");
+    const editor = page.locator(".ProseMirror").first();
+    const readTitle = () => editor.evaluate((element) =>
+      (element as HTMLElement & { editor: Editor }).editor.state.doc.firstChild?.attrs.meta?.title ?? "");
+    const cdp = await page.context().newCDPSession(page);
+    await title.click();
+    await cdp.send("Input.imeSetComposition", { text: "zhongwen", selectionStart: 8, selectionEnd: 8 });
+    await expect(title).toHaveValue("zhongwen");
+    expect(await readTitle()).toBe("");
+    for (const key of ["Enter", "Escape"]) {
+      const prevented = await title.evaluate((element, key) => {
+        const event = new KeyboardEvent("keydown", { key, isComposing: true, bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, key);
+      expect(prevented).toBe(false);
+      await expect(title).toBeFocused();
+    }
+    await cdp.send("Input.insertText", { text: "中文" });
+    await expect(title).toHaveValue("中文");
+    await expect.poll(readTitle).toBe("中文");
+    await expect(title).toBeFocused();
+
+    await cdp.send("Input.imeSetComposition", { text: "biaoti", selectionStart: 6, selectionEnd: 6 });
+    await editor.evaluate((element) => {
+      const instance = (element as HTMLElement & { editor: Editor }).editor;
+      const node = instance.state.doc.firstChild!;
+      instance.view.dispatch(instance.state.tr.setNodeMarkup(0, undefined, {
+        ...node.attrs, meta: { ...node.attrs.meta, width: "wide" },
+      }));
+    });
+    await expect(title).toHaveValue("中文biaoti");
+    await expect(title).toBeFocused();
+    expect(await readTitle()).toBe("中文");
+    await cdp.send("Input.insertText", { text: "标题" });
+    await expect(title).toHaveValue("中文标题");
+    await expect.poll(readTitle).toBe("中文标题");
+    await expect(page.locator(".edgeever-code-block")).toHaveClass(/edgeever-code-block-wide/);
+    await expect(title).toBeFocused();
+    await page.screenshot({ path: test.info().outputPath("code-title-ime.png") });
+    await title.press("Escape");
+    await expect(title).not.toBeFocused();
+    await expect(page.locator(".edgeever-code-source")).toHaveText("const value = 1;");
+  });
+});
+
 test("paper themes keep text inset from the article background in edit and preview modes", async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
