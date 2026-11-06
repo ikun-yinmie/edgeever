@@ -29,6 +29,14 @@
   counter-reset: publish-h2;
 }
 
+.edgeever-editor[data-paper-theme][data-publish-surface] .ProseMirror {
+  padding-inline: 32px;
+}
+
+.edgeever-editor[data-paper-theme][data-publish-surface="phone"] .ProseMirror {
+  padding-inline: 16px;
+}
+
 .edgeever-editor[data-paper-theme]:not([data-editor-theme="default"]) .ProseMirror p,
 .edgeever-editor[data-paper-theme]:not([data-editor-theme="default"]) .ProseMirror li,
 .edgeever-editor[data-paper-theme]:not([data-editor-theme="default"]) .ProseMirror blockquote {

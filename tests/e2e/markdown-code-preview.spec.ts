@@ -28,6 +28,48 @@ const withCodePreviewMemo = async (page: Page, contentMarkdown: string, run: (me
   }
 };
 
+test("paper themes keep text inset from the article background in edit and preview modes", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await withCodePreviewMemo(page, "# 文章留白\n\n这是一段用于检查正文左右留白的文字。\n\n- [x] 已完成的任务\n- [ ] 待完成的任务\n\n## 第二节\n\n另一段正文。", async () => {
+    const editor = page.locator(".edgeever-editor .ProseMirror").first();
+    const paragraph = editor.locator(":scope > p").first();
+    const themePicker = page.getByRole("combobox").filter({ hasText: /原生主题|青页讲义/ });
+    const expectInset = async (inset: number) => {
+      await expect(editor).toHaveCSS("padding-left", `${inset}px`);
+      await expect(editor).toHaveCSS("padding-right", `${inset}px`);
+      const articleBounds = (await editor.boundingBox())!;
+      const textBounds = (await paragraph.boundingBox())!;
+      expect(textBounds.x - articleBounds.x).toBeCloseTo(inset, 0);
+      expect(articleBounds.x + articleBounds.width - textBounds.x - textBounds.width).toBeCloseTo(inset, 0);
+      expect(await editor.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    };
+
+    await expectInset(0);
+    await themePicker.click();
+    await page.getByRole("option", { name: "青页讲义", exact: true }).click();
+    await expectInset(32);
+    await expect(editor.getByRole("heading", { name: /文章留白/ })).toBeVisible();
+    await expect(editor.locator('li[data-type="taskItem"]')).toHaveCount(2);
+    await page.screenshot({ path: test.info().outputPath("paper-theme-edit-spacing.png") });
+
+    await page.getByRole("radio", { name: "预览", exact: true }).click();
+    await expect(editor).toHaveAttribute("contenteditable", "false");
+    await expectInset(32);
+    await page.screenshot({ path: test.info().outputPath("paper-theme-preview-spacing.png") });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectInset(16);
+    await page.screenshot({ path: test.info().outputPath("paper-theme-mobile-spacing.png") });
+
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    await themePicker.click();
+    await page.getByRole("option", { name: "原生主题", exact: true }).click();
+    await expectInset(0);
+  });
+});
+
 test("line spacing drag applies to the selection or whole note and survives saving", async ({ page }) => {
   test.setTimeout(120_000);
   await withCodePreviewMemo(page, "Selected first line  \nSelected second line\n\nOther paragraph\n\n## Section heading\n\n- List paragraph\n\n```javascript\nconst value = 1;\n```", async (memoId) => {
