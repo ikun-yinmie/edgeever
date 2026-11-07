@@ -1,17 +1,17 @@
 {
-  "version": "1.103.19",
+  "version": "1.103.20",
   "changes": {
     "en-US": [
-      "Desktop updates are now downloaded only after you confirm them; background checks still run inside your configured window and the release notes stay one click away",
-      "Code block titles now survive fast typing, caret edits and Chinese/Japanese IME composition without losing characters or scroll position"
+      "The desktop client now shows download percentage and transferred size while an update downloads, in settings, system info and the sidebar notice",
+      "Code block titles now appear as captions in HTML export, print preview and PDF output instead of being dropped"
     ],
     "zh-CN": [
-      "桌面端更新改为确认后才下载：后台仍按设定的时间段自动检查，发现新版本后可手动确认下载",
-      "代码块标题在快速输入、光标编辑和中文/日文输入法组词时不再丢字或错位"
+      "桌面端下载更新时显示百分比与已下载大小，设置页、系统信息与侧栏提示同步显示",
+      "代码块标题现在会作为标题显示在 HTML 导出、打印预览与 PDF 中，不再丢失"
     ],
     "ja": [
-      "デスクトップ版の更新は確認後にのみダウンロードされるようになりました。バックグラウンドの確認は設定した時間帯に実行され、新バージョンは手動で確認してからダウンロードできます",
-      "コードブロックのタイトルは、高速入力・カーソル編集・日本語/中国語 IME の変換中でも文字が欠けたりずれたりしなくなりました"
+      "デスクトップ版は更新のダウンロード中にパーセントと転送サイズを設定・システム情報・サイドバーに表示します",
+      "コードブロックのタイトルが HTML エクスポート・印刷プレビュー・PDF にキャプションとして表示されるようになりました"
     ]
   }
 }
