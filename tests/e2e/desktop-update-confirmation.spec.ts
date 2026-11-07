@@ -9,7 +9,7 @@ test("desktop update controls stay usable after cancellation and distinguish ava
   await page.goto("/");
   await expect(page.getByRole("button", { name: "个人中心", exact: true })).toBeVisible();
   await page.evaluate(() => {
-    type Status = { state: "idle" | "available" | "downloading" | "downloaded"; currentVersion: string; latestVersion: string | null; version: string | null };
+    type Status = { state: "idle" | "available" | "downloading" | "downloaded"; currentVersion: string; latestVersion: string | null; version: string | null; downloadProgress?: { percent: number | null; transferred: number; total: number | null } | null };
     const callbacks = new Set<(status: Status) => void>();
     const status: Status = { state: "idle", currentVersion: "1.0.0", latestVersion: null, version: null };
     const preferences = { autoUpdateSupported: true, autoUpdateEnabled: true, windowEnabled: false, windowStart: "22:00", windowEnd: "06:00" };
@@ -27,7 +27,7 @@ test("desktop update controls stay usable after cancellation and distinguish ava
     };
     const browser = window as typeof window & {
       edgeeverDesktop: unknown;
-      updateTest: { accept: (accepted: boolean) => void; pending: () => boolean; downloads: () => number; finish: () => void };
+      updateTest: { accept: (accepted: boolean) => void; pending: () => boolean; downloads: () => number; progress: (percent: number) => void; finish: () => void };
     };
     browser.edgeeverDesktop = {
       isAvailable: true,
@@ -69,7 +69,11 @@ test("desktop update controls stay usable after cancellation and distinguish ava
       accept: (accepted) => confirm?.(accepted),
       pending: () => confirm !== null,
       downloads: () => downloads,
-      finish: () => { status.state = "downloaded"; emit(); },
+      progress: (percent) => {
+        status.downloadProgress = { percent, transferred: percent * 1024 ** 2, total: 100 * 1024 ** 2 };
+        emit();
+      },
+      finish: () => { status.state = "downloaded"; status.downloadProgress = null; emit(); },
     };
   });
   await page.getByRole("button", { name: "个人中心", exact: true }).click();
@@ -87,7 +91,21 @@ test("desktop update controls stay usable after cancellation and distinguish ava
   await page.evaluate(() => (window as unknown as { updateTest: { accept: (value: boolean) => void } }).updateTest.accept(true));
   await expect(page.getByRole("button", { name: "正在下载更新…", exact: true })).toBeDisabled();
   expect(await page.evaluate(() => (window as unknown as { updateTest: { downloads: () => number } }).updateTest.downloads())).toBe(1);
+  await page.evaluate(() => (window as unknown as { updateTest: { progress: (percent: number) => void } }).updateTest.progress(25));
+  await expect(page.getByText("正在下载更新… · 25.0% · 已下载 25.0 MB / 总大小 100.0 MB", { exact: true }).first()).toBeVisible();
+  await page.evaluate(() => (window as unknown as { updateTest: { progress: (percent: number) => void } }).updateTest.progress(75));
+  await expect(page.getByText("正在下载更新… · 75.0% · 已下载 75.0 MB / 总大小 100.0 MB", { exact: true }).first()).toBeVisible();
+  const progressNotice = page.getByRole("status", { name: "正在下载更新… · 75.0% · 已下载 75.0 MB / 总大小 100.0 MB", exact: true });
+  await expect(progressNotice).toHaveText("75.0%");
+  expect(await progressNotice.evaluate((element) => {
+    const footer = element.closest("footer")!;
+    return element.getBoundingClientRect().right <= footer.getBoundingClientRect().right;
+  })).toBe(true);
+  await progressNotice.focus();
+  await expect(page.getByRole("tooltip")).toContainText("已下载 75.0 MB / 总大小 100.0 MB");
+  await page.screenshot({ path: test.info().outputPath("desktop-update-progress.png") });
   await page.evaluate(() => (window as unknown as { updateTest: { finish: () => void } }).updateTest.finish());
+  await expect(page.getByText(/已下载 .*总大小/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重启以更新", exact: true })).toBeEnabled();
   await page.screenshot({ path: test.info().outputPath("desktop-update-ready.png") });
   expect(errors).toEqual([]);

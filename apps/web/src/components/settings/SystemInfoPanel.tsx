@@ -11,6 +11,7 @@ import { detectWebClientKind } from "@/lib/client-environment";
 import { api, getConfiguredDesktopApiBaseUrl, type InstanceHealth } from "@/lib/api";
 import { copyHtmlToClipboard } from "@/lib/clipboard";
 import { resolveSystemInfoDeploymentMetadata } from "@/lib/deployment-metadata";
+import { getDesktopUpdateDownloadLabel } from "@/lib/desktop-update-progress";
 import { resolveDeploymentPlatform } from "@/lib/instance-runtime";
 import {
   getClientRuntimeDiagnostics,
@@ -467,7 +468,7 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
     : desktopUpdateInstallMutation.isPending
       ? t("systemInfo.desktopUpdateInstalling")
       : desktopUpdateState === "downloading"
-        ? t("systemInfo.desktopUpdateDownloading")
+        ? getDesktopUpdateDownloadLabel(desktopUpdateStatusQuery.data?.downloadProgress, t)
         : desktopUpdateState === "available"
           ? t(desktopUpdateCheckMutation.isPending || desktopUpdateDownloadMutation.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
           : desktopUpdateState === "downloaded"

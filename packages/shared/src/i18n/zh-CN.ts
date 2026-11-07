@@ -1248,6 +1248,8 @@ export const zhCN = {
     download: "下载更新",
     confirming: "等待下载确认…",
     downloading: "正在下载更新…",
+    downloadSize: "已下载 {{downloaded}} / 总大小 {{total}}",
+    unknownSize: "未知",
     upToDate: "当前已是最新版本（{{version}}）。",
     ready: "更新已下载完成，重启前会先同步本地笔记。",
     restart: "重启以更新",

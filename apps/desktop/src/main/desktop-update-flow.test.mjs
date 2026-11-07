@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { EventEmitter } from "node:events";
 import { describe, expect, test } from "bun:test";
+import { normalizeDesktopUpdateProgress } from "./update-progress.mjs";
 
 const mainSource = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
 const preloadSource = readFileSync(new URL("../preload/index.cjs", import.meta.url), "utf8");
@@ -54,9 +55,10 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
     autoUpdater,
     process: { platform, env },
     app: { isPackaged: true, getLocale: () => "zh-CN", getVersion: () => "1.0.0", quit: () => {} },
-    mainWindow: { isDestroyed: () => destroyed },
+    mainWindow: { isDestroyed: () => destroyed, webContents: { send: (_channel, status) => statuses.push(status) } },
     isQuitting: false,
     updateState: "idle",
+    updateDownloadProgress: null,
     updateCheckInFlight: null,
     updateDownloadInFlight: null,
     updateDownloadPromptInFlight: null,
@@ -78,8 +80,8 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
     shouldAutoUpdateNow: (preferences) => preferences.autoUpdateEnabled,
     updaterProxySessionConfig: () => ({}),
     refreshTrayMenu: () => {},
-    publishDesktopUpdateStatus: () => statuses.push({ state: state.updateState, version: state.downloadedUpdateVersion }),
-    desktopUpdateStatus: () => ({ state: state.updateState, version: state.downloadedUpdateVersion }),
+    normalizeDesktopUpdateProgress,
+    desktopReleaseLinks: () => ({}),
     writeDiagnostic: async (name, detail) => { diagnostics.push({ name, detail }); },
     classifyUpdateError: (error) => ({ kind: "network", message: error.message }),
     fetchTrustedWindowsUpdate: async ({ version }) => {
@@ -102,6 +104,7 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
   };
   const api = runInNewContext(`
     ${sourceBetween("const linuxUpdateTestMode =", "const requestedUserDataDirectory =")}
+    ${sourceBetween("const desktopUpdateStatus =", "const UPDATE_INSTALL_PREPARE_TIMEOUT_MS")}
     ${sourceBetween("const trackDesktopUpdateDownload =", "const promptForDownloadedUpdate =")}
     ${sourceBetween("const applyUpdaterProxy =", "const startSidecar =")}
     ${sourceBetween('ipcMain.handle("desktop:check-update"', 'ipcMain.handle("desktop:install-update"')}
@@ -298,6 +301,49 @@ describe("desktop update flow", () => {
     expect(updateCardSource).toContain('t("desktopUpdate.manualDownloadHint")');
     expect(updateCardSource).toContain('t("desktopUpdate.checkFailedWithLink")');
     expect(systemInfoSource).toContain("desktopDownloadUrl");
+  });
+});
+
+describe("desktop download progress publication", () => {
+  for (const platform of ["linux", "darwin", "win32"]) {
+    test(`${platform} publishes live progress, hides it on completion and ignores late events`, async () => {
+      const harness = createUpdateHarness({ platform, response: 0 });
+      await harness.ready();
+      await harness.handlers.get("desktop:download-update")();
+      expect(harness.statuses.at(-1).downloadProgress).toEqual({ percent: null, transferred: 0, total: null });
+      harness.autoUpdater.emit("download-progress", { percent: 25, transferred: 25, total: 100 });
+      expect(harness.statuses.at(-1)).toMatchObject({
+        state: "downloading", downloadProgress: { percent: 25, transferred: 25, total: 100 },
+      });
+      harness.autoUpdater.emit("update-downloaded", { version: "2.0.0" });
+      // Windows completes its existing signature gate before publishing readiness.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(harness.statuses.at(-1)).toMatchObject({ state: "downloaded", downloadProgress: null });
+      const count = harness.statuses.length;
+      harness.autoUpdater.emit("download-progress", { percent: 80, transferred: 80, total: 100 });
+      expect(harness.statuses).toHaveLength(count);
+      harness.download.resolve([]);
+      await harness.state.updateDownloadInFlight;
+    });
+  }
+
+  test("failed downloads hide stale progress and retries start from zero", async () => {
+    const harness = createUpdateHarness({ response: 0 });
+    await harness.ready();
+    await harness.handlers.get("desktop:download-update")();
+    harness.autoUpdater.emit("download-progress", { percent: 50, transferred: 50, total: 100 });
+    const pending = harness.state.updateDownloadInFlight;
+    harness.download.reject(new Error("Connection interrupted"));
+    await pending;
+    expect(harness.statuses.at(-1)).toMatchObject({ state: "idle", downloadProgress: null });
+    const retry = deferred();
+    harness.autoUpdater.downloadUpdate = () => retry.promise;
+    await harness.handlers.get("desktop:check-update")();
+    expect(harness.statuses.at(-1)).toMatchObject({
+      state: "downloading", downloadProgress: { percent: null, transferred: 0, total: null },
+    });
+    retry.resolve([]);
+    await harness.state.updateDownloadInFlight;
   });
 });
 

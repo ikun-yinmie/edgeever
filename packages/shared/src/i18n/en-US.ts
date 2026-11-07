@@ -1248,6 +1248,8 @@ export const enUS = {
     download: "Download update",
     confirming: "Waiting for download confirmation…",
     downloading: "Downloading update…",
+    downloadSize: "Downloaded {{downloaded}} / Total {{total}}",
+    unknownSize: "Unknown",
     upToDate: "You're on the latest version ({{version}}).",
     ready: "Update downloaded. Local notes are synced before the restart.",
     restart: "Restart to update",

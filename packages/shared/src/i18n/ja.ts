@@ -1248,6 +1248,8 @@ export const ja = {
     download: "更新をダウンロード",
     confirming: "ダウンロードの確認を待っています…",
     downloading: "更新をダウンロードしています…",
+    downloadSize: "ダウンロード済み {{downloaded}} / 合計 {{total}}",
+    unknownSize: "不明",
     upToDate: "最新バージョン（{{version}}）です。",
     ready: "更新のダウンロードが完了しました。再起動前にローカルノートを同期します。",
     restart: "再起動して更新",

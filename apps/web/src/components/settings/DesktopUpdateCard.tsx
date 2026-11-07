@@ -14,6 +14,7 @@ import {
   type DesktopProxyProtocol,
   type DesktopProxySettings,
 } from "@/lib/desktop-proxy";
+import { getDesktopUpdateDownloadLabel } from "@/lib/desktop-update-progress";
 import { cn } from "@/lib/utils";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -52,10 +53,10 @@ const DesktopUpdateCardContent = () => {
 
   useEffect(() => {
     if (!bridge.onUpdateStatus) return;
-    return bridge.onUpdateStatus(() => {
-      void statusQuery.refetch();
+    return bridge.onUpdateStatus((status) => {
+      queryClient.setQueryData(UPDATE_STATUS_QUERY_KEY, status);
     });
-  }, [bridge, statusQuery.refetch]);
+  }, [bridge, queryClient]);
 
   const savePreferences = useMutation({
     mutationFn: (value: DesktopUpdatePreferenceInput) => bridge.setUpdatePreferences(value),
@@ -189,7 +190,7 @@ const DesktopUpdateCardContent = () => {
       : downloaded
         ? t("desktopUpdate.ready")
         : downloading
-          ? t("desktopUpdate.downloading")
+          ? getDesktopUpdateDownloadLabel(status?.downloadProgress, t)
           : available
             ? t(checkUpdate.isPending || downloadUpdate.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
             : checkUpdate.isPending

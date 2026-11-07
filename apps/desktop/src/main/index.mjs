@@ -99,6 +99,7 @@ import {
   verifyDownloadedWindowsUpdate,
 } from "./windows-update-trust.mjs";
 import { desktopReleaseLinks } from "./update-release-links.mjs";
+import { normalizeDesktopUpdateProgress } from "./update-progress.mjs";
 import electronUpdater from "electron-updater";
 import { createPluginPublicNetworkRuntime } from "./plugin-public-network.mjs";
 import { createAiDirectRuntime } from "./ai-direct.mjs";
@@ -188,6 +189,7 @@ let sidecar;
 let tray;
 let isQuitting = false;
 let updateState = "idle";
+let updateDownloadProgress = null;
 let updateCheckInFlight = null;
 let updateDownloadInFlight = null;
 let updateDownloadPromptInFlight = null;
@@ -1569,6 +1571,7 @@ const desktopUpdateStatus = () => {
   });
   return {
     state: updateState,
+    downloadProgress: updateState === "downloading" ? updateDownloadProgress : null,
     version: downloadedUpdateVersion,
     latestVersion: resolvedLatestVersion,
     currentVersion: app.getVersion(),
@@ -1719,6 +1722,7 @@ const downloadTrustedDesktopUpdate = (reason) => {
     return Promise.reject(new Error("Windows update metadata has not passed the signature gate"));
   }
   updateState = "downloading";
+  updateDownloadProgress = normalizeDesktopUpdateProgress(null);
   lastUpdateError = null;
   refreshTrayMenu();
   publishDesktopUpdateStatus();
@@ -1951,7 +1955,12 @@ const configureAutoUpdater = () => {
       void diagnosticWritten.finally(() => setTimeout(() => app.quit(), 100));
     }
   });
-  autoUpdater.on("download-progress", (progress) => { void writeDiagnostic("update.download-progress", { percent: progress.percent }); });
+  autoUpdater.on("download-progress", (progress) => {
+    if (updateState !== "downloading") return;
+    updateDownloadProgress = normalizeDesktopUpdateProgress(progress);
+    publishDesktopUpdateStatus();
+    void writeDiagnostic("update.download-progress", updateDownloadProgress);
+  });
   autoUpdater.on("update-downloaded", (info) => {
     void (async () => {
       if (process.platform === "win32") {

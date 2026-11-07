@@ -202,6 +202,12 @@ type DesktopMarkdownMirrorResult = DesktopMarkdownMirrorStatus & {
 
 interface DesktopUpdateStatus {
   state: "idle" | "available" | "downloading" | "downloaded";
+  // Optional for compatibility with desktop bridges from older releases.
+  downloadProgress?: {
+    percent: number | null;
+    transferred: number;
+    total: number | null;
+  } | null;
   version: string | null;
   latestVersion?: string | null;
   currentVersion: string;
