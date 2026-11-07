@@ -212,6 +212,23 @@
   margin: 5mm auto;
 }
 
+.edgeever-print-content .edgeever-html-code-block {
+  margin: 4mm 0;
+}
+
+.edgeever-print-content .edgeever-html-code-title {
+  color: #334155;
+  font-size: 9pt;
+  font-weight: 600;
+  white-space: pre-wrap;
+  break-after: avoid-page;
+}
+
+.edgeever-print-content .edgeever-html-code-block > pre,
+.edgeever-print-content .edgeever-html-code-block > .edgeever-print-mermaid {
+  margin-top: 1.5mm;
+}
+
 .edgeever-print-content [data-edgeever-image-gallery] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

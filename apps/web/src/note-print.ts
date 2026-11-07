@@ -8,6 +8,7 @@ import {
   type NotePrintPayload,
 } from "@/lib/note-print";
 import { getMessageTargetOrigin } from "@/lib/app-page-path";
+import { renderCodeBlockTitlesForHtmlExport } from "@/lib/note-html-export";
 import { withEnvironmentTitlePrefix } from "@/lib/environment-title";
 import katexStyles from "katex/dist/katex.min.css?inline";
 import printStyles from "@/styles/note-print.css?inline";
@@ -121,6 +122,7 @@ const renderPreview = async (payload: NotePrintPayload) => {
   setText(printButton, payload.labels.print);
 
   const source = buildSource(payload);
+  renderCodeBlockTitlesForHtmlExport(source);
   await renderMermaidBlocks(source);
   highlightCodeBlocks(source);
   await Promise.all([

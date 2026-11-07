@@ -234,6 +234,34 @@ body {
   margin: 1.25rem auto;
 }
 
+.edgeever-html-content .edgeever-html-code-block {
+  margin: 1rem 0;
+  border: 1px solid #dbe4ea;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.edgeever-html-code-title {
+  border-bottom: 1px solid #dbe4ea;
+  background: #f1f5f9;
+  padding: 0.5rem 1rem;
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: pre-wrap;
+}
+
+.edgeever-html-content .edgeever-html-code-block > pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.edgeever-html-content .edgeever-html-code-block > .edgeever-html-mermaid {
+  margin: 0;
+  padding: 0.85rem 1rem;
+}
+
 .edgeever-html-content [data-edgeever-image-gallery] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));

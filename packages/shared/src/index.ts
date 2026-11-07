@@ -35,7 +35,7 @@ export * from "./paragraph-format";
 export * from "./video-embed";
 export * from "./font-size-scale";
 export * from "./editor-shortcut-keys";
-export { createEdgeEverCodeBlock, ensureCodeBlockTrailingParagraph } from "./code-block-meta";
+export { createEdgeEverCodeBlock, decodeCodeMetaJson, ensureCodeBlockTrailingParagraph } from "./code-block-meta";
 export * from "./sync";
 export * from "./desktop-rpc";
 export * from "./details";

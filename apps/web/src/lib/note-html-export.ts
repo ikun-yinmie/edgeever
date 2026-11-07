@@ -1,3 +1,4 @@
+import { decodeCodeMetaJson } from "@edgeever/shared";
 import hljs from "highlight.js/lib/common";
 import { renderMermaidSVG, THEMES } from "beautiful-mermaid";
 import { MERMAID_THEME_PALETTES } from "@/components/ThemeProvider";
@@ -176,6 +177,24 @@ const resolveResourceUrl = (src: string) => {
   }
 };
 
+/** Turn serialized code-block metadata into a visible caption, before Mermaid replaces the pre. */
+export const renderCodeBlockTitlesForHtmlExport = (root: HTMLElement) => {
+  root.querySelectorAll<HTMLElement>("pre[data-edgeever-code-meta]").forEach((pre) => {
+    const meta = decodeCodeMetaJson(pre.getAttribute("data-edgeever-code-meta") ?? "");
+    if (!meta?.title.trim() || pre.parentElement?.classList.contains("edgeever-html-code-block")) return;
+
+    const figure = document.createElement("figure");
+    figure.className = "edgeever-html-code-block";
+    const caption = document.createElement("figcaption");
+    caption.className = "edgeever-html-code-title";
+    // Titles are user text, not HTML (including titles that look like tags).
+    caption.textContent = meta.title;
+    pre.replaceWith(figure);
+    figure.appendChild(caption);
+    figure.appendChild(pre);
+  });
+};
+
 export const renderMermaidBlocksForHtmlExport = async (root: HTMLElement) => {
   const blocks = Array.from(root.querySelectorAll<HTMLElement>("pre > code.language-mermaid"));
   await Promise.all(blocks.map(async (code) => {
@@ -253,6 +272,7 @@ export const embedImagesForHtmlExport = async (root: HTMLElement): Promise<HtmlI
 export const prepareNoteBodyHtmlForExport = async (bodyHtml: string): Promise<PreparedNoteHtmlExport> => {
   const container = document.createElement("div");
   container.innerHTML = bodyHtml;
+  renderCodeBlockTitlesForHtmlExport(container);
   await renderMermaidBlocksForHtmlExport(container);
   highlightCodeBlocksForHtmlExport(container);
   const images = await embedImagesForHtmlExport(container);
