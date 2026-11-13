@@ -1,17 +1,14 @@
 {
-  "version": "1.103.20",
+  "version": "1.103.21",
   "changes": {
     "en-US": [
-      "The desktop client now shows download percentage and transferred size while an update downloads, in settings, system info and the sidebar notice",
-      "Code block titles now appear as captions in HTML export, print preview and PDF output instead of being dropped"
+      "Task items can be marked rejected with a red cross; HTML export offers an optional clickable outline for notes with headings"
     ],
     "zh-CN": [
-      "桌面端下载更新时显示百分比与已下载大小，设置页、系统信息与侧栏提示同步显示",
-      "代码块标题现在会作为标题显示在 HTML 导出、打印预览与 PDF 中，不再丢失"
+      "待办支持标记红色❌（否定状态），可与勾选互转；HTML 导出含标题的笔记时可选嵌入可点击大纲"
     ],
     "ja": [
-      "デスクトップ版は更新のダウンロード中にパーセントと転送サイズを設定・システム情報・サイドバーに表示します",
-      "コードブロックのタイトルが HTML エクスポート・印刷プレビュー・PDF にキャプションとして表示されるようになりました"
+      "タスクに赤い❌を付けられる; HTML エクスポートでクリックできるアウトラインを含められる"
     ]
   }
 }
