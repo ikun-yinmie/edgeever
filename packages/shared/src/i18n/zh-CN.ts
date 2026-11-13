@@ -2073,6 +2073,10 @@ export const zhCN = {
     imageLoadFailed: "图片加载失败",
     reloadImage: "重新加载图片",
     htmlExport: {
+      includeOutline: "包含大纲",
+      outlineDescription: "这篇笔记有标题大纲，可选择是否在 HTML 中包含可点击的大纲。",
+      outlineLabel: "大纲",
+      exporting: "正在导出…",
       error: "导出 HTML 失败。",
       imageEmbedPartial:
         "HTML 已导出。已内嵌 {{embedded}}/{{total}} 张图片；另有 {{failed}} 张未能内嵌，离线打开时可能无法显示。",

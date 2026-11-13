@@ -2075,6 +2075,10 @@ export const enUS = {
     imageLoadFailed: "Image failed to load",
     reloadImage: "Reload image",
     htmlExport: {
+      includeOutline: "Include outline",
+      outlineDescription: "This note has headings. Choose whether to include a clickable outline in the HTML file.",
+      outlineLabel: "Outline",
+      exporting: "Exporting…",
       error: "Could not export the note as HTML.",
       imageEmbedPartial:
         "HTML exported. Embedded {{embedded}} of {{total}} images. {{failed}} image(s) could not be embedded and may not display when the file is opened offline.",

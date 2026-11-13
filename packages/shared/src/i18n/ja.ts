@@ -2075,6 +2075,10 @@ export const ja = {
     imageLoadFailed: "画像の読み込みに失敗しました",
     reloadImage: "画像を再読み込み",
     htmlExport: {
+      includeOutline: "アウトラインを含める",
+      outlineDescription: "このノートには見出しがあります。HTML にクリックできるアウトラインを含めるか選択できます。",
+      outlineLabel: "アウトライン",
+      exporting: "エクスポート中…",
       error: "ノートを HTML としてエクスポートできませんでした。",
       imageEmbedPartial:
         "HTML をエクスポートしました。画像 {{total}} 件のうち {{embedded}} 件を埋め込みました。{{failed}} 件は埋め込めず、オフラインで開くと表示されない場合があります。",

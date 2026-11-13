@@ -141,6 +141,7 @@ import {
 } from "./editor/math-formula";
 import { memoShareQueryKey, ShareMemoDialog } from "./dialogs/ShareMemoDialog";
 import { ShareNoteImageDialog } from "./dialogs/ShareNoteImageDialog";
+import { ExportNoteHtmlDialog } from "./dialogs/ExportNoteHtmlDialog";
 import { AiAssistantDialog, type AiAssistantAnchor } from "./dialogs/AiAssistantDialog";
 import { api, getOrCreateClientDeviceId } from "@/lib/api";
 import { isDesktopResourceRuntime, stageDesktopResource, toDesktopResourceDownloadUrl, toDesktopResourceUrl } from "@/lib/desktop-resources";
@@ -3116,6 +3117,9 @@ const RichEditorPane = ({
   }, [markDirty]);
 
   const {
+    confirmHtmlExport,
+    htmlExportSource,
+    setHtmlExportSource,
     handleCopyToWeChat,
     handleExportHtml,
     handleExportMarkdown,
@@ -5342,6 +5346,13 @@ const RichEditorPane = ({
       />
 
       <ShareMemoDialog memoId={memo.id} memoTitle={title} open={shareOpen} onOpenChange={setShareOpen} />
+
+      {htmlExportSource && (
+        <ExportNoteHtmlDialog
+          onClose={() => setHtmlExportSource(null)}
+          onExport={confirmHtmlExport}
+        />
+      )}
 
       {imageShareSource && (
         <ShareNoteImageDialog

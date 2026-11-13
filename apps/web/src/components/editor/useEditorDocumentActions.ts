@@ -4,7 +4,8 @@ import type { Editor } from "@tiptap/react";
 import { docToMarkdown, markdownToDoc, type MemoDetail, type TiptapDoc } from "@edgeever/shared";
 import type { MemoDocumentActionRequest } from "@/lib/app-helpers";
 import { downloadMarkdownFile } from "@/lib/note-markdown-export";
-import { downloadNoteHtmlFile, getHtmlImageEmbedNoticeKind } from "@/lib/note-html-export";
+import { downloadNoteHtmlFile, getHtmlImageEmbedNoticeKind, type DownloadNoteHtmlOptions } from "@/lib/note-html-export";
+import { hasNoteHtmlOutline } from "@/lib/note-html-outline";
 import { NOTE_HTML_FULL_STYLES } from "@/lib/note-html-export-assets";
 import { openNotePrintPreview, serializeNoteDocumentForPrint } from "@/lib/note-print";
 import type { NoteImageFormat } from "@/lib/note-image-export";
@@ -52,6 +53,9 @@ export const useEditorDocumentActions = ({
   const [imageShareOpen, setImageShareOpen] = useState(false);
   const [imageShareSource, setImageShareSource] = useState<ShareNoteImageSource | null>(null);
   const [wechatCopyState, setWechatCopyState] = useState<WechatCopyState>("idle");
+  const [htmlExportSource, setHtmlExportSource] = useState<DownloadNoteHtmlOptions | null>(null);
+
+  useEffect(() => setHtmlExportSource(null), [memo?.id]);
 
   const resolveExportContent = useCallback(
     () => resolveEditorExportContent({
@@ -129,23 +133,9 @@ export const useEditorDocumentActions = ({
     downloadMarkdownFile(content.markdown, title, t("common.untitledMemo"));
   }, [memo, resolveExportContent, t, title]);
 
-  const handleExportHtml = useCallback(async () => {
-    const content = resolveExportContent();
-    if (!isEditorReady(editor) || !content || !memo) {
-      return;
-    }
-
+  const performHtmlExport = useCallback(async (options: DownloadNoteHtmlOptions) => {
     try {
-      const { images } = await downloadNoteHtmlFile({
-        bodyHtml: serializeNoteDocumentForPrint(editor, content.document),
-        title: title.trim() || t("common.untitledMemo"),
-        notebook: notebookName,
-        tags: parseTagsText(tagsText),
-        updatedAt: formatDateTime(memo.updatedAt),
-        language: i18n.resolvedLanguage ?? i18n.language,
-        fallbackTitle: t("common.untitledMemo"),
-        styles: NOTE_HTML_FULL_STYLES,
-      });
+      const { images } = await downloadNoteHtmlFile(options);
 
       const noticeKind = getHtmlImageEmbedNoticeKind(images);
       if (noticeKind === "partial") {
@@ -159,10 +149,40 @@ export const useEditorDocumentActions = ({
           total: images.total,
         }));
       }
+      return true;
     } catch {
       window.alert(t("editor.htmlExport.error"));
+      return false;
     }
-  }, [editor, i18n.language, i18n.resolvedLanguage, memo, notebookName, resolveExportContent, t, tagsText, title]);
+  }, [t]);
+
+  const handleExportHtml = useCallback(async () => {
+    const content = resolveExportContent();
+    if (!isEditorReady(editor) || !content || !memo) return;
+    const options: DownloadNoteHtmlOptions = {
+      bodyHtml: serializeNoteDocumentForPrint(editor, content.document),
+      title: title.trim() || t("common.untitledMemo"),
+      notebook: notebookName,
+      tags: parseTagsText(tagsText),
+      updatedAt: formatDateTime(memo.updatedAt),
+      language: i18n.resolvedLanguage ?? i18n.language,
+      fallbackTitle: t("common.untitledMemo"),
+      styles: NOTE_HTML_FULL_STYLES,
+      outlineLabel: t("editor.htmlExport.outlineLabel"),
+    };
+    if (hasNoteHtmlOutline(options.bodyHtml)) {
+      setHtmlExportSource(options);
+    } else {
+      await performHtmlExport(options);
+    }
+  }, [editor, i18n.language, i18n.resolvedLanguage, memo, notebookName, performHtmlExport, resolveExportContent, t, tagsText, title]);
+
+  const confirmHtmlExport = useCallback(async (includeOutline: boolean) => {
+    if (!htmlExportSource) return;
+    if (await performHtmlExport({ ...htmlExportSource, includeOutline })) {
+      setHtmlExportSource(null);
+    }
+  }, [htmlExportSource, performHtmlExport]);
 
   const buildImageExportOptions = useCallback((format: NoteImageFormat) => {
     const content = resolveExportContent();
@@ -253,6 +273,9 @@ export const useEditorDocumentActions = ({
   ]);
 
   return {
+    confirmHtmlExport,
+    htmlExportSource,
+    setHtmlExportSource,
     handleCopyToWeChat,
     handleExportHtml,
     handleExportMarkdown,

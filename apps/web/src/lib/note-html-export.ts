@@ -2,6 +2,7 @@ import { decodeCodeMetaJson } from "@edgeever/shared";
 import hljs from "highlight.js/lib/common";
 import { renderMermaidSVG, THEMES } from "beautiful-mermaid";
 import { MERMAID_THEME_PALETTES } from "@/components/ThemeProvider";
+import { buildNoteHtmlOutline } from "./note-html-outline";
 
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const EXPORT_FONT_FAMILY =
@@ -18,12 +19,16 @@ export type NoteHtmlExportMeta = {
 export type BuildStandaloneHtmlDocumentOptions = NoteHtmlExportMeta & {
   bodyHtml: string;
   styles?: string;
+  includeOutline?: boolean;
+  outlineLabel?: string;
 };
 
 export type DownloadNoteHtmlOptions = NoteHtmlExportMeta & {
   bodyHtml: string;
   fallbackTitle: string;
   styles?: string;
+  includeOutline?: boolean;
+  outlineLabel?: string;
 };
 
 export type HtmlImageEmbedResult = {
@@ -90,7 +95,8 @@ export const buildNoteHtmlContentMarkup = ({
   tags = [],
   updatedAt = "",
   bodyHtml,
-}: Pick<BuildStandaloneHtmlDocumentOptions, "title" | "notebook" | "tags" | "updatedAt" | "bodyHtml">) => {
+  outlineHtml = "",
+}: Pick<BuildStandaloneHtmlDocumentOptions, "title" | "notebook" | "tags" | "updatedAt" | "bodyHtml"> & { outlineHtml?: string }) => {
   const metadataParts = [notebook, updatedAt, ...tags.map((tag) => `#${tag}`)].filter(Boolean);
   const metaHtml = metadataParts.length > 0
     ? `<div class="edgeever-html-meta">${escapeHtml(metadataParts.join(" · "))}</div>`
@@ -100,6 +106,7 @@ export const buildNoteHtmlContentMarkup = ({
 <article class="edgeever-html-document">
 <h1 class="edgeever-html-title">${escapeHtml(title)}</h1>
 ${metaHtml}
+${outlineHtml}
 <div class="edgeever-html-content">
 ${bodyHtml}
 </div>
@@ -115,8 +122,11 @@ export const buildStandaloneHtmlDocument = ({
   language = "en",
   bodyHtml,
   styles = "",
+  includeOutline = false,
+  outlineLabel = "Outline",
 }: BuildStandaloneHtmlDocumentOptions) => {
-  const contentMarkup = buildNoteHtmlContentMarkup({ title, notebook, tags, updatedAt, bodyHtml });
+  const outlined = includeOutline ? buildNoteHtmlOutline(bodyHtml, outlineLabel) : { bodyHtml, outlineHtml: "" };
+  const contentMarkup = buildNoteHtmlContentMarkup({ title, notebook, tags, updatedAt, ...outlined });
 
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(language)}">
@@ -291,6 +301,8 @@ export const downloadNoteHtmlFile = async ({
   language,
   fallbackTitle,
   styles = "",
+  includeOutline = false,
+  outlineLabel,
 }: DownloadNoteHtmlOptions): Promise<DownloadNoteHtmlResult> => {
   const prepared = await prepareNoteBodyHtmlForExport(bodyHtml);
   const html = buildStandaloneHtmlDocument({
@@ -301,6 +313,8 @@ export const downloadNoteHtmlFile = async ({
     language,
     bodyHtml: prepared.bodyHtml,
     styles,
+    includeOutline,
+    outlineLabel,
   });
   return {
     filename: downloadHtmlFile(html, title, fallbackTitle),
