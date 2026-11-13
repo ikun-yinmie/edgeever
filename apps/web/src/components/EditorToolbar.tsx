@@ -248,13 +248,13 @@ export const EditorToolbar = ({
   const disabled = readOnly || !editorReady;
   const painter = useFormatPainter(editor);
   const blockValue = getActiveBlockValue(editor);
-  const isActive = (name: string) => {
+  const isActive = (name: string, attributes?: Record<string, unknown>) => {
     if (!editorReady) {
       return false;
     }
 
     try {
-      return editor.isActive(name);
+      return editor.isActive(name, attributes);
     } catch {
       return false;
     }
@@ -628,6 +628,17 @@ export const EditorToolbar = ({
             onClick={() => run((current) => toggleListAtSelection(current, "taskList"))}
           >
             <ListTodo className="h-4 w-4" />
+          </EditorToolbarButton>
+          <EditorToolbarButton
+            title={t("editorToolbar.taskRejected")}
+            active={isActive("taskItem", { rejected: true })}
+            disabled={disabled || !isActive("taskItem")}
+            onClick={() => run((current) => current.chain().focus().updateAttributes("taskItem", {
+              checked: false,
+              rejected: current.getAttributes("taskItem").rejected !== true,
+            }).run())}
+          >
+            <span aria-hidden="true">❌</span>
           </EditorToolbarButton>
           <EditorToolbarButton
             title={`${t("editorToolbar.numberedTaskList")} · ${t("editorToolbar.listIndentHint")}`}

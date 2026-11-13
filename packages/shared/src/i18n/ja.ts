@@ -2286,6 +2286,7 @@ export const ja = {
     bulletList: "箇条書き",
     taskList: "タスクリスト",
     numberedTaskList: "番号付きタスクリスト",
+    taskRejected: "赤い ❌ を付ける / 解除",
     taskCollapse: "サブタスクを折りたたむ",
     taskExpand: "サブタスクを展開",
     orderedList: "番号付きリスト",

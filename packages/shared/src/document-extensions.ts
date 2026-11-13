@@ -1,4 +1,4 @@
-import type { AnyExtension } from "@tiptap/core";
+import { parseIndentedBlocks, renderNestedMarkdownContent, wrappingInputRule, type AnyExtension } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
@@ -40,6 +40,48 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
  * checklists; the web layer renders the numbers with CSS counters.
  */
 export const EdgeEverTaskList = TaskList.extend({
+  // Extend the stock tokenizer to accept a red cross without rewriting Markdown
+  // text globally (which would also change fenced code and escaped examples).
+  markdownTokenizer: {
+    name: "taskList",
+    level: "block",
+    // Marked probes start() after removing the first character of a paragraph.
+    // Only advertise a new line here, or an escaped "\\- [❌]" splits into a task.
+    // tokenize() still handles tasks at the beginning of a block.
+    start: (src) => {
+      const match = /\n[ \t]*[-+*]\s+\[([ xX❌-])\]\s+/.exec(src);
+      return match ? match.index + 1 : -1;
+    },
+    tokenize(src, _tokens, lexer) {
+      const parseList = (source: string) => parseIndentedBlocks(source, {
+        itemPattern: /^(\s*)([-+*])\s+\[([ xX❌-])\]\s+(.*)$/,
+        extractItemData: (match) => ({
+          indentLevel: match[1].length,
+          mainContent: match[4],
+          checked: match[3].toLowerCase() === "x",
+          rejected: match[3] === "❌" || match[3] === "-",
+        }),
+        createToken: (data, nestedTokens) => ({
+          type: "taskItem",
+          raw: "",
+          ...data,
+          text: data.mainContent,
+          tokens: lexer.inlineTokens(data.mainContent),
+          nestedTokens,
+        }),
+        customNestedParser: parseNested,
+      }, lexer);
+      function parseNested(source: string): ReturnType<typeof lexer.blockTokens> {
+        const result = parseList(source);
+        if (!result) return lexer.blockTokens(source);
+        const list = { type: "taskList", raw: result.raw, items: result.items };
+        const remainder = source.slice(result.raw.length);
+        return remainder.trim() ? [list, ...lexer.blockTokens(remainder)] : [list];
+      }
+      const result = parseList(src);
+      return result ? { type: "taskList", raw: result.raw, items: result.items } : undefined;
+    },
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -55,9 +97,35 @@ export const EdgeEverTaskList = TaskList.extend({
 });
 
 export const EdgeEverTaskItem = TaskItem.extend({
+  parseMarkdown(token, helpers) {
+    const parsed = TaskItem.config.parseMarkdown!.call(this, token, helpers);
+    if (Array.isArray(parsed)) return parsed;
+    return { ...parsed, attrs: { ...parsed.attrs, rejected: token.rejected === true } };
+  },
+  renderMarkdown(node, helpers) {
+    const marker = node.attrs?.rejected === true ? "❌" : node.attrs?.checked ? "x" : " ";
+    return renderNestedMarkdownContent(node, helpers, `- [${marker}] `);
+  },
+  addInputRules() {
+    return [
+      ...this.parent!(),
+      wrappingInputRule({
+        find: /^\s*(\[(❌|-)\])\s$/,
+        type: this.type,
+        getAttributes: () => ({ checked: false, rejected: true }),
+      }),
+    ];
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
+      rejected: {
+        default: false,
+        keepOnSplit: false,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-rejected") === "true",
+        renderHTML: (attributes: { rejected?: unknown }) =>
+          attributes.rejected === true ? { "data-rejected": "true" } : {},
+      },
       collapsed: {
         default: false,
         keepOnSplit: false,

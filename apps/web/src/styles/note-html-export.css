@@ -47,6 +47,35 @@ body {
   font-size: 0.875rem;
 }
 
+.edgeever-html-outline {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 0.9rem;
+}
+
+.edgeever-html-outline-title {
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.edgeever-html-outline ol {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.edgeever-html-outline a {
+  color: #087f5b;
+  text-decoration: none;
+}
+
+.edgeever-html-outline a:hover,
+.edgeever-html-outline a:focus-visible {
+  text-decoration: underline;
+}
+
 .edgeever-html-content > :first-child {
   margin-top: 0;
 }

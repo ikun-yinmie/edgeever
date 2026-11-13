@@ -2284,6 +2284,7 @@ export const zhCN = {
     bulletList: "无序列表",
     taskList: "任务清单",
     numberedTaskList: "编号待办",
+    taskRejected: "标记 / 取消红色 ❌",
     taskCollapse: "收起子项",
     taskExpand: "展开子项",
     orderedList: "有序列表",

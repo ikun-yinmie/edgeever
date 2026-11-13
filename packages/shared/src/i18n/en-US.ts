@@ -2286,6 +2286,7 @@ export const enUS = {
     bulletList: "Bulleted list",
     taskList: "Task list",
     numberedTaskList: "Numbered task list",
+    taskRejected: "Mark / clear red ❌",
     taskCollapse: "Collapse subtasks",
     taskExpand: "Expand subtasks",
     orderedList: "Numbered list",

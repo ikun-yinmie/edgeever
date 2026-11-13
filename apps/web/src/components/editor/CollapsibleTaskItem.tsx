@@ -86,7 +86,8 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       checkbox.addEventListener("mousedown", (event) => event.preventDefault());
 
       const syncCheckboxA11y = (currentNode: typeof node) => {
-        const label = currentNode.textContent || i18n.t("editorToolbar.taskList");
+        const text = currentNode.textContent || i18n.t("editorToolbar.taskList");
+        const label = currentNode.attrs.rejected === true ? `${i18n.t("editorToolbar.taskRejected")} · ${text}` : text;
         checkbox.setAttribute("aria-label", label);
         checkboxStyler.textContent = label;
       };
@@ -122,6 +123,7 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
         editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
           ...currentNode.attrs,
           checked,
+          rejected: false,
         }));
       });
 
