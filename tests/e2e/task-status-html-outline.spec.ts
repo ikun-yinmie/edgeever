@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { expect, test, type Download } from "@playwright/test";
 
 const readDownload = async (download: Download) => {
@@ -21,7 +22,9 @@ test("HTML outline handles empty headings, skipped levels and anchor collisions"
     return {
       labels: links.map((link) => link.textContent),
       targets: links.map((link) => root.querySelector(`[id="${decodeURIComponent(link.getAttribute("href")!.slice(1))}"]`)?.textContent),
-      nesting: root.querySelectorAll(".edgeever-html-outline > ol > li > ol").length,
+      nesting: root.querySelectorAll(".edgeever-html-outline-scroll > ol > li > ol").length,
+      sidebar: root.querySelector(".edgeever-html-outline-sidebar")?.previousElementSibling?.tagName,
+      inlineOutline: !!root.querySelector("article nav"),
       ids: Array.from(root.querySelectorAll("[id]")).map((element) => element.id),
       navLabel: root.querySelector("nav")?.getAttribute("aria-label"),
       without: buildStandaloneHtmlDocument(options).includes('<nav '),
@@ -31,10 +34,123 @@ test("HTML outline handles empty headings, skipped levels and anchor collisions"
   expect(result.labels).toEqual(["重复 & <文本>", "子标题", "重复 & <文本>", "深层标题"]);
   expect(result.targets).toEqual(result.labels);
   expect(result.nesting).toBe(2);
+  expect(result.sidebar).toBe("ARTICLE");
+  expect(result.inlineOutline).toBe(false);
   expect(new Set(result.ids).size).toBe(result.ids.length);
   expect(result.navLabel).toBe("大纲 <safe>");
   expect(result.without).toBe(false);
   expect(result.empty).toBe(false);
+});
+
+test("exported HTML has an offline, collapsible reading sidebar with scroll tracking", async ({ page, browser }) => {
+  await page.goto("/");
+  const downloading = page.waitForEvent("download");
+  await page.evaluate(async () => {
+    const exportPath = "/src/lib/note-html-export.ts";
+    const stylesPath = "/src/lib/note-html-export-assets.ts";
+    const { downloadNoteHtmlFile } = await import(exportPath);
+    const { NOTE_HTML_FULL_STYLES } = await import(stylesPath);
+    const paragraphs = "<p>正文段落，用于验证滚动定位与大纲高亮。</p>".repeat(8);
+    await downloadNoteHtmlFile({
+      title: "离线阅读大纲",
+      fallbackTitle: "Note",
+      bodyHtml: `<h2>第一章</h2>${paragraphs}<h3>子章节</h3>${paragraphs}<h4>深层章节</h4>${paragraphs}`
+        + Array.from({ length: 30 }, (_, index) => `<h2>章节 ${index + 2}</h2>${paragraphs}`).join(""),
+      styles: NOTE_HTML_FULL_STYLES,
+      includeOutline: true,
+      outlineLabel: "大纲",
+      outlineLabels: {
+        show: "显示大纲", hide: "隐藏大纲", expandAll: "全部展开", collapseAll: "全部收起",
+        expandHeading: "展开 {name}", collapseHeading: "收起 {name}",
+      },
+    });
+  });
+  const download = await downloading;
+  const path = test.info().outputPath("outline.html");
+  await download.saveAs(path);
+  const fileUrl = pathToFileURL(path).href;
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, offline: true });
+  const exported = await context.newPage();
+  const errors: string[] = [];
+  exported.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await exported.goto(fileUrl);
+    const nav = exported.getByRole("navigation", { name: "大纲", exact: true });
+    const first = nav.getByRole("link", { name: "第一章", exact: true });
+    const child = nav.getByRole("link", { name: "子章节", exact: true });
+    const grandchild = nav.getByRole("link", { name: "深层章节", exact: true });
+    await expect(nav).toBeVisible();
+    await expect(child).toBeHidden();
+    await expect(first).toHaveAttribute("aria-current", "location");
+    const articleBox = await exported.locator("article").boundingBox();
+    const sidebarBox = await nav.boundingBox();
+    expect(sidebarBox!.x).toBeGreaterThan(articleBox!.x + articleBox!.width);
+    expect(sidebarBox!.width).toBe(300);
+    await nav.getByRole("button", { name: "展开 第一章", exact: true }).click();
+    await expect(child).toBeVisible();
+    await expect(grandchild).toBeHidden();
+    await nav.getByRole("button", { name: "展开 子章节", exact: true }).click();
+    await expect(grandchild).toBeVisible();
+    await child.click();
+    await expect(child).toHaveAttribute("aria-current", "location");
+    await expect.poll(() => exported.locator("article h3").evaluate((heading) => Math.round(heading.getBoundingClientRect().top))).toBe(72);
+    await nav.getByRole("button", { name: "收起 第一章", exact: true }).click();
+    await expect(first).toHaveAttribute("aria-current", "location");
+    await expect(child).toBeHidden();
+    await nav.getByRole("button", { name: "全部收起", exact: true }).click();
+    await nav.getByRole("button", { name: "全部展开", exact: true }).click();
+    await expect(grandchild).toBeVisible();
+    await exported.screenshot({ path: test.info().outputPath("html-sidebar-desktop.png") });
+    await nav.getByRole("button", { name: "隐藏大纲", exact: true }).click();
+    await expect(nav).toBeHidden();
+    await exported.getByRole("button", { name: "显示大纲", exact: true }).click();
+    await expect(nav).toBeVisible();
+
+    await exported.reload();
+    await exported.locator("article h2").filter({ hasText: /^章节 29$/ }).evaluate((heading) => {
+      window.scrollTo(0, window.scrollY + heading.getBoundingClientRect().top - 72);
+    });
+    await expect(nav.getByRole("link", { name: "章节 29", exact: true })).toHaveAttribute("aria-current", "location");
+    expect((await nav.boundingBox())!.y).toBe(32);
+    const scrollTop = await exported.locator(".edgeever-html-outline-scroll").evaluate((element) => element.scrollTop);
+    expect(scrollTop).toBeGreaterThan(0);
+    const windowScroll = await exported.evaluate(() => window.scrollY);
+    await exported.locator(".edgeever-html-outline-scroll").evaluate((element) => { element.scrollTop = 0; });
+    expect(await exported.evaluate(() => window.scrollY)).toBe(windowScroll);
+
+    await exported.setViewportSize({ width: 390, height: 844 });
+    await exported.reload();
+    await expect(nav).toBeHidden();
+    const mobileReadingScroll = await exported.evaluate(() => window.scrollY);
+    await exported.getByRole("button", { name: "显示大纲", exact: true }).click();
+    await expect(nav).toBeInViewport();
+    await nav.getByRole("button", { name: "隐藏大纲", exact: true }).click();
+    expect(await exported.evaluate(() => window.scrollY)).toBe(mobileReadingScroll);
+    await exported.getByRole("button", { name: "显示大纲", exact: true }).click();
+    await expect(nav).toBeInViewport();
+    await exported.screenshot({ path: test.info().outputPath("html-sidebar-mobile.png") });
+    const mobileNav = await nav.boundingBox();
+    const mobileArticle = await exported.locator("article").boundingBox();
+    expect(mobileNav!.y + mobileNav!.height).toBeLessThanOrEqual(mobileArticle!.y);
+    expect(await exported.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await nav.getByRole("link", { name: "章节 2", exact: true }).click();
+    await expect(nav).toBeHidden();
+    await expect.poll(() => exported.locator("article h2").filter({ hasText: /^章节 2$/ }).evaluate((heading) => Math.round(heading.getBoundingClientRect().top))).toBe(72);
+    await exported.emulateMedia({ media: "print" });
+    await expect(exported.locator(".edgeever-html-outline-sidebar")).toBeHidden();
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+
+  const noScriptContext = await browser.newContext({ javaScriptEnabled: false, offline: true });
+  try {
+    const noScriptPage = await noScriptContext.newPage();
+    await noScriptPage.goto(fileUrl);
+    await expect(noScriptPage.getByRole("link", { name: "深层章节", exact: true })).toBeVisible();
+  } finally {
+    await noScriptContext.close();
+  }
 });
 
 test("marks tasks red, persists them, and optionally exports a clickable HTML outline", async ({ page }) => {

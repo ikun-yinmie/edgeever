@@ -47,33 +47,213 @@ body {
   font-size: 0.875rem;
 }
 
+.edgeever-html-shell-with-outline {
+  display: grid;
+  grid-template-columns: minmax(0, 48rem) 300px;
+  align-items: start;
+  gap: 1.5rem;
+  max-width: 71rem;
+}
+
+.edgeever-html-shell-with-outline .edgeever-html-document {
+  min-width: 0;
+}
+
+.edgeever-html-outline-sidebar {
+  position: sticky;
+  top: 2rem;
+  min-width: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .edgeever-html-outline {
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 4rem);
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  font-size: 0.9rem;
+  border-radius: 12px;
+  background: #f1f5f9;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  overflow: hidden;
+}
+
+.edgeever-html-outline-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0.75rem 0.25rem;
 }
 
 .edgeever-html-outline-title {
-  margin-bottom: 0.5rem;
+  flex: 1;
+  color: #64748b;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.edgeever-html-outline-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem 0.5rem 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .edgeever-html-outline ol {
   margin: 0;
-  padding-left: 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.edgeever-html-outline-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  min-height: 32px;
+  margin: 2px 0;
+  border-radius: 6px;
+  padding: 0 0.5rem 0 calc(var(--outline-depth) * 18px);
+  color: #475569;
+}
+
+.edgeever-html-outline-row:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.edgeever-html-outline-row:has([aria-current="location"]) {
+  color: #065f46;
+  background: #ecfdf5;
+}
+
+.edgeever-html-outline-row:has([aria-current="location"])::before {
+  position: absolute;
+  left: 2px;
+  width: 3px;
+  height: 16px;
+  border-radius: 3px;
+  background: #16a06e;
+  content: "";
 }
 
 .edgeever-html-outline a {
-  color: #087f5b;
+  flex: 1;
+  min-width: 0;
+  padding: 0.25rem 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-weight: 500;
   text-decoration: none;
 }
 
-.edgeever-html-outline a:hover,
-.edgeever-html-outline a:focus-visible {
-  text-decoration: underline;
+.edgeever-html-outline button,
+.edgeever-html-outline-restore {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font: inherit;
+}
+
+.edgeever-html-outline-ready .edgeever-html-outline button {
+  display: inline-flex;
+}
+
+.edgeever-html-outline button:hover,
+.edgeever-html-outline-restore:hover {
+  background: #e2e8f0;
+  color: #047857;
+}
+
+.edgeever-html-outline button:focus-visible,
+.edgeever-html-outline a:focus-visible,
+.edgeever-html-outline-restore:focus-visible {
+  outline: 2px solid #16a06e;
+  outline-offset: 1px;
+}
+
+.edgeever-html-outline-spacer,
+.edgeever-html-outline .edgeever-html-outline-branch {
+  flex: 0 0 24px;
+  width: 24px;
+}
+
+.edgeever-html-outline-branch[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.edgeever-html-outline-collapsed {
+  grid-template-columns: minmax(0, 48rem) 32px;
+  max-width: 54.25rem;
+}
+
+.edgeever-html-outline-collapsed .edgeever-html-outline {
+  display: none;
+}
+
+.edgeever-html-outline-collapsed .edgeever-html-outline-restore {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+@media (max-width: 900px) {
+  .edgeever-html-shell-with-outline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 48rem;
+    padding-top: 1rem;
+  }
+
+  .edgeever-html-shell-with-outline .edgeever-html-document {
+    width: 100%;
+    padding: 1.5rem 1.25rem;
+  }
+
+  .edgeever-html-outline-sidebar {
+    position: static;
+    order: -1;
+    width: 100%;
+  }
+
+  .edgeever-html-outline {
+    max-height: 40dvh;
+  }
+
+  .edgeever-html-outline-collapsed .edgeever-html-outline-sidebar {
+    position: sticky;
+    top: 0.5rem;
+    height: 32px;
+    z-index: 1;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .edgeever-html-outline-restore {
+    pointer-events: auto;
+  }
+}
+
+.edgeever-html-content :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 72px;
 }
 
 .edgeever-html-content > :first-child {
@@ -432,9 +612,14 @@ body {
   }
 
   .edgeever-html-shell {
+    display: block;
     max-width: none;
     margin: 0;
     padding: 0;
+  }
+
+  .edgeever-html-outline-sidebar {
+    display: none !important;
   }
 
   .edgeever-html-document {

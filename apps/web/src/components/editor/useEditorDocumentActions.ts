@@ -168,7 +168,15 @@ export const useEditorDocumentActions = ({
       language: i18n.resolvedLanguage ?? i18n.language,
       fallbackTitle: t("common.untitledMemo"),
       styles: NOTE_HTML_FULL_STYLES,
-      outlineLabel: t("editor.htmlExport.outlineLabel"),
+      outlineLabel: t("editor.outline"),
+      outlineLabels: {
+        show: t("editor.showOutline"),
+        hide: t("editor.hideOutline"),
+        expandAll: t("editor.expandAllOutline"),
+        collapseAll: t("editor.collapseAllOutline"),
+        expandHeading: t("editor.expandOutlineHeading", { name: "{name}" }),
+        collapseHeading: t("editor.collapseOutlineHeading", { name: "{name}" }),
+      },
     };
     if (hasNoteHtmlOutline(options.bodyHtml)) {
       setHtmlExportSource(options);
