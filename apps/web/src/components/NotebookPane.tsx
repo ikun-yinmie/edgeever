@@ -559,11 +559,14 @@ export const NotebookPane = ({
   const showTemplateEntry = true;
   const notebookScrollRef = useRef<HTMLDivElement | null>(null);
   const notebookDragScrollFrameRef = useRef<number | null>(null);
-  const [expandSiblingsRequest, setExpandSiblingsRequest] = useState<{ parentId: string | null; token: number } | null>(null);
+  const [expandSiblingsRequest, setExpandSiblingsRequest] = useState<{ parentId: string | null; token: number; searchQuery: string } | null>(null);
   const expandedPathNotebookIdRef = useRef<string | null>(null);
   const scrolledSelectionRef = useRef<string | null>(null);
   const [notebookSortMode, setNotebookSortMode] = useState<NotebookSortMode>(readNotebookSortPreference);
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
+  const [searchExpandedNotebookIds, setSearchExpandedNotebookIds] = useState<Set<string>>(() => new Set());
+  const initializedNotebookSearchRef = useRef("");
+  const selectedNotebookFromTreeRef = useRef<string | null>(null);
   const [notebookSearch, setNotebookSearch] = useState("");
   const [groupSectionOpen, setGroupSectionOpen] = useState(false);
   const [mySharesSectionOpen, setMySharesSectionOpen] = useState(false);
@@ -591,8 +594,8 @@ export const NotebookPane = ({
   useEffect(() => () => stopNotebookDragAutoScroll(), [stopNotebookDragAutoScroll]);
 
   const handleExpandNotebookSiblings = useCallback((parentId: string | null) => {
-    setExpandSiblingsRequest((current: { parentId: string | null; token: number } | null) => ({ parentId, token: (current?.token ?? 0) + 1 }));
-  }, []);
+    setExpandSiblingsRequest((current) => ({ parentId, token: (current?.token ?? 0) + 1, searchQuery: notebookSearch.trim() }));
+  }, [notebookSearch]);
 
   const handleNotebookScrollDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     if (!hasEdgeEverDragData(event.dataTransfer)) {
@@ -670,25 +673,37 @@ export const NotebookPane = ({
   const notebookSearchQuery = notebookSearch.trim();
   const notebookSearchActive = notebookSearchQuery.length > 0;
   const visibleTree = useMemo(() => filterNotebookTree(tree, notebookSearchQuery), [notebookSearchQuery, tree]);
-  // A search narrows the tree to matching paths; force those branches open so
-  // every hit is actually reachable without hunting for collapsed parents.
-  const treeExpandedNotebookIds = useMemo(
-    () => (notebookSearchActive ? new Set(getExpandableNotebookIds(visibleTree)) : expandedNotebookIds),
-    [expandedNotebookIds, notebookSearchActive, visibleTree],
-  );
+  const treeExpandedNotebookIds = notebookSearchActive ? searchExpandedNotebookIds : expandedNotebookIds;
+
+  useEffect(() => {
+    if (initializedNotebookSearchRef.current === notebookSearchQuery) {
+      return;
+    }
+
+    initializedNotebookSearchRef.current = notebookSearchQuery;
+    setExpandSiblingsRequest(null);
+    setSearchExpandedNotebookIds(new Set(notebookSearchActive ? getExpandableNotebookIds(visibleTree) : []));
+  }, [notebookSearchActive, notebookSearchQuery, visibleTree]);
 
   useEffect(() => {
     writeNotebookSortPreference(notebookSortMode);
   }, [notebookSortMode]);
 
   useEffect(() => {
+    const selectedFromTree = selectedNotebookFromTreeRef.current === selectedNotebookId;
+    selectedNotebookFromTreeRef.current = null;
     if (!selectedNotebookId) {
       return;
     }
 
-    // Selecting a notebook from outside the tree (revealing the open note, a
-    // fresh create, a restored session) must not stay hidden behind an active
-    // search filter.
+    if (selectedFromTree) {
+      if (initializedNotebookSearchRef.current) {
+        // Search selections must not expand branches in the unfiltered tree.
+        expandedPathNotebookIdRef.current = selectedNotebookId;
+      }
+      return;
+    }
+
     setNotebookSearch((current) => (current ? "" : current));
   }, [selectedNotebookId]);
 
@@ -717,13 +732,14 @@ export const NotebookPane = ({
   }, [selectedNotebookId, tree]);
 
   const handleNotebookOpenChange = useCallback((notebookId: string, open: boolean) => {
-    if (!open) {
+    if (!notebookSearchActive && !open) {
       // Re-selecting a notebook later should reveal its path again instead of
       // leaving the selected row hidden inside a manually collapsed branch.
       expandedPathNotebookIdRef.current = null;
     }
 
-    setExpandedNotebookIds((current) => {
+    const setOpenNotebookIds = notebookSearchActive ? setSearchExpandedNotebookIds : setExpandedNotebookIds;
+    setOpenNotebookIds((current) => {
       if (current.has(notebookId) === open) {
         return current;
       }
@@ -736,14 +752,12 @@ export const NotebookPane = ({
       }
       return next;
     });
-  }, []);
+  }, [notebookSearchActive]);
 
   const handleSelectNotebookFromSearch = useCallback((notebookId: string) => {
+    selectedNotebookFromTreeRef.current = notebookId === selectedNotebookId ? null : notebookId;
     onSelect(notebookId);
-    // Drop the filter so the row is shown inside its real branch, where the
-    // tree expands the selected path and scrolls it into view.
-    setNotebookSearch("");
-  }, [onSelect]);
+  }, [onSelect, selectedNotebookId]);
 
   const handleNotebookSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
@@ -1065,7 +1079,7 @@ export const NotebookPane = ({
                 onDragScroll={handleNotebookScrollDragOver}
                 expandedNotebookIds={treeExpandedNotebookIds}
                 onOpenChange={handleNotebookOpenChange}
-                expandSiblingsRequest={expandSiblingsRequest}
+                expandSiblingsRequest={expandSiblingsRequest?.searchQuery === notebookSearchQuery ? expandSiblingsRequest : null}
                 onExpandSiblings={handleExpandNotebookSiblings}
               />
             ))}

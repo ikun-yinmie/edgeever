@@ -149,21 +149,44 @@ describe("NotebookPane tree expansion", () => {
 });
 
 describe("NotebookPane notebook search", () => {
-  test("filters the notebook tree and marks matching branches as expanded", () => {
+  test("initializes search expansion once per query without resetting it on tree updates", () => {
     expect(source).toContain("filterNotebookTree(tree, notebookSearchQuery)");
-    expect(source).toContain("new Set(getExpandableNotebookIds(visibleTree))");
+    expect(source).toContain("initializedNotebookSearchRef.current === notebookSearchQuery");
+    expect(source).toContain("initializedNotebookSearchRef.current = notebookSearchQuery");
+    expect(source).toContain("setSearchExpandedNotebookIds(new Set(notebookSearchActive ? getExpandableNotebookIds(visibleTree) : []))");
     expect(source).toContain("{visibleTree.map((node) => (");
     expect(source).toContain('t("notebookPane.searchEmpty")');
     expect(source).toContain("data-notebook-search");
   });
 
-  test("locates the first match on Enter and clears the filter on selection", () => {
+  test("keeps search expansion separate from the unfiltered tree", () => {
+    expect(source).toContain("notebookSearchActive ? searchExpandedNotebookIds : expandedNotebookIds");
+    expect(source).toContain("notebookSearchActive ? setSearchExpandedNotebookIds : setExpandedNotebookIds");
+    expect(source).toContain("if (!notebookSearchActive && !open)");
+    expect(source).toContain("expandSiblingsRequest?.searchQuery === notebookSearchQuery ? expandSiblingsRequest : null");
+    expect(source).toContain("setExpandSiblingsRequest(null)");
+  });
+
+  test("selects the first match on Enter without clearing the filter", () => {
+    const selectHandler = source.split("const handleSelectNotebookFromSearch =")[1]?.split("const handleNotebookSearchKeyDown")[0];
     expect(source).toContain("findFirstNotebookSearchMatchId(visibleTree, notebookSearchQuery)");
-    expect(source).toContain("const handleSelectNotebookFromSearch = useCallback((notebookId: string) => {");
+    expect(source).toContain("handleSelectNotebookFromSearch(matchId)");
     expect(source).toContain("onSelect={handleSelectNotebookFromSearch}");
-    expect(source).toContain("setNotebookSearch(\"\");");
+    expect(selectHandler).toContain("selectedNotebookFromTreeRef.current = notebookId === selectedNotebookId ? null : notebookId");
+    expect(selectHandler).toContain("onSelect(notebookId)");
+    expect(selectHandler).not.toContain("setNotebookSearch");
     expect(source).toContain('placeholder={t("mobileNotebookPicker.searchPlaceholder")}');
     expect(source).toContain('t("mobileNotebookPicker.clearSearch")');
+  });
+
+  test("distinguishes tree selections from external selections and still clears on explicit reveal", () => {
+    expect(source).toContain("const selectedFromTree = selectedNotebookFromTreeRef.current === selectedNotebookId");
+    expect(source).toContain("selectedNotebookFromTreeRef.current = null");
+    expect(source).toContain("if (selectedFromTree)");
+    expect(source).toContain("if (initializedNotebookSearchRef.current)");
+    const revealEffect = source.split("if (!revealRequest)")[1]?.split("}, [revealRequest, tree])")[0];
+    expect(revealEffect).toContain('setNotebookSearch("")');
+    expect(revealEffect).toContain("getNotebookAncestorIds(tree, revealRequest.notebookId)");
   });
 });
 
