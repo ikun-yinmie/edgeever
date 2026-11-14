@@ -1,14 +1,20 @@
 {
-  "version": "1.103.21",
+  "version": "1.103.22",
   "changes": {
     "en-US": [
-      "Task items can be marked rejected with a red cross; HTML export offers an optional clickable outline for notes with headings"
+      "The desktop sync issues dialog now names the notes behind each failed item together with their notebook path, so a conflict can be located without opening the note.",
+      "Notebook search no longer forces every matching branch open or re-expands branches you collapsed, and picking a result keeps the filter in place.",
+      "HTML exports can show the outline as a sticky sidebar beside the note, with collapsible branches, expand/collapse all, a show/hide button and scroll tracking; it collapses on narrow screens and is skipped when printing."
     ],
     "zh-CN": [
-      "待办支持标记红色❌（否定状态），可与勾选互转；HTML 导出含标题的笔记时可选嵌入可点击大纲"
+      "桌面端同步问题对话框现在会列出每个失败项涉及的笔记及其所属分类，冲突可以直接定位，无需逐个打开笔记。",
+      "搜索笔记本时不再强制展开所有匹配分支，手动收起后也不会被刷新重新展开；点选搜索结果会保留筛选条件。",
+      "HTML 导出的大纲改为笔记右侧常驻侧栏，支持分支逐级折叠、全部展开/收起、显示/隐藏与滚动高亮；窄屏自动收起，打印时自动省略。"
     ],
     "ja": [
-      "タスクに赤い❌を付けられる; HTML エクスポートでクリックできるアウトラインを含められる"
+      "デスクトップの同期問題ダイアログが、失敗した項目に関係するノートと所属ノートブックを表示するようになり、ノートを開かずに競合を特定できます。",
+      "ノートブック検索で一致した枝がすべて強制的に開かれたり、折りたたんだ枝が再展開されたりしなくなり、検索結果を選んでも絞り込みが維持されます。",
+      "HTML 書き出しのアウトラインがノート右側に固定表示されるサイドバーになり、枝の折りたたみ、すべて展開/折りたたみ、表示/非表示、スクロール連動に対応しました。狭い画面では自動的に折りたたまれ、印刷時には出力されません。"
     ]
   }
 }
