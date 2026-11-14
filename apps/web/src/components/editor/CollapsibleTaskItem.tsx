@@ -166,6 +166,14 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       return {
         dom: listItem,
         contentDOM: content,
+        ignoreMutation: (mutation) => {
+          if (mutation.type === "selection") return false;
+          return mutation.target === listItem && mutation.type === "attributes"
+            || toggle.contains(mutation.target)
+            || checkboxWrapper.contains(mutation.target);
+        },
+        stopEvent: (event) => event.target instanceof Node
+          && (toggle.contains(event.target) || checkboxWrapper.contains(event.target)),
         update: (updatedNode) => {
           if (updatedNode.type !== this.type) return false;
           const newHTMLAttributes = getRenderedAttributes(updatedNode, editor.extensionManager.attributes);

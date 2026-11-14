@@ -1366,8 +1366,12 @@ const RichEditorPane = ({
       attributes: {
         class: "edgeever-note-rich-editor prose prose-slate max-w-none focus:outline-none min-h-[240px] lg:min-h-[180px]",
       },
+      handleDOMEvents: {
+        // Leave IME confirmation to the browser without running any editor keymaps.
+        keydown: (_view, event) => event.isComposing || event.keyCode === 229,
+      },
       handleKeyDown: (view, event) => {
-        if (!view.editable) {
+        if (!view.editable || view.composing || event.isComposing || event.keyCode === 229) {
           return false;
         }
         const { selection } = view.state;

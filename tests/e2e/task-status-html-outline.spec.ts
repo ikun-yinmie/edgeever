@@ -153,6 +153,82 @@ test("exported HTML has an offline, collapsible reading sidebar with scroll trac
   }
 });
 
+test("task input keeps IME, Shift and caret edits in the current item", async ({ page }) => {
+  test.setTimeout(90_000);
+  const { notebooks } = await (await page.request.get("/api/v1/notebooks")).json();
+  const created = await page.request.post("/api/v1/memos", { data: {
+    notebookId: notebooks[0].id, title: `task-ime-${Date.now()}`, contentMarkdown: "- [ ] 第一项\n- [ ] 第二项",
+  } });
+  expect(created.status()).toBe(201);
+  const { memo } = await created.json();
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: "全部笔记", exact: true }).click();
+    await page.locator(`[data-memo-id="${memo.id}"]`).locator("button").first().click();
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    const editor = page.locator(".ProseMirror").first();
+    const items = editor.locator('li[data-type="taskItem"]');
+    const firstParagraph = items.first().locator("p").first();
+    await firstParagraph.click();
+    await page.keyboard.press("End");
+    const delayedConfirmationPrevented = await editor.evaluate((element) => {
+      const event = new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, isComposing: true, bubbles: true, cancelable: true });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(delayedConfirmationPrevented).toBe(false);
+    await expect(items).toHaveCount(2);
+    const cdp = await page.context().newCDPSession(page);
+    for (const text of ["中文", "输入"]) {
+      await cdp.send("Input.imeSetComposition", { text: "pinyin", selectionStart: 6, selectionEnd: 6 });
+      await page.keyboard.press("Shift");
+      await editor.evaluate((element) => {
+        const event = new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, isComposing: true, bubbles: true, cancelable: true });
+        element.dispatchEvent(event);
+      });
+      await cdp.send("Input.insertText", { text });
+      await expect(items).toHaveCount(2);
+      await expect(items.nth(1).locator("p")).toHaveText("第二项");
+    }
+    await expect(firstParagraph).toHaveText("第一项中文输入");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.insertText("光标");
+    await expect(firstParagraph).toHaveText("第一项中文输光标入");
+    await page.keyboard.press("Shift");
+    await page.keyboard.type("ABC");
+    await expect(firstParagraph).toHaveText("第一项中文输光标ABC入");
+    await expect(items).toHaveCount(2);
+    const unchanged = await editor.evaluate(async (element) => {
+      const instance = (element as any).editor;
+      const before = JSON.stringify(instance.getJSON());
+      const selection = instance.state.selection.from;
+      const task = element.querySelector('li[data-type="taskItem"]')!;
+      task.querySelector("label span")!.textContent = "辅助标签更新";
+      task.querySelector("button")!.setAttribute("aria-label", "折叠状态更新");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return before === JSON.stringify(instance.getJSON()) && selection === instance.state.selection.from;
+    });
+    expect(unchanged).toBe(true);
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await expect(items).toHaveCount(3);
+    await page.keyboard.insertText("正常回车创建的任务");
+    await expect(items.nth(1).locator("p")).toHaveText("正常回车创建的任务");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.insertText("子段落");
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(1).locator("p")).toHaveText(["正常回车创建的任务", "子段落"]);
+    await page.screenshot({ path: test.info().outputPath("task-ime-caret.png") });
+    await expect.poll(async () => {
+      const saved = await (await page.request.get(`/api/v1/memos/${memo.id}`)).json();
+      return saved.memo.contentMarkdown;
+    }, { timeout: 30_000 }).toContain("第一项中文输光标ABC入");
+  } finally {
+    await page.request.delete(`/api/v1/memos/${memo.id}`);
+    await page.request.delete(`/api/v1/memos/${memo.id}?permanent=1`);
+  }
+});
+
 test("marks tasks red, persists them, and optionally exports a clickable HTML outline", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
