@@ -3,6 +3,8 @@ import hljs from "highlight.js/lib/common";
 import { renderMermaidSVG, THEMES } from "beautiful-mermaid";
 import { MERMAID_THEME_PALETTES } from "@/components/ThemeProvider";
 import { buildNoteHtmlOutline, NOTE_HTML_OUTLINE_SCRIPT, type NoteHtmlOutlineLabels } from "./note-html-outline";
+import { buildHtmlCodePreviewDocument, getCodeBlockPreviewLanguage } from "./code-block-preview";
+import { renderMarkdownCodePreview } from "./markdown-code-preview";
 
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const EXPORT_FONT_FAMILY =
@@ -16,7 +18,31 @@ export type NoteHtmlExportMeta = {
   language?: string;
 };
 
+export type NoteHtmlInteractionLabels = {
+  copy: string;
+  copied: string;
+  copyFailed: string;
+  preview: string;
+  source: string;
+  close: string;
+  viewer: string;
+  zoomIn: string;
+  zoomOut: string;
+  resetZoom: string;
+  previous: string;
+  next: string;
+};
+
+const DEFAULT_INTERACTION_LABELS: NoteHtmlInteractionLabels = {
+  copy: "Copy code", copied: "Copied", copyFailed: "Copy failed",
+  preview: "Preview", source: "Show source", close: "Close",
+  viewer: "Image viewer", zoomIn: "Zoom in", zoomOut: "Zoom out",
+  resetZoom: "Reset zoom", previous: "Previous image", next: "Next image",
+};
+
 export type BuildStandaloneHtmlDocumentOptions = NoteHtmlExportMeta & {
+  interactionScript?: string;
+  interactionLabels?: NoteHtmlInteractionLabels;
   bodyHtml: string;
   styles?: string;
   includeOutline?: boolean;
@@ -25,6 +51,8 @@ export type BuildStandaloneHtmlDocumentOptions = NoteHtmlExportMeta & {
 };
 
 export type DownloadNoteHtmlOptions = NoteHtmlExportMeta & {
+  interactionScript?: string;
+  interactionLabels?: NoteHtmlInteractionLabels;
   bodyHtml: string;
   fallbackTitle: string;
   styles?: string;
@@ -127,6 +155,8 @@ export const buildStandaloneHtmlDocument = ({
   includeOutline = false,
   outlineLabel = "Outline",
   outlineLabels,
+  interactionScript = "",
+  interactionLabels = DEFAULT_INTERACTION_LABELS,
 }: BuildStandaloneHtmlDocumentOptions) => {
   const outlined = includeOutline ? buildNoteHtmlOutline(bodyHtml, outlineLabel, outlineLabels) : { bodyHtml, outlineHtml: "" };
   const contentMarkup = buildNoteHtmlContentMarkup({ title, notebook, tags, updatedAt, ...outlined });
@@ -142,9 +172,10 @@ export const buildStandaloneHtmlDocument = ({
 ${styles}
 </style>
 </head>
-<body>
+<body${interactionScript ? ` data-edgeever-export-labels="${escapeHtml(JSON.stringify(interactionLabels))}"` : ""}>
 ${contentMarkup}
 ${outlined.outlineHtml ? `<script>${NOTE_HTML_OUTLINE_SCRIPT}</script>` : ""}
+${interactionScript ? `<script>${interactionScript.replace(/<\/script/gi, "<\\/script")}</script>` : ""}
 </body>
 </html>
 `;
@@ -209,7 +240,7 @@ export const renderCodeBlockTitlesForHtmlExport = (root: HTMLElement) => {
   });
 };
 
-export const renderMermaidBlocksForHtmlExport = async (root: HTMLElement) => {
+export const renderMermaidBlocksForHtmlExport = async (root: HTMLElement, interactive = false) => {
   const blocks = Array.from(root.querySelectorAll<HTMLElement>("pre > code.language-mermaid"));
   await Promise.all(blocks.map(async (code) => {
     const source = code.textContent?.trim();
@@ -229,7 +260,13 @@ export const renderMermaidBlocksForHtmlExport = async (root: HTMLElement) => {
       const figure = document.createElement("figure");
       figure.className = "edgeever-html-mermaid";
       figure.innerHTML = svg;
-      container.replaceWith(figure);
+      if (interactive) {
+        figure.classList.add("edgeever-html-code-preview");
+        figure.hidden = true;
+        container.insertAdjacentElement("afterend", figure);
+      } else {
+        container.replaceWith(figure);
+      }
     } catch {
       // Keep invalid Mermaid source readable in the exported document.
     }
@@ -282,12 +319,47 @@ export const embedImagesForHtmlExport = async (root: HTMLElement): Promise<HtmlI
   return result;
 };
 
+const prepareInteractiveCodeBlocks = (root: HTMLElement) => {
+  root.querySelectorAll<HTMLElement>("pre > code").forEach((code) => {
+    const pre = code.parentElement!;
+    let block = pre.parentElement!;
+    if (!block.classList.contains("edgeever-html-code-block")) {
+      block = document.createElement("figure");
+      block.className = "edgeever-html-code-block";
+      pre.replaceWith(block);
+      block.appendChild(pre);
+    }
+    block.setAttribute("data-edgeever-code-interactive", "");
+    if (block.querySelector(":scope > .edgeever-html-code-preview")) return;
+    const language = Array.from(code.classList).find((name) => name.startsWith("language-"))?.slice(9) ?? "";
+    block.setAttribute("data-code-language", language);
+    const previewLanguage = getCodeBlockPreviewLanguage(language);
+    if (!previewLanguage) return;
+    const source = code.textContent ?? "";
+    const preview = document.createElement("div");
+    preview.className = "edgeever-html-code-preview";
+    preview.hidden = true;
+    if (previewLanguage === "html") {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "");
+      frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.setAttribute("title", "HTML preview");
+      frame.srcdoc = buildHtmlCodePreviewDocument(source);
+      preview.appendChild(frame);
+    } else {
+      preview.innerHTML = renderMarkdownCodePreview(source);
+    }
+    block.appendChild(preview);
+  });
+};
+
 /** Enrich note body HTML for a self-contained offline file. */
-export const prepareNoteBodyHtmlForExport = async (bodyHtml: string): Promise<PreparedNoteHtmlExport> => {
+export const prepareNoteBodyHtmlForExport = async (bodyHtml: string, interactive = false): Promise<PreparedNoteHtmlExport> => {
   const container = document.createElement("div");
   container.innerHTML = bodyHtml;
   renderCodeBlockTitlesForHtmlExport(container);
-  await renderMermaidBlocksForHtmlExport(container);
+  if (interactive) prepareInteractiveCodeBlocks(container);
+  await renderMermaidBlocksForHtmlExport(container, interactive);
   highlightCodeBlocksForHtmlExport(container);
   const images = await embedImagesForHtmlExport(container);
   return {
@@ -308,8 +380,10 @@ export const downloadNoteHtmlFile = async ({
   includeOutline = false,
   outlineLabel,
   outlineLabels,
+  interactionScript = "",
+  interactionLabels,
 }: DownloadNoteHtmlOptions): Promise<DownloadNoteHtmlResult> => {
-  const prepared = await prepareNoteBodyHtmlForExport(bodyHtml);
+  const prepared = await prepareNoteBodyHtmlForExport(bodyHtml, Boolean(interactionScript));
   const html = buildStandaloneHtmlDocument({
     title,
     notebook,
@@ -321,6 +395,8 @@ export const downloadNoteHtmlFile = async ({
     includeOutline,
     outlineLabel,
     outlineLabels,
+    interactionScript,
+    interactionLabels,
   });
   return {
     filename: downloadHtmlFile(html, title, fallbackTitle),

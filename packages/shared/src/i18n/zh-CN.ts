@@ -2307,6 +2307,8 @@ export const zhCN = {
     copyCode: "复制代码",
     codeCopied: "已复制",
     codeCopyFailed: "复制失败",
+    codePreview: "预览",
+    codeSource: "源码",
     codeLanguage: "代码语言",
     codeTitle: "代码块标题",
     codeTitlePlaceholder: "添加标题…",

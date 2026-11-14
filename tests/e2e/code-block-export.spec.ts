@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { pathToFileURL } from "node:url";
 
 test("HTML and image export preparation preserves code and Mermaid titles as safe visible captions", async ({ page }) => {
   await page.goto("/");
@@ -54,6 +55,120 @@ test("HTML and image export preparation preserves code and Mermaid titles as saf
   expect(result.injectedImages).toBe(0);
   expect(result.untitledSource).toBe(true);
   expect(result.invalidMetadataSource).toBe(true);
+});
+
+test("exported HTML keeps offline code previews, copy and image zoom", async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  page.setDefaultTimeout(30_000);
+  await page.goto("/");
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1200;
+    canvas.height = 800;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#16a06e";
+    context.fillRect(0, 0, 1200, 800);
+    context.fillStyle = "white";
+    context.font = "64px sans-serif";
+    context.fillText("Offline image preview", 120, 400);
+    return canvas.toDataURL();
+  });
+  const source = 'const text = "</script><script>window.exportEscaped = true</script>";\nconsole.log(text);';
+  const { notebooks } = await (await page.request.get("/api/v1/notebooks")).json();
+  const response = await page.request.post("/api/v1/memos", { data: {
+    notebookId: notebooks[0].id, title: `interactive-export-${Date.now()}`,
+    contentMarkdown: `## 离线交互\n\n\`\`\`javascript\n${source}\n\`\`\`\n\n`
+      + '\`\`\`html\n<h2>HTML 卡片</h2><button onclick="parent.exportEscaped=true">不执行脚本</button><script>parent.exportEscaped=true</script>\n\`\`\`\n\n'
+      + '\`\`\`md\n# Markdown 预览\n\n**加粗内容**\n\`\`\`\n\n'
+      + '\`\`\`mermaid\ngraph TD\n  A --> B\n\`\`\`\n\n'
+      + `![第一张](${image})\n\n![第二张](${image})`,
+  } });
+  expect(response.status()).toBe(201);
+  const { memo } = await response.json();
+  const context = await browser.newContext({ offline: true, permissions: ["clipboard-read", "clipboard-write"] });
+  context.setDefaultTimeout(10_000);
+  try {
+    // Load the app after the note exists so the list is populated on first render.
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "个人中心", exact: true })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "全部笔记", exact: true }).click();
+    const row = page.locator(`[data-memo-id="${memo.id}"]`);
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.locator("button").first().click();
+    await expect(page.locator(".ProseMirror").first()).toContainText("离线交互");
+    await page.getByRole("button", { name: "笔记更多操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "导出 HTML", exact: true }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("dialog", { name: "导出 HTML", exact: true }).getByRole("button", { name: "导出 HTML", exact: true }).click();
+    const file = test.info().outputPath("interactive.html");
+    await (await downloadPromise).saveAs(file);
+    const exported = await context.newPage();
+    const errors: string[] = [];
+    exported.on("pageerror", (error) => errors.push(error.message));
+    await exported.goto(pathToFileURL(file).href);
+    const blocks = exported.locator("[data-edgeever-code-interactive]");
+    await expect(blocks).toHaveCount(4);
+    const outline = exported.getByRole("navigation", { name: "文档大纲", exact: true });
+    await expect(outline).toBeVisible();
+    await expect(outline.getByRole("link")).toHaveText(["离线交互"]);
+    await blocks.nth(0).getByRole("button", { name: "复制代码", exact: true }).click();
+    await expect(blocks.nth(0).getByRole("button", { name: "已复制", exact: true })).toBeVisible();
+    expect(await exported.evaluate(() => navigator.clipboard.readText())).toBe(source);
+    await expect(blocks.nth(1).frameLocator("iframe").getByRole("heading", { name: "HTML 卡片" })).toBeVisible();
+    await blocks.nth(1).frameLocator("iframe").getByRole("button").click();
+    expect(await exported.evaluate(() => (window as any).exportEscaped)).toBeUndefined();
+    await expect(blocks.nth(1).locator("iframe")).toHaveAttribute("sandbox", "");
+    await blocks.nth(1).getByRole("button", { name: "源码", exact: true }).click();
+    await expect(blocks.nth(1).locator("pre")).toContainText("<h2>HTML 卡片</h2>");
+    await blocks.nth(1).getByRole("button", { name: "预览", exact: true }).click();
+    await expect(blocks.nth(2).getByRole("heading", { name: "Markdown 预览" })).toBeVisible();
+    await expect(blocks.nth(3).locator("svg")).toBeVisible();
+    await exported.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    });
+    await blocks.nth(3).getByRole("button", { name: "复制代码", exact: true }).click();
+    await expect(blocks.nth(3).getByRole("button", { name: "已复制", exact: true })).toBeVisible();
+    await exported.evaluate(() => {
+      const input = document.createElement("textarea");
+      input.id = "paste-check";
+      document.body.appendChild(input);
+    });
+    await exported.locator("#paste-check").focus();
+    await exported.keyboard.press("Control+V");
+    await expect(exported.locator("#paste-check")).toHaveValue("graph TD\n  A --> B");
+    await exported.locator("#paste-check").evaluate((element) => element.remove());
+    await exported.evaluate(() => { document.execCommand = () => false; });
+    await blocks.nth(2).getByRole("button", { name: "复制代码", exact: true }).click();
+    await expect(blocks.nth(2).getByRole("button", { name: "复制失败", exact: true })).toBeVisible();
+    const firstImage = exported.getByRole("button", { name: "图片查看器: 第一张", exact: true });
+    await firstImage.click();
+    await expect(exported.locator(".yarl__root")).toBeVisible();
+    await exported.getByRole("button", { name: "放大图片", exact: true }).click();
+    const reset = exported.getByRole("button", { name: "重置缩放", exact: true });
+    await expect(reset).toBeEnabled();
+    await reset.click();
+    await expect(reset).toBeDisabled();
+    await exported.getByRole("button", { name: "下一张", exact: true }).click();
+    await expect(exported.getByRole("button", { name: "上一张", exact: true })).toBeEnabled();
+    await exported.screenshot({ path: test.info().outputPath("offline-image-viewer.png") });
+    await exported.keyboard.press("Escape");
+    await expect(exported.locator(".yarl__root")).toHaveCount(0);
+    await firstImage.focus();
+    await firstImage.press("Enter");
+    await expect(exported.locator(".yarl__root")).toBeVisible();
+    await exported.getByRole("button", { name: "关闭图片查看器", exact: true }).click();
+    await expect(exported.locator(".yarl__root")).toHaveCount(0);
+    await exported.setViewportSize({ width: 390, height: 844 });
+    await exported.evaluate(() => scrollTo(0, 0));
+    await expect(blocks.nth(1).frameLocator("iframe").getByRole("heading", { name: "HTML 卡片" })).toBeVisible();
+    await exported.screenshot({ path: test.info().outputPath("offline-code-mobile.png"), fullPage: true });
+    expect(await exported.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+    await page.request.delete(`/api/v1/memos/${memo.id}`);
+    await page.request.delete(`/api/v1/memos/${memo.id}?permanent=1`);
+  }
 });
 
 test("print and PDF preview preserves code-block titles after pagination", async ({ page }) => {

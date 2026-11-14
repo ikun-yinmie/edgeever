@@ -6,7 +6,7 @@ import type { MemoDocumentActionRequest } from "@/lib/app-helpers";
 import { downloadMarkdownFile } from "@/lib/note-markdown-export";
 import { downloadNoteHtmlFile, getHtmlImageEmbedNoticeKind, type DownloadNoteHtmlOptions } from "@/lib/note-html-export";
 import { hasNoteHtmlOutline } from "@/lib/note-html-outline";
-import { NOTE_HTML_FULL_STYLES } from "@/lib/note-html-export-assets";
+import { NOTE_HTML_FULL_STYLES, NOTE_HTML_INTERACTION_SCRIPT } from "@/lib/note-html-export-assets";
 import { openNotePrintPreview, serializeNoteDocumentForPrint } from "@/lib/note-print";
 import type { NoteImageFormat } from "@/lib/note-image-export";
 import { copyEditorToWeChat, copyMarkdownToWeChat } from "@/lib/wechat-copy";
@@ -168,6 +168,21 @@ export const useEditorDocumentActions = ({
       language: i18n.resolvedLanguage ?? i18n.language,
       fallbackTitle: t("common.untitledMemo"),
       styles: NOTE_HTML_FULL_STYLES,
+      interactionScript: NOTE_HTML_INTERACTION_SCRIPT,
+      interactionLabels: {
+        copy: t("editorToolbar.copyCode"),
+        copied: t("editorToolbar.codeCopied"),
+        copyFailed: t("editorToolbar.codeCopyFailed"),
+        preview: t("editorToolbar.codePreview"),
+        source: t("editorToolbar.codeSource"),
+        close: t("editor.closeImagePreview"),
+        viewer: t("editor.imageViewer"),
+        zoomIn: t("editor.imageZoomIn"),
+        zoomOut: t("editor.imageZoomOut"),
+        resetZoom: t("sharing.imageResetZoom"),
+        previous: t("editor.imagePrevious"),
+        next: t("editor.imageNext"),
+      },
       outlineLabel: t("editor.outline"),
       outlineLabels: {
         show: t("editor.showOutline"),

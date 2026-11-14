@@ -2,7 +2,7 @@ import { buildOutlineTree, type OutlineTreeItem } from "./editor-outline";
 
 const getHeadings = (root: HTMLElement) =>
   Array.from(root.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"))
-    .filter((heading) => heading.textContent?.trim());
+    .filter((heading) => heading.textContent?.trim() && !heading.closest(".edgeever-html-code-preview"));
 
 export const hasNoteHtmlOutline = (bodyHtml: string) => {
   const root = document.createElement("div");

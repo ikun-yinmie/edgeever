@@ -56,6 +56,17 @@ describe("single-note HTML export", () => {
     expect(html).toContain('meta name="generator" content="EdgeEver"');
   });
 
+  test("embeds interaction labels as data and escapes script closing tags", () => {
+    const html = buildStandaloneHtmlDocument({
+      title: "Interactive",
+      bodyHtml: "<p>body</p>",
+      interactionScript: 'console.log("</script><script>not code</script>")',
+    });
+    expect(html).toContain("data-edgeever-export-labels=");
+    expect(html).toContain('console.log("<\\/script><script>not code<\\/script>")');
+    expect(html.match(/<\/script>/gi)).toHaveLength(1);
+  });
+
   test("omits empty metadata row", () => {
     const html = buildStandaloneHtmlDocument({
       title: "Untitled",

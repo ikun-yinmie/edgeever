@@ -2309,6 +2309,8 @@ export const enUS = {
     copyCode: "Copy code",
     codeCopied: "Copied",
     codeCopyFailed: "Copy failed",
+    codePreview: "Preview",
+    codeSource: "Source",
     codeLanguage: "Code language",
     codeTitle: "Code block title",
     codeTitlePlaceholder: "Add a title…",

@@ -489,6 +489,98 @@ body {
   padding: 0.85rem 1rem;
 }
 
+.edgeever-html-code-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #dbe4ea;
+  background: #f1f5f9;
+  font-size: 0.8rem;
+}
+
+.edgeever-html-code-language {
+  flex: 1;
+  color: #64748b;
+}
+
+.edgeever-html-code-toolbar button {
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #334155;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.edgeever-html-code-toolbar button:hover {
+  color: #047857;
+  border-color: #16a06e;
+}
+
+.edgeever-html-code-toolbar button:focus-visible,
+.edgeever-html-preview-image:focus-visible {
+  outline: 2px solid #16a06e;
+  outline-offset: 2px;
+}
+
+.edgeever-html-content .edgeever-html-code-preview {
+  margin: 0;
+  padding: 1rem;
+}
+
+.edgeever-html-code-preview iframe {
+  display: block;
+  width: 100%;
+  height: 28rem;
+  border: 0;
+  background: #fff;
+}
+
+.edgeever-html-preview-image {
+  cursor: zoom-in;
+}
+
+.edgeever-image-viewer-reset {
+  border: 0;
+  padding: 8px;
+  color: var(--yarl__color_button, #fff);
+  background: transparent;
+  cursor: pointer;
+}
+
+.edgeever-image-viewer-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.edgeever-image-viewer-reset svg {
+  width: 28px;
+  height: 28px;
+}
+
+body > [data-radix-popper-content-wrapper] {
+  z-index: 10000 !important;
+}
+
+body > [data-radix-popper-content-wrapper] > [data-state] {
+  padding: 0.4rem 0.65rem;
+  border-radius: 6px;
+  background: #172033;
+  color: #fff;
+  font: 12px/1.5 system-ui, sans-serif;
+}
+
+@media print {
+  .edgeever-html-code-toolbar,
+  .edgeever-html-interactions,
+  .yarl__root {
+    display: none !important;
+  }
+}
+
 .edgeever-html-content [data-edgeever-image-gallery] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));

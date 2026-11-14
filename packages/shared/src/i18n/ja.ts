@@ -2309,6 +2309,8 @@ export const ja = {
     copyCode: "コードをコピー",
     codeCopied: "コピーしました",
     codeCopyFailed: "コピーに失敗",
+    codePreview: "プレビュー",
+    codeSource: "ソース",
     codeLanguage: "コード言語",
     codeTitle: "コードブロックのタイトル",
     codeTitlePlaceholder: "タイトルを追加…",

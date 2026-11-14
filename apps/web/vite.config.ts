@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig, type Plugin } from "vite";
+import { build as bundleScript } from "esbuild";
 import { VitePWA } from "vite-plugin-pwa";
 import { localDevelopmentAuth } from "./local-dev-auth";
 import { resolveAppVersion, resolveReleaseTimestamp } from "./build-metadata";
@@ -121,6 +122,35 @@ self.addEventListener("activate", (event) => {
   },
 };
 
+const noteHtmlInteractions: Plugin = {
+  name: "edgeever-note-html-interactions",
+  resolveId(id) {
+    if (id === "virtual:note-html-interactions") return `\0${id}`;
+  },
+  async load(id) {
+    if (id !== "\0virtual:note-html-interactions") return;
+    const entryPoint = fileURLToPath(new URL("./src/lib/note-html-interactions.tsx", import.meta.url));
+    this.addWatchFile(entryPoint);
+    const result = await bundleScript({
+      entryPoints: [entryPoint],
+      bundle: true,
+      write: false,
+      outdir: "note-html-interactions",
+      format: "iife",
+      platform: "browser",
+      target: "es2022",
+      jsx: "automatic",
+      minify: true,
+      legalComments: "inline",
+      define: { "process.env.NODE_ENV": '"production"' },
+      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    });
+    const script = result.outputFiles.find((file) => file.path.endsWith(".js"))!.text;
+    const styles = result.outputFiles.find((file) => file.path.endsWith(".css"))!.text;
+    return `export const script = ${JSON.stringify(script)}; export const styles = ${JSON.stringify(styles)};`;
+  },
+};
+
 export default defineConfig({
   root: "apps/web",
   // Packaged Electron apps load index.html via file://, so root-absolute
@@ -139,6 +169,7 @@ export default defineConfig({
   },
   plugins: [
     localDevelopmentAuth(),
+    noteHtmlInteractions,
     developmentServiceWorkerReset,
     react(),
     VitePWA({
