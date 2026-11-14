@@ -1,20 +1,17 @@
 {
-  "version": "1.103.22",
+  "version": "1.103.23",
   "changes": {
     "en-US": [
-      "The desktop sync issues dialog now names the notes behind each failed item together with their notebook path, so a conflict can be located without opening the note.",
-      "Notebook search no longer forces every matching branch open or re-expands branches you collapsed, and picking a result keeps the filter in place.",
-      "HTML exports can show the outline as a sticky sidebar beside the note, with collapsible branches, expand/collapse all, a show/hide button and scroll tracking; it collapses on narrow screens and is skipped when printing."
+      "Exported HTML notes are now interactive offline: code blocks gain copy and a rendered preview for HTML, Markdown and Mermaid, and images open in a full-size viewer. HTML previews run sandboxed so exported scripts never execute.",
+      "Typing Chinese or Japanese into a task item no longer splits the item or moves the caret when an IME candidate is confirmed."
     ],
     "zh-CN": [
-      "桌面端同步问题对话框现在会列出每个失败项涉及的笔记及其所属分类，冲突可以直接定位，无需逐个打开笔记。",
-      "搜索笔记本时不再强制展开所有匹配分支，手动收起后也不会被刷新重新展开；点选搜索结果会保留筛选条件。",
-      "HTML 导出的大纲改为笔记右侧常驻侧栏，支持分支逐级折叠、全部展开/收起、显示/隐藏与滚动高亮；窄屏自动收起，打印时自动省略。"
+      "导出的 HTML 笔记现在可以离线交互：代码块支持复制，HTML/Markdown/Mermaid 可切换渲染预览，图片可点开查看大图。HTML 预览在沙箱中运行，导出内容里的脚本不会执行。",
+      "在待办项中用输入法输入中文或日文时，确认候选词不再拆开待办项或移动光标。"
     ],
     "ja": [
-      "デスクトップの同期問題ダイアログが、失敗した項目に関係するノートと所属ノートブックを表示するようになり、ノートを開かずに競合を特定できます。",
-      "ノートブック検索で一致した枝がすべて強制的に開かれたり、折りたたんだ枝が再展開されたりしなくなり、検索結果を選んでも絞り込みが維持されます。",
-      "HTML 書き出しのアウトラインがノート右側に固定表示されるサイドバーになり、枝の折りたたみ、すべて展開/折りたたみ、表示/非表示、スクロール連動に対応しました。狭い画面では自動的に折りたたまれ、印刷時には出力されません。"
+      "書き出した HTML ノートがオフラインで操作できるようになりました。コードブロックはコピーと、HTML・Markdown・Mermaid のレンダリングプレビューに対応し、画像は拡大表示できます。HTML プレビューはサンドボックス内で動作するため、書き出した内容のスクリプトは実行されません。",
+      "タスク項目で日本語や中国語を入力する際、IME の候補を確定しても項目が分割されたりカーソルが移動したりしなくなりました。"
     ]
   }
 }
