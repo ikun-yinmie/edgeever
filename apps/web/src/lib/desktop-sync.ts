@@ -993,9 +993,48 @@ export const createDesktopSyncIssueDetails = (
   items: items.filter((item) => item.status === "error" || item.status === "conflict"),
 });
 
+export type DesktopSyncIssueMemo = {
+  memoId: string;
+  title: string | null;
+  notebookId: string | null;
+};
+
+export const getDesktopSyncIssueMemoIds = (item: DesktopOutboxItem): string[] => {
+  if (!item.kind.startsWith("memo.")) return [];
+  const { memoIds, memoId, temporaryId } = item.payload;
+  if (Array.isArray(memoIds)) {
+    return [...new Set(memoIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  }
+  if (["memo.move", "memo.deleteBatch", "memo.emptyTrash", "memo.pinBatch", "memo.merge"].includes(item.kind)) return [];
+  const id = typeof memoId === "string" ? memoId
+    : item.kind === "memo.create" && typeof temporaryId === "string" ? temporaryId : item.entityId;
+  return id ? [id] : [];
+};
+
 export const getDesktopSyncIssues = async () => {
   const response = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
-  return createDesktopSyncIssueDetails(response.items, lastGlobalSyncIssue);
+  const details = createDesktopSyncIssueDetails(response.items, lastGlobalSyncIssue);
+  const memoIds = [...new Set(details.items.flatMap(getDesktopSyncIssueMemoIds))];
+  const localMemos = new Map(await Promise.all(memoIds.map(async (memoId) => {
+    const memo = await request("memo.get", { memoId, includeDeleted: true })
+      .then((result) => ({ title: result.memo.title ?? "", notebookId: result.memo.notebookId }))
+      .catch(() => null);
+    return [memoId, memo] as const;
+  })));
+  const memosByItemId: Record<number, DesktopSyncIssueMemo[]> = {};
+  for (const item of details.items) {
+    memosByItemId[item.id] = getDesktopSyncIssueMemoIds(item).map((memoId) => {
+      const local = localMemos.get(memoId);
+      const hasDraftTitle = (item.kind === "memo.create" || item.kind === "memo.update")
+        && typeof item.payload.title === "string";
+      return {
+        memoId,
+        title: hasDraftTitle ? item.payload.title as string : local?.title ?? null,
+        notebookId: local?.notebookId ?? (typeof item.payload.notebookId === "string" ? item.payload.notebookId : null),
+      };
+    });
+  }
+  return { ...details, memosByItemId };
 };
 
 export const retryDesktopSyncIssue = async (item: DesktopOutboxItem) => {

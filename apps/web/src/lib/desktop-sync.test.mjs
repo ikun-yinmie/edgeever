@@ -5,6 +5,8 @@ const {
   createDesktopSyncIssueDetails,
   createDesktopSyncDiagnosticText,
   createDesktopSyncSummary,
+  getDesktopSyncIssueMemoIds,
+  getDesktopSyncIssues,
   diffSharedSnapshots,
   isStagedResourceReferenced,
   hasDesktopSyncStateReset,
@@ -235,6 +237,66 @@ describe("desktop memo sync base", () => {
 });
 
 describe("desktop sync failure handling", () => {
+  test("identifies individual and batch notes without treating a batch or notebook id as a note", () => {
+    const item = { kind: "memo.update", entityId: "memo-1", payload: {} };
+    expect(getDesktopSyncIssueMemoIds(item)).toEqual(["memo-1"]);
+    expect(getDesktopSyncIssueMemoIds({ ...item, payload: { memoId: "memo-2" } })).toEqual(["memo-2"]);
+    expect(getDesktopSyncIssueMemoIds({ ...item, kind: "memo.create", payload: { temporaryId: "memo-local" } })).toEqual(["memo-local"]);
+    for (const kind of ["memo.move", "memo.deleteBatch", "memo.emptyTrash", "memo.pinBatch", "memo.merge"]) {
+      expect(getDesktopSyncIssueMemoIds({ ...item, kind, entityId: "batch" })).toEqual([]);
+      expect(getDesktopSyncIssueMemoIds({ ...item, kind, entityId: "notebook-1", payload: { memoIds: ["memo-1", "memo-2", "memo-1", "", 7] } })).toEqual(["memo-1", "memo-2"]);
+    }
+    expect(getDesktopSyncIssueMemoIds({ ...item, kind: "notebook.update" })).toEqual([]);
+  });
+
+  test("loads titles locally, retains draft names and identifies missing or deleted notes", async () => {
+    const previousWindow = globalThis.window;
+    const requests = [];
+    const makeItem = (id, payload, overrides = {}) => ({ id, kind: "memo.update", entityId: "memo-1", payload, status: "conflict", ...overrides });
+    const items = [
+      makeItem(1, { title: "Private draft title" }),
+      makeItem(2, { memoIds: ["memo-1", "memo-deleted", "memo-missing"] }, { kind: "memo.deleteBatch", entityId: "batch" }),
+      makeItem(3, { title: "", notebookId: "notebook-1" }, { entityId: "memo-missing" }),
+      makeItem(4, { title: "Ignore pending" }, { entityId: "memo-pending", status: "pending" }),
+    ];
+    globalThis.window = {
+      edgeeverDesktop: {
+        isAvailable: true,
+        sidecarRequest: async (method, params) => {
+          requests.push([method, params]);
+          if (method === "sync.outbox.list") return { items };
+          if (method === "memo.get") {
+            if (params.memoId === "memo-missing") throw new Error("Not found");
+            return { memo: { title: params.memoId === "memo-deleted" ? "Deleted note" : "Current title", notebookId: "notebook-1", contentMarkdown: "Private body" } };
+          }
+          throw new Error(`Unexpected RPC: ${method}`);
+        },
+      },
+    };
+    try {
+      const details = await getDesktopSyncIssues();
+      expect(details.items).toEqual(items.slice(0, 3));
+      expect(details.memosByItemId).toEqual({
+        1: [{ memoId: "memo-1", title: "Private draft title", notebookId: "notebook-1" }],
+        2: [
+          { memoId: "memo-1", title: "Current title", notebookId: "notebook-1" },
+          { memoId: "memo-deleted", title: "Deleted note", notebookId: "notebook-1" },
+          { memoId: "memo-missing", title: null, notebookId: null },
+        ],
+        3: [{ memoId: "memo-missing", title: "", notebookId: "notebook-1" }],
+      });
+      const reads = requests.filter(([method]) => method === "memo.get");
+      expect(reads).toHaveLength(3);
+      expect(reads.every(([, params]) => params.includeDeleted === true)).toBe(true);
+      expect(JSON.stringify(details.memosByItemId)).not.toContain("Private body");
+      const diagnostics = createDesktopSyncDiagnosticText(details.items);
+      expect(diagnostics).not.toContain("Private draft title");
+      expect(diagnostics).not.toContain("Current title");
+      expect(diagnostics).not.toContain("memo-1");
+    } finally {
+      globalThis.window = previousWindow;
+    }
+  });
   test("stops retrying a missing memo update and keeps transient failures retryable", () => {
     expect(classifyDesktopSyncFailure(
       { kind: "memo.update" },

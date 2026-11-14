@@ -18,6 +18,7 @@ import {
   retryDesktopSyncIssue,
   uploadEverythingToServer,
   type DesktopGlobalSyncIssue,
+  type DesktopSyncIssueMemo,
   type DesktopMaintenanceProgress,
   type DesktopUploadAllResult,
 } from "@/lib/desktop-sync";
@@ -42,6 +43,7 @@ export const DesktopSyncIssuesDialog = ({
 }) => {
   const { i18n, t } = useTranslation();
   const [items, setItems] = useState<DesktopOutboxItem[]>([]);
+  const [memosByItemId, setMemosByItemId] = useState<Record<number, DesktopSyncIssueMemo[]>>({});
   const [globalIssue, setGlobalIssue] = useState<DesktopGlobalSyncIssue | null>(null);
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState<number | null>(null);
@@ -83,6 +85,16 @@ export const DesktopSyncIssuesDialog = ({
   });
 
   const availableNotebooks = notebooks;
+  const notebookPaths = useMemo(() => {
+    const byId = new Map(notebooks.map((notebook) => [notebook.id, notebook]));
+    return new Map(notebooks.map((notebook) => {
+      const names: string[] = [];
+      for (let current: Notebook | undefined = notebook; current; current = current.parentId ? byId.get(current.parentId) : undefined) {
+        names.unshift(current.name);
+      }
+      return [notebook.id, names.join(" / ")];
+    }));
+  }, [notebooks]);
   const dateTimeFormatter = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "medium" }),
     [i18n.language],
@@ -119,6 +131,7 @@ export const DesktopSyncIssuesDialog = ({
     try {
       const details = await getDesktopSyncIssues();
       setItems(details.items);
+      setMemosByItemId(details.memosByItemId);
       setGlobalIssue(details.globalIssue);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -247,8 +260,20 @@ export const DesktopSyncIssuesDialog = ({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="text-sm font-semibold text-slate-900">{t(operationLabelKey(item.kind), { defaultValue: item.kind })}</span>
+                        {item.status === "conflict" ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">{t("notebookPane.syncDetails.conflict")}</span> : null}
                         <span className="text-xs text-slate-500">{t("notebookPane.syncDetails.attempts", { count: item.attemptCount })}</span>
                       </div>
+                      {memosByItemId[item.id]?.length ? (
+                        <ul className="mt-3 space-y-2" aria-label={t("notebookPane.syncDetails.affectedMemos")}>
+                          {memosByItemId[item.id].map((memo) => (
+                            <li key={memo.memoId} className="rounded-md border border-amber-200/70 bg-white/60 px-3 py-2">
+                              <p className="whitespace-pre-wrap break-words text-sm font-semibold text-slate-900">{memo.title === null ? t("notebookPane.syncDetails.unavailableMemo") : memo.title.trim() || t("common.untitledMemo")}</p>
+                              {memo.notebookId ? <p className="mt-1 break-words text-xs text-slate-600">{t("notebookPane.syncDetails.notebookPath", { path: notebookPaths.get(memo.notebookId) ?? memo.notebookId })}</p> : null}
+                              <p className="mt-1 break-all text-xs text-slate-500 select-text">{t("notebookPane.syncDetails.memoId", { id: memo.memoId })}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                       <p className="mt-1 break-words text-sm text-amber-900">{item.lastError || t("notebookPane.syncDetails.unknownError")}</p>
                       {item.lastErrorCode ? <p className="mt-1 text-xs text-slate-500">{t("notebookPane.syncDetails.errorCode", { code: item.lastErrorCode })}</p> : null}
                       {lastAttemptAt ? <p className="mt-1 text-xs text-slate-500">{t("notebookPane.syncDetails.lastAttempt", { time: lastAttemptAt })}</p> : null}
