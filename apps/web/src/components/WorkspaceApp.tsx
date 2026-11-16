@@ -3277,6 +3277,37 @@ export const WorkspaceApp = ({
   }, [handleWorkspaceBackRequest]);
 
   useEffect(() => {
+    const transientLayerOpen = Boolean(
+      appNoticeDialog ||
+        pendingCatalogTrustPluginIds.length > 0 ||
+        memoDeleteConfirmation ||
+        emptyTrashConfirmationOpen ||
+        mobileNotebookPickerOpen ||
+        notebookDeleteConfirmation ||
+        notebookNameDialog ||
+        templatesOpen ||
+        quickSwitcherOpen
+    );
+
+    const handleSaveShortcutCapture = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const action = getShortcutActionForEvent(event, shortcutSettings);
+      const targetElement = event.target instanceof Element ? event.target : null;
+      const isEditorSaveKey = (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && event.key.toLowerCase() === "s"
+        && Boolean(targetElement?.closest(".edgeever-editor[data-editor-theme]"));
+      if (action !== "saveAndSync" && (!isEditorSaveKey || action)) return;
+
+      // Embedded editor inputs may stop propagation before workspace shortcuts run.
+      event.preventDefault();
+      if (
+        action !== "saveAndSync" || event.repeat || event.isComposing ||
+        transientLayerOpen || rightView !== "editor" || !selectedMemoId || memoView === "trash"
+      ) return;
+      setNoteSaveAndSyncToken((value) => value + 1);
+    };
+
     const handleWorkspaceShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
@@ -3303,22 +3334,11 @@ export const WorkspaceApp = ({
       const targetElement = event.target instanceof Element ? event.target : null;
       const isEditorTextTarget = Boolean(targetElement?.closest(".ProseMirror"));
 
-      const transientLayerOpen = Boolean(
-        appNoticeDialog ||
-          pendingCatalogTrustPluginIds.length > 0 ||
-          (rightView !== "editor" && action !== "openSearchDialog") ||
-          memoDeleteConfirmation ||
-          emptyTrashConfirmationOpen ||
-          mobileNotebookPickerOpen ||
-          notebookDeleteConfirmation ||
-          notebookNameDialog ||
-          templatesOpen ||
-          quickSwitcherOpen
-      );
+      const shortcutLayerBlocked = transientLayerOpen
+        || (rightView !== "editor" && action !== "openSearchDialog");
 
       if (
         action === "openAiAssistant"
-        || action === "saveAndSync"
         || action === "toggleReadingProtection"
         || action === "toggleEditorMode"
         || action === "toggleOutline"
@@ -3329,14 +3349,12 @@ export const WorkspaceApp = ({
         // workspace even when the current editor cannot perform the action.
         event.preventDefault();
 
-        if (transientLayerOpen || !selectedMemoId || memoView === "trash") {
+        if (shortcutLayerBlocked || !selectedMemoId || memoView === "trash") {
           return;
         }
 
         if (action === "openAiAssistant") {
           setNoteAiAssistantOpenToken((value) => value + 1);
-        } else if (action === "saveAndSync") {
-          setNoteSaveAndSyncToken((value) => value + 1);
         } else if (action === "toggleReadingProtection") {
           setNoteReadingProtectionToggleToken((value) => value + 1);
         } else if (action === "toggleEditorMode") {
@@ -3358,7 +3376,7 @@ export const WorkspaceApp = ({
         return;
       }
 
-      if (transientLayerOpen) {
+      if (shortcutLayerBlocked) {
         return;
       }
 
@@ -3410,8 +3428,12 @@ export const WorkspaceApp = ({
       }
     };
 
+    window.addEventListener("keydown", handleSaveShortcutCapture, true);
     window.addEventListener("keydown", handleWorkspaceShortcut);
-    return () => window.removeEventListener("keydown", handleWorkspaceShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleSaveShortcutCapture, true);
+      window.removeEventListener("keydown", handleWorkspaceShortcut);
+    };
   }, [
     rightView,
     appNoticeDialog,
