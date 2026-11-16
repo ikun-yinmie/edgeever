@@ -827,6 +827,7 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
   if (item.kind === "memo.create") {
     const payload = item.payload as MemoCreateSyncPayload;
     const data = await api.createMemo({
+      creationId: payload.temporaryId,
       notebookId: payload.notebookId,
       title: payload.title,
       contentJson: payload.contentJson,

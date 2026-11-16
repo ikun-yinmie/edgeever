@@ -310,6 +310,7 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
     : rewrittenPayload;
   if (item.kind === "memo.create") {
     const data = await api.createMemo({
+      creationId: item.entityId,
       notebookId: String(payload.notebookId),
       title: String(payload.title ?? ""),
       contentMarkdown: typeof payload.contentMarkdown === "string" ? payload.contentMarkdown : undefined,

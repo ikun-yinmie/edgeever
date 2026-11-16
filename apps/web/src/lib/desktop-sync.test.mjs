@@ -411,6 +411,24 @@ describe("desktop batch outbox sync", () => {
     }
   };
 
+  test("keeps a stable creation key when retrying after a lost response", withSidecar(async () => {
+    const original = api.createMemo;
+    const keys = [];
+    api.createMemo = async (payload) => {
+      keys.push(payload.creationId);
+      if (keys.length === 1) throw new TypeError("Response lost");
+      return { memo: { id: "memo_remote_once" } };
+    };
+    const item = { id: 20, kind: "memo.create", entityId: "memo_local_once", payload: { notebookId: "nb_1", title: "" }, version: 1, attemptCount: 0 };
+    try {
+      await expect(syncOutboxItem(item, [])).rejects.toThrow("Response lost");
+      expect(await syncOutboxItem({ ...item, attemptCount: 1 }, [])).toEqual({ id: "memo_remote_once" });
+      expect(keys).toEqual(["memo_local_once", "memo_local_once"]);
+    } finally {
+      api.createMemo = original;
+    }
+  }));
+
   test("moves what it can when the batch carries a temporary id the server never saw", withSidecar(async () => {
     const originalMoveMemos = api.moveMemos;
     const calls = [];

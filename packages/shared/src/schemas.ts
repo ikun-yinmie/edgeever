@@ -26,6 +26,7 @@ export const NotebookUpdateSchema = z.object({
 });
 
 export const MemoCreateSchema = z.object({
+  creationId: z.string().trim().min(1).max(160).optional(),
   notebookId: z.string().trim().min(1),
   title: z.string().trim().max(160).optional(),
   contentJson: z.unknown().optional(),

@@ -37,6 +37,7 @@ type MemoRouteDependencies = {
     database: DatabaseAdapter,
     workspaceId: string,
     input: {
+      creationId?: string;
       notebookId: string;
       title?: string;
       contentMarkdown?: string;

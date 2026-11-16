@@ -1833,6 +1833,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     },
 
     createMemo: (payload: {
+      creationId?: string;
       notebookId: string;
       title?: string;
       contentJson?: TiptapDoc;

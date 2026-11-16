@@ -137,6 +137,24 @@ describe("memo route contracts", () => {
     expect(await response.json()).toMatchObject({ memo: { id: "memo_created" } });
   });
 
+  test("passes a bounded creation key to the service and rejects invalid keys", async () => {
+    let received;
+    const app = createApp(createDependencies({ createMemo: async (_db, _scope, input) => {
+      received = input;
+      return { id: "memo_created" };
+    } }));
+    const post = (creationId) => app.request("/api/v1/memos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notebookId: "nb_1", creationId }),
+    }, environment);
+    expect((await post(" local_once ")).status).toBe(201);
+    expect(received.creationId).toBe("local_once");
+    for (const key of ["", "  ", "x".repeat(161), 42]) {
+      expect((await post(key)).status).toBe(400);
+    }
+  });
+
   test("enforces read scope before loading a memo", async () => {
     let called = false;
     const dependencies = createDependencies({

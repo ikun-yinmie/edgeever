@@ -30,6 +30,27 @@ afterEach(async () => {
 });
 
 describe("web sync conflict recovery", () => {
+  test("reuses the local creation id after a response is lost", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const local = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, { temporaryId: local.id, notebookId: local.notebookId, title: "", contentMarkdown: "", tags: [] });
+    const original = api.createMemo;
+    const keys = [];
+    api.createMemo = async (payload) => {
+      keys.push(payload.creationId);
+      if (keys.length === 1) throw new TypeError("Response lost");
+      return { memo: { ...local, id: "memo_remote_once" } };
+    };
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ failed: 1 });
+      await localDb.syncQueue.update(getMemoCreateQueueId(local.id), { nextAttemptAt: "2000-01-01T00:00:00.000Z" });
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1 });
+      expect(keys).toEqual([local.id, local.id]);
+      expect(await localDb.syncQueue.get(getMemoCreateQueueId(local.id))).toBeUndefined();
+    } finally {
+      api.createMemo = original;
+    }
+  });
   test("preserves a newer draft written while a memo update is in flight", async () => {
     const previousOnline = globalThis.navigator?.onLine;
     if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });

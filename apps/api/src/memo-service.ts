@@ -957,13 +957,27 @@ export const mergeMemosRecord = async (
   return memo;
 };
 
+const getCreatedMemo = async (db: DatabaseAdapter, workspaceId: string, creationId: string) => {
+  const request = await db.prepare(
+    "SELECT memo_id FROM memo_create_requests WHERE workspace_id = ? AND creation_id = ?",
+  ).bind(workspaceId, creationId).first<{ memo_id: string }>();
+  if (!request) return null;
+  const memo = await getMemoDetail(db, workspaceId, request.memo_id, true);
+  if (!memo) throw new AppError("memo_creation_deleted", "This creation request belongs to a permanently deleted memo.", 409);
+  return memo;
+};
+
 export const createMemoRecord = async (
   db: DatabaseAdapter,
   workspaceId: string,
-  input: { notebookId: string; title?: string; contentJson?: unknown; contentMarkdown?: string; tags?: string[]; createdAt?: string; updatedAt?: string },
+  input: { creationId?: string; notebookId: string; title?: string; contentJson?: unknown; contentMarkdown?: string; tags?: string[]; createdAt?: string; updatedAt?: string },
   actor: { actorType: "user" | "agent"; actorId: string | null },
   actorLabel: string
 ): Promise<MemoDetail> => {
+  if (input.creationId) {
+    const existing = await getCreatedMemo(db, workspaceId, input.creationId);
+    if (existing) return existing;
+  }
   const tags = normalizeTags(input.tags);
   const contentMarkdown = input.contentMarkdown ?? "";
   const contentJson = input.contentJson && typeof input.contentJson === "object"
@@ -978,7 +992,10 @@ export const createMemoRecord = async (
   const createdAt = input.createdAt ?? now;
   const updatedAt = input.updatedAt ?? now;
 
-  await db.batch([
+  const statements = [
+    ...(input.creationId ? [db.prepare(
+      "INSERT INTO memo_create_requests (workspace_id, creation_id, memo_id, created_at) VALUES (?, ?, ?, ?)",
+    ).bind(workspaceId, input.creationId, id, now)] : []),
     db
       .prepare(
         `INSERT INTO memos (
@@ -997,7 +1014,17 @@ export const createMemoRecord = async (
     auditStatement(db, actor.actorType, actor.actorId, "memo.create", "memo", id, {
       notebookId: input.notebookId,
     }),
-  ]);
+  ];
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    // A competing retry may have committed the same request while this batch was waiting.
+    if (input.creationId) {
+      const existing = await getCreatedMemo(db, workspaceId, input.creationId);
+      if (existing) return existing;
+    }
+    throw error;
+  }
 
   const memo = await getMemoDetail(db, workspaceId, id);
 
