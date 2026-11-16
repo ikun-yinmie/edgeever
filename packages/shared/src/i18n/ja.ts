@@ -2,6 +2,15 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 
 // Shared by the PWA and native mobile clients.
 export const ja = {
+  memoTasks: {
+    title: "タスク一覧", inNote: "本文のタスク", all: "すべて", pending: "未着手", doing: "進行中", done: "完了", rejected: "取り消し",
+    description: "原文と階層を保ったまま、ノート内のタスクをまとめて確認できます。", rule: "親が未チェック・未取り消しで、子孫に完了または取り消しの項目がある場合、進行中と自動判定します。",
+    automatic: "自動", search: "タスクやノートを検索…", allNotebooks: "すべてのノートブック", loading: "ノート内のタスクを読み込み中…", loadFailed: "読み込めませんでした。再試行してください。",
+    empty: "一致するタスクがありません", emptyHint: "キーワードを変えるか、絞り込みを解除してください。", clear: "絞り込みを解除", refresh: "更新", total: "{{count}} 件のタスク · 子項目を含む、重複なし",
+    progress: "子項目：完了 {{done}} · 取り消し {{rejected}} · 未チェック {{pending}}", locate: "原文へ", preview: "原文プレビュー", selectPreview: "タスクを選択して原文と子項目を確認してください。",
+    expand: "{{name}} を展開", collapse: "{{name}} を折りたたむ", change: "{{name}}：{{status}}、マークを変更", clearMark: "未チェック / マークを解除", markHint: "進行中は子項目から自動判定します。親のマークを解除しても子項目は変わりません。",
+    changed: "内容が変更されました。更新するか原文を開いて操作してください。", draft: "未保存の下書きがあります。原文を開いてタスクを変更してください。", saveFailed: "保存できませんでした。再試行してください。", returnNote: "本文へ戻る", noteDescription: "{{name}} · 本文のタスクのみ", close: "タスクを閉じる", saving: "保存中…",
+  },
   companion: {
     learning: { rule: { move: "「{{tag}}」タグのノートは、たいてい「{{notebook}}」に整理しています。", tag: "「{{notebook}}」のノートには、よく「{{tag}}」を付けています。" }, "basedOn": "参照した記憶", "help": "学習をオンにすると、今後の整理やタグ付けから好みを蓄積し、提案の精度を高めます。学習を一時停止しても記憶は残ります。記憶の使用を止めると、チャットと発見のどちらでも参照されません。関連する記憶は、選んだノートとともにデフォルトモデルへ送信されます。", "learningEnabled": "操作から学習する", "useMemory": "保存した記憶を使う", "active": "繰り返しの操作から推測 · 有効", "candidate": "候補の好み · まだ未使用", "conflicted": "根拠不足または矛盾 · 一時停止", "evidence": "根拠となった操作を見る", "feedback": "この整理の提案をやめる", "feedbackHelp": "これらのノートブックに対する好みを記憶します。個人記憶で訂正または削除できます。"},
     discovery: {

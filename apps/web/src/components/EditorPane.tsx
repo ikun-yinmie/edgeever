@@ -38,6 +38,7 @@ import {
   UsersRound,
   CloudOff,
   RefreshCw,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
@@ -72,6 +73,8 @@ import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
 import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import { readEditorCursor, writeEditorCursor } from "@/lib/editor-cursor-memory";
 import { EditorOutline } from "./EditorOutline";
+import { MemoTasksDialog } from "./dialogs/MemoTasksDialog";
+import { collectMemoTasks, memoTaskAttributes, updateMemoTaskDocument, type MemoTask, type MemoTaskMark } from "@/lib/memo-tasks";
 import { MobileOutlineSheet } from "./MobileOutlineSheet";
 import { ScrollToEdgeButtons } from "./ScrollToEdgeButtons";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
@@ -407,6 +410,7 @@ type EditorPaneProps = {
   pluginNavigationRequest?: { id: number; noteId: string; search: string } | null;
   onOpenExecutionCenter: () => void;
   onRevealNotebook?: () => void;
+  taskNavigationRequest?: { id: number; memoId: string; path: number[]; text: string } | null;
 };
 
 type RichEditorPaneProps = EditorPaneProps & {
@@ -487,6 +491,7 @@ const RichEditorPane = ({
   pluginNavigationRequest,
   onOpenExecutionCenter,
   onRevealNotebook,
+  taskNavigationRequest,
   onRequestMobileNativeEdit,
   sharedAccess,
   sharedDisplayPolicy = null,
@@ -504,6 +509,10 @@ const RichEditorPane = ({
   const isSelectionMode = Boolean(selectionActionBar);
   const [title, setTitle] = useState("");
   const [systemInfoOpen, setSystemInfoOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const tasksTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const taskNavigatingRef = useRef(false);
+  const handledTaskNavigationRef = useRef(0);
   const [tagsText, setTagsText] = useState("");
   const {
     dirtyVersion,
@@ -1566,6 +1575,7 @@ const RichEditorPane = ({
   ]);
 
   const {
+    applyMarkdownSourceToRichText,
     clearMarkdownSnapshot,
     handleMarkdownModeChange,
     hydrateMarkdownSource,
@@ -3130,6 +3140,94 @@ const RichEditorPane = ({
     markDirty();
   }, [markDirty]);
 
+  const noteTasks = useMemo(() => {
+    if (!tasksOpen || !memo || hydratedEditorMemoId !== memo.id) return [];
+    const doc = getCurrentContentJson();
+    return doc ? collectMemoTasks(doc, memo.id) : [];
+  }, [tasksOpen, memo?.id, hydratedEditorMemoId, getCurrentContentJson, editorContentVersion, dirtyVersion]);
+
+  const taskPosition = useCallback((task: MemoTask) => {
+    const current = editorRef.current;
+    if (!isEditorReady(current)) return null;
+    let node = current.state.doc;
+    let position = 0;
+    for (let depth = 0; depth < task.path.length; depth++) {
+      const index = task.path[depth];
+      if (index >= node.childCount) return null;
+      if (depth > 0) position++;
+      for (let sibling = 0; sibling < index; sibling++) position += node.child(sibling).nodeSize;
+      node = node.child(index);
+    }
+    return node.type.name === "taskItem" ? position : null;
+  }, []);
+
+  const changeNoteTaskMark = useCallback((task: MemoTask, mark: MemoTaskMark) => {
+    if (effectiveReadOnly || memoRef.current?.id !== task.memoId || hydratedMemoIdRef.current !== task.memoId) return;
+    const doc = getCurrentContentJson();
+    const updated = doc ? updateMemoTaskDocument(doc, task, mark) : null;
+    if (!updated) throw new Error(t("memoTasks.changed"));
+    if (useMobilePlainTextEditor) {
+      const markdown = docToMarkdown(updated);
+      setMobilePlainText(markdown);
+      setMobilePlainTextElementValue(mobileTextAreaRef.current, markdown);
+      void persistCurrentDraft(title, tagsText, markdown);
+      markDirty();
+    } else if (useMarkdownSourceEditor) {
+      const markdown = docToMarkdown(updated);
+      hydrateMarkdownSource(task.memoId, updated, markdown, { force: true });
+      handleMarkdownSourceChange(markdown);
+    } else {
+      const current = editorRef.current;
+      const position = taskPosition(task);
+      if (!isEditorReady(current) || position === null) throw new Error(t("memoTasks.changed"));
+      const node = current.state.doc.nodeAt(position)!;
+      current.view.dispatch(current.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, ...memoTaskAttributes(mark) }));
+    }
+  }, [effectiveReadOnly, getCurrentContentJson, handleMarkdownSourceChange, hydrateMarkdownSource, markDirty, persistCurrentDraft, t, tagsText, taskPosition, title, useMarkdownSourceEditor, useMobilePlainTextEditor]);
+
+  const navigateNoteTask = useCallback((task: MemoTask) => {
+    taskNavigatingRef.current = true;
+    setTasksOpen(false);
+    if (useMobilePlainTextEditor) {
+      const element = mobileTextAreaRef.current;
+      const from = getMobilePlainTextValue().indexOf(task.text);
+      if (element instanceof HTMLTextAreaElement && from >= 0) {
+        element.focus();
+        element.setSelectionRange(from, from + task.text.length);
+      }
+      return;
+    }
+    if (useMarkdownSourceEditor) applyMarkdownSourceToRichText(0);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      const current = editorRef.current;
+      const position = taskPosition(task);
+      if (!isEditorReady(current) || position === null || memoRef.current?.id !== task.memoId) return;
+      let tr = current.state.tr;
+      const resolved = current.state.doc.resolve(position + 1);
+      for (let depth = 1; depth <= resolved.depth; depth++) {
+        const ancestor = resolved.node(depth);
+        if (ancestor.attrs.collapsed === true) tr = tr.setNodeMarkup(resolved.before(depth), undefined, { ...ancestor.attrs, collapsed: false });
+      }
+      if (tr.docChanged) current.view.dispatch(tr);
+      const node = current.state.doc.nodeAt(position);
+      current.commands.setTextSelection({ from: position + 2, to: position + 2 + (node?.firstChild?.content.size ?? 0) });
+      current.commands.scrollIntoView();
+      current.view.dom.focus({ preventScroll: true });
+    }));
+  }, [applyMarkdownSourceToRichText, getMobilePlainTextValue, taskPosition, useMarkdownSourceEditor, useMobilePlainTextEditor]);
+
+  useEffect(() => {
+    const request = taskNavigationRequest;
+    if (!request || !memo || request.memoId !== memo.id || hydratedEditorMemoId !== memo.id || request.id === handledTaskNavigationRef.current) return;
+    const doc = getCurrentContentJson();
+    if (!doc) return;
+    const target = collectMemoTasks(doc, memo.id).find(task => task.path.join(".") === request.path.join(".") && task.text === request.text);
+    handledTaskNavigationRef.current = request.id;
+    if (target) navigateNoteTask(target);
+  }, [taskNavigationRequest, memo?.id, hydratedEditorMemoId, getCurrentContentJson, navigateNoteTask]);
+
+  useEffect(() => { setTasksOpen(false); }, [memo?.id]);
+
   const {
     confirmHtmlExport,
     htmlExportSource,
@@ -3480,6 +3578,7 @@ const RichEditorPane = ({
 
   const editorShortcutBlocked = Boolean(
     historyOpen ||
+      tasksOpen ||
       shareOpen ||
       aiAssistantOpen ||
       systemInfoOpen ||
@@ -4792,6 +4891,12 @@ const RichEditorPane = ({
             onClose={closeNoteSearch}
           />
         ) : null}
+        <div className="flex justify-end border-t px-4 py-1">
+          <Button ref={tasksTriggerRef} type="button" variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-emerald-700 dark:text-emerald-400" aria-haspopup="dialog" aria-expanded={tasksOpen} disabled={hydratedEditorMemoId !== memo.id} onClick={() => { taskNavigatingRef.current = false; setTasksOpen(true); }}>
+            <ListChecks className="h-4 w-4" />{t("memoTasks.inNote")}
+          </Button>
+        </div>
+        <MemoTasksDialog key={memo.id} open={tasksOpen} onOpenChange={open => { if (open) taskNavigatingRef.current = false; setTasksOpen(open); }} memoTitle={title || t("common.untitledMemo")} tasks={noteTasks} readOnly={effectiveReadOnly} onMark={changeNoteTaskMark} onNavigate={navigateNoteTask} triggerRef={tasksTriggerRef} navigatingRef={taskNavigatingRef} />
         {!effectiveReadOnly && (!isMobileViewport || (mobileToolbarOpen && !useMobilePlainTextEditor)) && (
           <EditorToolbar
             editor={editor}

@@ -2,6 +2,15 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 
 // Shared by the PWA and native mobile clients.
 export const zhCN = {
+  memoTasks: {
+    title: "待办总览", inNote: "本文待办", all: "全部", pending: "未进行", doing: "进行中", done: "已完成", rejected: "已叉掉",
+    description: "汇总笔记里的待办，保留原文与子级关系。", rule: "父项未勾选、未叉掉，但子级已有已完成或已叉掉的事项时，自动归入进行中。",
+    automatic: "自动", search: "搜索待办内容或笔记…", allNotebooks: "全部笔记本", loading: "正在读取笔记中的待办…", loadFailed: "待办读取失败，请重试。",
+    empty: "没有匹配的待办", emptyHint: "换个关键词，或清除筛选再看看。", clear: "清除筛选", refresh: "刷新", total: "{{count}} 项待办 · 含子级，不重复计数",
+    progress: "子级：{{done}} 已完成 · {{rejected}} 已叉掉 · {{pending}} 未勾选", locate: "定位原文", preview: "原文预览", selectPreview: "选择待办，查看原文与子级。",
+    expand: "展开 {{name}}", collapse: "收起 {{name}}", change: "{{name}}：{{status}}，更改标记", clearMark: "未勾选 / 清除标记", markHint: "进行中由子级自动判断；清除父项标记不会清除子级。",
+    changed: "内容已变化，请刷新后重试或打开原文操作。", draft: "这篇笔记有未保存的草稿，请打开原文修改待办。", saveFailed: "状态未保存，请重试。", returnNote: "返回文章", noteDescription: "{{name}} · 仅显示本文待办", close: "关闭待办", saving: "正在保存…",
+  },
   companion: {
     learning: { rule: { move: "你通常把带「{{tag}}」标签的笔记归入「{{notebook}}」。", tag: "你经常给「{{notebook}}」中的笔记添加「{{tag}}」标签。" }, "basedOn": "参考了这些记忆", "help": "开启学习后，猫爪会从之后的归档与标签选择中积累偏好，用于更相关的建议。暂停学习会保留记忆；停止使用后，对话和主动发现都不再参考记忆。相关记忆会随选中的笔记发送给默认模型。", "learningEnabled": "从操作中学习", "useMemory": "使用已保存的记忆", "active": "根据多次操作推测 · 已生效", "candidate": "候选偏好 · 尚未用于建议", "conflicted": "证据不足或存在冲突 · 暂停使用", "evidence": "查看操作依据", "feedback": "不再建议这种整理", "feedbackHelp": "会记住你对这些笔记本的整理偏好，可在个人记忆中纠正或忘记。"},
     discovery: {

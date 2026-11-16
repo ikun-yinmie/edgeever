@@ -2,6 +2,15 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 
 // Shared by the PWA and native mobile clients.
 export const enUS = {
+  memoTasks: {
+    title: "Task overview", inNote: "Tasks in this note", all: "All", pending: "Not started", doing: "In progress", done: "Completed", rejected: "Crossed out",
+    description: "Tasks across your notes, with their source and hierarchy intact.", rule: "An unmarked parent is in progress when any descendant is completed or crossed out.",
+    automatic: "Auto", search: "Search tasks or notes…", allNotebooks: "All notebooks", loading: "Reading tasks from notes…", loadFailed: "Could not load tasks. Please retry.",
+    empty: "No matching tasks", emptyHint: "Try another keyword or clear the filters.", clear: "Clear filters", refresh: "Refresh", total: "{{count}} tasks · descendants included, counted once",
+    progress: "Children: {{done}} completed · {{rejected}} crossed out · {{pending}} unchecked", locate: "Go to source", preview: "Source preview", selectPreview: "Select a task to see its source and children.",
+    expand: "Expand {{name}}", collapse: "Collapse {{name}}", change: "{{name}}: {{status}}, change mark", clearMark: "Unchecked / clear mark", markHint: "In progress is derived from children. Clearing a parent does not clear its children.",
+    changed: "Content changed. Refresh or open the source note to edit.", draft: "This note has an unsaved draft. Open the source note to change its tasks.", saveFailed: "The mark was not saved. Please retry.", returnNote: "Back to note", noteDescription: "{{name}} · tasks in this note only", close: "Close tasks", saving: "Saving…",
+  },
   companion: {
     learning: { rule: { move: "You usually file notes tagged “{{tag}}” in “{{notebook}}”.", tag: "You often add “{{tag}}” to notes in “{{notebook}}”." }, "basedOn": "Memories used", "help": "Learning uses future filing and tag choices to improve suggestions. Pausing learning keeps memories. Disabling memory use stops recall in both chat and discoveries. Relevant memories are sent with selected notes to your default model.", "learningEnabled": "Learn from my choices", "useMemory": "Use saved memories", "active": "Inferred from repeated choices · Active", "candidate": "Candidate preference · Not used yet", "conflicted": "Insufficient or conflicting evidence · Paused", "evidence": "View supporting choices", "feedback": "Stop suggesting this kind of organization", "feedbackHelp": "Remembers your preference for these notebooks. You can correct or forget it in personal memory."},
     discovery: {

@@ -39,6 +39,7 @@ import {
   Users,
   Share2,
   Link2,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -473,6 +474,8 @@ export const NotebookPane = ({
   onBackToList,
   onOpenRecent,
   recentActive,
+  onOpenTasks,
+  tasksActive = false,
   onOpenTags,
   onOpenAssets,
   onOpenTemplates,
@@ -522,6 +525,8 @@ export const NotebookPane = ({
   onBackToList: () => void;
   onOpenRecent: () => void;
   recentActive: boolean;
+  onOpenTasks: () => void;
+  tasksActive?: boolean;
   onOpenTags: () => void;
   onOpenAssets: () => void;
   onOpenTemplates: () => void;
@@ -969,11 +974,12 @@ export const NotebookPane = ({
             onClick={onOpenRecent}
           />
           <SidebarNavButton
-            active={!recentActive && view === "notebook" && selectedNotebookId === null}
+            active={!recentActive && !tasksActive && view === "notebook" && selectedNotebookId === null}
             icon={<LayoutList className="h-4 w-4" />}
             label={t("notebookPane.allMemos")}
             onClick={onBackToList}
           />
+          <SidebarNavButton active={tasksActive} icon={<ListChecks className="h-4 w-4" />} label={t("memoTasks.title")} onClick={onOpenTasks} />
           {demoMode && onResetDemo && (
             <SidebarNavButton
               tone="warning"
@@ -1294,11 +1300,12 @@ export const NotebookPane = ({
                 onClick={onOpenRecent}
               />
               <SidebarRailButton
-                active={!recentActive && view === "notebook" && selectedNotebookId === null}
+                active={!recentActive && !tasksActive && view === "notebook" && selectedNotebookId === null}
                 icon={<LayoutList className="h-4 w-4" />}
                 label={t("notebookPane.allMemos")}
                 onClick={onBackToList}
               />
+              <SidebarRailButton active={tasksActive} icon={<ListChecks className="h-4 w-4" />} label={t("memoTasks.title")} onClick={onOpenTasks} />
               <SidebarRailButton
                 active={view === "notebook" && selectedNotebookId !== null}
                 icon={<NotebookIcon className="h-4 w-4" />}

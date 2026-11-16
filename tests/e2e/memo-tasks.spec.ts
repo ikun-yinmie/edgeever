@@ -1,0 +1,83 @@
+import { expect, test } from "@playwright/test";
+
+const cross = "❌";
+
+test("task overview and in-note dialog derive progress and persist marks", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const { notebooks } = await (await page.request.get("/api/v1/notebooks")).json();
+  const title = `task-views-${Date.now()}`;
+  const created = await page.request.post("/api/v1/memos", { data: {
+    notebookId: notebooks[0].id, title,
+    contentMarkdown: `## Task section\n\n- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child\n  - [ ] Pending child\n- [ ] Untouched\n- [x] Completed root\n- [${cross}] Rejected root\n\nText outside tasks.`,
+  } });
+  expect(created.status()).toBe(201);
+  const { memo } = await created.json();
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: "全部笔记", exact: true }).click();
+    await page.locator(`[data-memo-id="${memo.id}"]`).locator("button").first().click();
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    const editor = page.locator(".ProseMirror").first();
+    await expect(editor).toContainText("Pending child");
+    const trigger = page.getByRole("button", { name: "本文待办", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "本文待办", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("全部笔记", { exact: true })).toHaveCount(0);
+    const parent = dialog.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await expect(parent).toBeVisible();
+    const group = dialog.locator('[data-task-group="doing"]');
+    expect(await group.evaluate(element => element.querySelector("[data-task-group-content]")!.getBoundingClientRect().left > element.querySelector("[data-task-group-label]")!.getBoundingClientRect().right)).toBe(true);
+    await dialog.getByRole("button", { name: "展开 Parent", exact: true }).click();
+    const pending = dialog.locator('[data-task-status="pending"]').filter({ has: page.getByText("Pending child", { exact: true }) }).first();
+    await pending.getByRole("button", { name: /更改标记/ }).click();
+    await page.getByRole("menuitem", { name: "已完成", exact: true }).click();
+    await expect(parent).toBeVisible();
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain("- [x] Pending child");
+    await page.screenshot({ path: test.info().outputPath("article-tasks-desktop.png") });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await dialog.locator('button[aria-pressed]').filter({ hasText: "已完成" }).click();
+    const doneChild = dialog.locator('[data-task-status="done"]').filter({ has: page.getByText("Pending child", { exact: true }) });
+    await doneChild.getByRole("button", { name: /定位原文/ }).click();
+    await expect(dialog).toBeHidden();
+    await expect(editor.locator("p").filter({ hasText: /^Pending child$/ })).toBeInViewport();
+
+    await page.getByRole("button", { name: "待办总览", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "待办总览", exact: true })).toBeVisible();
+    const overviewSearch = page.getByRole("textbox", { name: "搜索待办内容或笔记…" });
+    await overviewSearch.fill(title);
+    await expect(page.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("task-overview-desktop.png") });
+    const globalParent = page.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await globalParent.getByRole("button", { name: /更改标记/ }).click();
+    await page.getByRole("menuitem", { name: "已完成", exact: true }).click();
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain("- [x] Parent");
+    await overviewSearch.fill("No such task anywhere");
+    await expect(page.getByText("没有匹配的待办", { exact: true })).toBeVisible();
+    await overviewSearch.fill(title);
+    await page.locator('button[aria-pressed]').filter({ hasText: "已完成" }).click();
+    const completedParent = page.locator('[data-task-status="done"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await completedParent.getByRole("button", { name: /定位原文/ }).click();
+    await expect(editor).toContainText("Parent");
+    await expect(editor.locator('li[data-type="taskItem"]').first()).toHaveAttribute("data-checked", "true");
+    await page.reload();
+    await expect(editor).toContainText("Text outside tasks.");
+    await expect(editor.locator('li[data-type="taskItem"]').first()).toHaveAttribute("data-checked", "true");
+    await page.getByRole("radio", { name: "预览", exact: true }).click();
+    await page.getByRole("button", { name: "本文待办", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /更改标记/ }).first()).toBeDisabled();
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("article-tasks-mobile.png") });
+    expect(errors).toEqual([]);
+  } finally {
+    await page.request.delete(`/api/v1/memos/${memo.id}`);
+    await page.request.delete(`/api/v1/memos/${memo.id}?permanent=1`);
+  }
+});

@@ -133,7 +133,7 @@ describe("NotebookPane tree expansion", () => {
   });
 
   test("keeps the all-notes shortcut inactive while the recent-notes home is open", () => {
-    expect(source.match(/active=\{!recentActive && view === "notebook" && selectedNotebookId === null\}/g)?.length ?? 0).toBe(2);
+    expect(source.match(/active=\{!recentActive && !tasksActive && view === "notebook" && selectedNotebookId === null\}/g)?.length ?? 0).toBe(2);
   });
 
   test("keeps the tree scroll anchored while expanding unrelated branches", () => {

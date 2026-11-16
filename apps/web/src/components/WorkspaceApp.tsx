@@ -55,6 +55,7 @@ import {
   type MobileEditorReturnPreview,
 } from "@/lib/mobile-editor";
 import { cn } from "@/lib/utils";
+import type { MemoTask } from "@/lib/memo-tasks";
 import { isBrowserOffline, isBrowserOnline } from "@/lib/network-status";
 import { createDefaultDiagramDocument, diagramFallbackMarkdown, getNotebookDescendantIds, markdownToDoc, parseDiagramDocument, serializeDiagramDocument, type DiagramKind, type Notebook, type AuthUser, type MemberNotesMember, type MemoSummary, type MemoDetail, type MemoTemplate as SavedMemoTemplate } from "@edgeever/shared";
 import { toggleMobileMemoSelection } from "@edgeever/shared/mobile-ui";
@@ -163,6 +164,7 @@ import { findMatchingMemoResource } from "@/lib/staged-resource-repair";
 
 const EditorPane = lazyWithChunkRetry("EditorPane", () => import("./EditorPane").then((module) => ({ default: module.EditorPane })));
 const DiagramEditorPane = lazyWithChunkRetry("DiagramEditorPane", () => import("./DiagramEditorPane"));
+const MemoTasksPane = lazyWithChunkRetry("MemoTasksPane", () => import("./MemoTasksPane").then((module) => ({ default: module.MemoTasksPane })));
 const AssetsPane = lazyWithChunkRetry("AssetsPane", () => import("./AssetsPane").then((module) => ({ default: module.AssetsPane })));
 const SettingsPane = lazyWithChunkRetry("SettingsPane", () => import("./SettingsPane").then((module) => ({ default: module.SettingsPane })));
 const PluginMarketplacePane = lazyWithChunkRetry("PluginMarketplacePane", () => import("./PluginMarketplacePane").then((module) => ({ default: module.PluginMarketplacePane })));
@@ -633,7 +635,7 @@ export const WorkspaceApp = ({
     setNotebookSidebarWidth,
     shortcutSettings,
   } = useWorkspacePreferences();
-  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "recent" | "evernote-migration">(() =>
+  const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "recent" | "tasks" | "evernote-migration">(() =>
     isInitialSettingsRoute
       ? "settings"
       : isInitialPluginsRoute
@@ -686,6 +688,7 @@ export const WorkspaceApp = ({
   const [noteReadingProtectionToggleToken, setNoteReadingProtectionToggleToken] = useState(0);
   const [noteEditorModeToggleToken, setNoteEditorModeToggleToken] = useState(0);
   const [noteOutlineToggleToken, setNoteOutlineToggleToken] = useState(0);
+  const [taskNavigationRequest, setTaskNavigationRequest] = useState<{ id: number; memoId: string; path: number[]; text: string } | null>(null);
   const [search, setSearch] = useState("");
   const [memoFilterMode, setMemoFilterMode] = useState<MemoFilterMode>("all");
   const [memoSortMode, setMemoSortMode] = useState<MemoSortMode>("updated-desc");
@@ -2899,6 +2902,32 @@ export const WorkspaceApp = ({
     }
   };
 
+  const handleOpenTasks = () => {
+    clearHiddenMobileSearch();
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    clearMemoSelection();
+    setRightView("tasks");
+    setActivePane("editor");
+  };
+
+  const handleNavigateTask = (memo: MemoDetail, task: MemoTask) => {
+    pendingQuickSwitcherMemoIdRef.current = memo.id;
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setSelectedTag(null);
+    setSelectedNotebookId(memo.notebookId);
+    setSearch("");
+    setMemoFilterMode("all");
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setTaskNavigationRequest({ id: Date.now(), memoId: memo.id, path: task.path, text: task.text });
+    setSelectedMemoId(memo.id);
+    setRightView("editor");
+    setActivePane("editor");
+  };
+
   const handleOpenAssets = () => {
     clearHiddenMobileSearch();
     skipNextHomeRouteSyncRef.current = route.pathname !== "/";
@@ -3197,6 +3226,11 @@ export const WorkspaceApp = ({
 
     if (rightView === "tags") {
       handleCloseAssets();
+      return true;
+    }
+
+    if (rightView === "tasks") {
+      handleSelectAllMemos();
       return true;
     }
 
@@ -3694,6 +3728,8 @@ export const WorkspaceApp = ({
                   onBackToList={handleSelectAllMemos}
                   onOpenRecent={handleOpenRecentMemos}
                   recentActive={rightView === "recent"}
+                  onOpenTasks={handleOpenTasks}
+                  tasksActive={rightView === "tasks"}
                   onLogout={onLogout}
                   onOpenAdmin={handleOpenAdminConsole}
                   onOpenShared={handleOpenShared}
@@ -3984,6 +4020,19 @@ export const WorkspaceApp = ({
                     <ExecutionCenterPane currentDeviceId={scheduledTaskDeviceId} onClose={handleCloseExecutionCenter} />
                   ) : rightView === "evernote-migration" ? (
                     <EvernoteImportGuidePane onClose={() => setRightView("settings")} onOpenExecutionCenter={handleOpenExecutionCenter} />
+                  ) : rightView === "tasks" ? (
+                    <MemoTasksPane
+                      repository={repository}
+                      scope={localDataScope}
+                      notebooks={notebooks}
+                      onClose={handleSelectAllMemos}
+                      onNavigate={handleNavigateTask}
+                      onSaved={(memo) => {
+                        cacheMemoDetail(queryClient, memo, "notebook");
+                        updateMemoSummaryInLists(queryClient, memoToSummary(memo));
+                        void queryClient.invalidateQueries({ queryKey: ["memos"], refetchType: "inactive" });
+                      }}
+                    />
                   ) : rightView === "recent" ? (
                     <RecentMemosHome
                       repository={repository}
@@ -4075,6 +4124,7 @@ export const WorkspaceApp = ({
                       repository={repository}
                       pluginHost={pluginHost}
                       pluginNavigationRequest={pluginNavigationRequest}
+                      taskNavigationRequest={taskNavigationRequest}
                     onOpenAiPrompts={handleOpenAiPrompts}
                     companionAvailable={authRequired && Boolean(user) && !demoMode}
                     beforeCompanionApply={async () => {
