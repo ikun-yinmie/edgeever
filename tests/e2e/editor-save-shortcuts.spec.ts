@@ -54,7 +54,7 @@ test("save modifiers are consumed in body and source without blocking selected-t
     await page.keyboard.press("Control+f");
     await expect(page.getByPlaceholder("在当前笔记内搜索", { exact: true })).toHaveValue("Search");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "切换到 Markdown 模式", exact: true }).click();
+    await page.getByRole("button", { name: "切换到 Markdown 源码", exact: true }).click();
     const source = page.locator(".cm-content");
     await source.click();
     expect(await dispatchShortcut(source)).toBe(true);

@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { Check, ChevronRight, FileText, ListChecks, Minus, Search, X, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { MemoTask, MemoTaskMark, MemoTaskStatus } from "@/lib/memo-tasks";
@@ -74,11 +73,11 @@ export const MemoTasksView = ({ tasks, memoTitles, readOnly = false, onMark, onN
             </button>
           ) : <span className={cn("w-6 shrink-0", nested && "hidden")} />}
           <DropdownMenu>
-            <Tooltip><TooltipTrigger asChild><DropdownMenuTrigger asChild>
-              <button type="button" className="flex h-8 w-8 shrink-0 items-center justify-center rounded disabled:cursor-default disabled:opacity-60" disabled={readOnly || pending} aria-label={t("memoTasks.change", { name: task.text, status: t(`memoTasks.${task.status}`) })}>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="flex h-8 w-8 shrink-0 items-center justify-center rounded disabled:cursor-default disabled:opacity-60" disabled={readOnly || pending} title={t(`memoTasks.${task.status}`)} aria-label={t("memoTasks.change", { name: task.text, status: t(`memoTasks.${task.status}`) })}>
                 <MemoTaskStatusIcon status={task.status} />
               </button>
-            </DropdownMenuTrigger></TooltipTrigger><TooltipContent>{t(`memoTasks.${task.status}`)}</TooltipContent></Tooltip>
+            </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
               <DropdownMenuLabel className="text-xs">{t("memoTasks.inNote")}</DropdownMenuLabel>
               {(["pending", "done", "rejected"] as MemoTaskMark[]).map(mark => <DropdownMenuItem key={mark} onSelect={() => void changeMark(task, mark)} className="gap-2"><MemoTaskStatusIcon status={mark} />{t(mark === "pending" ? "memoTasks.clearMark" : `memoTasks.${mark}`)}</DropdownMenuItem>)}
@@ -92,7 +91,7 @@ export const MemoTasksView = ({ tasks, memoTitles, readOnly = false, onMark, onN
             </span>
           </button>
           {task.status === "doing" && <span className="hidden rounded border px-1 text-[10px] text-slate-500 sm:inline">{t("memoTasks.automatic")}</span>}
-          <Tooltip><TooltipTrigger asChild><button type="button" aria-label={t("memoTasks.locate") + " · " + task.text} className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-emerald-700 opacity-80 hover:bg-emerald-50 group-focus-within:opacity-100 group-hover:opacity-100 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => onNavigate(task)}><ArrowUpRight className="h-4 w-4" /></button></TooltipTrigger><TooltipContent>{t("memoTasks.locate")}</TooltipContent></Tooltip>
+          <button type="button" title={t("memoTasks.locate")} aria-label={t("memoTasks.locate") + " · " + task.text} className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-emerald-700 opacity-80 hover:bg-emerald-50 group-focus-within:opacity-100 group-hover:opacity-100 dark:text-emerald-400 dark:hover:bg-emerald-950" onClick={() => onNavigate(task)}><ArrowUpRight className="h-4 w-4" /></button>
         </div>
         {hierarchical && isExpanded && cs.length > 0 && <div className="mb-2 ml-8 border-l border-slate-200 pl-2 dark:border-slate-700">{cs.map(child => row(child, true))}</div>}
       </div>
