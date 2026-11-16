@@ -1,17 +1,20 @@
 {
-  "version": "1.103.23",
+  "version": "1.103.24",
   "changes": {
     "en-US": [
-      "Exported HTML notes are now interactive offline: code blocks gain copy and a rendered preview for HTML, Markdown and Mermaid, and images open in a full-size viewer. HTML previews run sandboxed so exported scripts never execute.",
-      "Typing Chinese or Japanese into a task item no longer splits the item or moves the caret when an IME candidate is confirmed."
+      "Searches now open in a dedicated dialog: Ctrl+Shift+F searches all notes and Ctrl+Shift+K searches the current notebook, with a scope toggle, notebook names, pagination and inline retry.",
+      "Creating a note is now idempotent: retrying after a lost response returns the existing note instead of leaving empty duplicates, and a deleted note is never recreated.",
+      "A newly created note keeps its title, content, tab and cursor focus while its temporary id is replaced by the server id."
     ],
     "zh-CN": [
-      "导出的 HTML 笔记现在可以离线交互：代码块支持复制，HTML/Markdown/Mermaid 可切换渲染预览，图片可点开查看大图。HTML 预览在沙箱中运行，导出内容里的脚本不会执行。",
-      "在待办项中用输入法输入中文或日文时，确认候选词不再拆开待办项或移动光标。"
+      "搜索改为独立弹窗：Ctrl+Shift+F 搜索全部笔记，Ctrl+Shift+K 搜索当前分类；支持范围切换、显示所属分类、分页加载和失败重试。",
+      "新建笔记支持幂等重试：响应丢失后重试会返回已创建的笔记，不再产生空白的重复笔记；已删除的笔记不会被重新创建。",
+      "新建笔记在临时 ID 替换为服务器 ID 期间，标题、正文、页签和光标焦点都会保留。"
     ],
     "ja": [
-      "書き出した HTML ノートがオフラインで操作できるようになりました。コードブロックはコピーと、HTML・Markdown・Mermaid のレンダリングプレビューに対応し、画像は拡大表示できます。HTML プレビューはサンドボックス内で動作するため、書き出した内容のスクリプトは実行されません。",
-      "タスク項目で日本語や中国語を入力する際、IME の候補を確定しても項目が分割されたりカーソルが移動したりしなくなりました。"
+      "検索が専用ダイアログに変わりました。Ctrl+Shift+F で全ノート、Ctrl+Shift+K で現在のノートブックを検索でき、範囲の切り替え・所属ノートブック表示・ページ送り・失敗時の再試行に対応します。",
+      "ノート作成が冪等になりました。応答が失われて再試行しても既存のノートが返り、空の重複ノートは作られません。削除済みのノートが復活することもありません。",
+      "新規ノートの一時 ID がサーバー ID に置き換わる間も、タイトル・本文・タブ・カーソル位置が保持されます。"
     ]
   }
 }
