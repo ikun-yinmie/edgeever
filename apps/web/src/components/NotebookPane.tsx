@@ -487,6 +487,7 @@ export const NotebookPane = ({
   activeMemberNotesUserId,
   onOpenMemberNotes,
   onCreateMemo,
+  onSearchMemos,
   onCreateMemoInNotebook,
   canCreateMemo,
   isCreatingMemo,
@@ -535,6 +536,7 @@ export const NotebookPane = ({
   activeMemberNotesUserId?: string | null;
   onOpenMemberNotes?: (member: MemberNotesMember) => void;
   onCreateMemo: (kind?: DiagramKind) => void;
+  onSearchMemos: () => void;
   onCreateMemoInNotebook?: (notebookId: string, kind?: DiagramKind) => void;
   canCreateMemo: boolean;
   isCreatingMemo: boolean;
@@ -887,39 +889,50 @@ export const NotebookPane = ({
       )}
 
       <div className="hidden shrink-0 px-3 pb-2 pt-2 lg:block">
-        <div className="edgeever-create-memo-split flex h-10 items-center rounded-full bg-emerald-100 pr-1 text-emerald-700">
+        <div className="edgeever-create-memo-split flex h-10 items-center gap-2">
+          <div className="flex h-full min-w-0 flex-[3] items-center rounded-full bg-emerald-100 text-emerald-700">
+            <button
+              className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-l-full pl-3 pr-0.5 text-left text-sm font-medium transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              aria-label={t("notebookPane.newMemo")}
+              onClick={() => onCreateMemo()}
+              disabled={!canCreateMemo || isCreatingMemo}
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{t("notebookPane.newMemo")}</span>
+            </button>
+            <DropdownMenu>
+              <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="flex h-full w-6 shrink-0 items-center justify-center rounded-r-full transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 data-[state=open]:bg-emerald-200/60 disabled:cursor-not-allowed disabled:opacity-50"
+                        type="button"
+                        aria-label={t("diagram.createType")}
+                        disabled={!canCreateMemo || isCreatingMemo}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      </button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t("diagram.moreTypes")}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <DropdownMenuContent align="start" sideOffset={8} className="w-52">
+                <CreateMemoTypeItems onCreateMemo={onCreateMemo} />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <button
-            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-full pl-3.5 pr-2 text-left text-sm font-medium transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
             type="button"
-            aria-label={t("notebookPane.newMemo")}
-            onClick={() => onCreateMemo()}
-            disabled={!canCreateMemo || isCreatingMemo}
+            aria-label={t("memoSearch.title")}
+            onClick={onSearchMemos}
+            className="flex h-full min-w-0 flex-[2] items-center justify-center gap-1.5 rounded-full bg-slate-100 px-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
           >
-            <Plus className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{t("notebookPane.newMemo")}</span>
+            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{t("memoSearch.button")}</span>
           </button>
-          <DropdownMenu>
-            <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="flex h-full w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 data-[state=open]:bg-emerald-200/60 disabled:cursor-not-allowed disabled:opacity-50"
-                      type="button"
-                      aria-label={t("diagram.createType")}
-                      disabled={!canCreateMemo || isCreatingMemo}
-                    >
-                      <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    </button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{t("diagram.moreTypes")}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <DropdownMenuContent align="start" sideOffset={8} className="w-52">
-              <CreateMemoTypeItems onCreateMemo={onCreateMemo} />
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
@@ -1267,6 +1280,11 @@ export const NotebookPane = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            <SidebarRailButton
+              icon={<Search className="h-4 w-4" />}
+              label={t("memoSearch.title")}
+              onClick={onSearchMemos}
+            />
 
             <nav className="mt-3 flex min-h-0 flex-1 flex-col items-center gap-1" aria-label={t("notebookPane.entries")}>
               <SidebarRailButton

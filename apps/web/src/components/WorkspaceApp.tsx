@@ -657,6 +657,8 @@ export const WorkspaceApp = ({
   const [mobileSearchFocusToken, setMobileSearchFocusToken] = useState(0);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [quickSwitcherQuery, setQuickSwitcherQuery] = useState("");
+  const [quickSwitcherMode, setQuickSwitcherMode] = useState<"switcher" | "search">("switcher");
+  const [quickSwitcherInitialScope, setQuickSwitcherInitialScope] = useState<"notebook" | "all">("all");
   const [noteSearchFocusToken, setNoteSearchFocusToken] = useState(0);
   const [noteReplaceFocusToken, setNoteReplaceFocusToken] = useState(0);
   const [noteAiAssistantOpenToken, setNoteAiAssistantOpenToken] = useState(0);
@@ -848,6 +850,7 @@ export const WorkspaceApp = ({
       mobileMoveOpen ||
       mobileMoreOpen ||
       mobileSearchActive ||
+      quickSwitcherOpen ||
       templatesOpen ||
       memoSelectionModeActive ||
       // A routed workspace uses browser history, not a synthetic modal back layer.
@@ -2759,7 +2762,18 @@ export const WorkspaceApp = ({
     setMobileSearchFocusToken((value) => value + 1);
   }, []);
 
+  const handleOpenMemoSearch = useCallback((scope: "notebook" | "all" = "notebook") => {
+    setQuickSwitcherMode("search");
+    setQuickSwitcherInitialScope(scope === "notebook" && selectedNotebookId ? "notebook" : "all");
+    setQuickSwitcherQuery("");
+    setQuickSwitcherOpen(true);
+  }, [selectedNotebookId]);
+
   const handleGlobalSearch = useCallback(() => {
+    if (isDesktopViewport()) {
+      handleOpenMemoSearch("all");
+      return;
+    }
     navigateWorkspaceHome();
     setMemoView("notebook");
     setSelectedTag(null);
@@ -2771,7 +2785,7 @@ export const WorkspaceApp = ({
     setSelectedMemoId(null);
     clearMemoSelection();
     handleMobileSearch();
-  }, [clearMemoSelection, handleMobileSearch, navigateWorkspaceHome, setSelectedNotebookId]);
+  }, [clearMemoSelection, handleMobileSearch, handleOpenMemoSearch, navigateWorkspaceHome, setSelectedNotebookId]);
 
   const handleOpenQuickSwitcherMemo = useCallback((memo: MemoSummary) => {
     pendingQuickSwitcherMemoIdRef.current = memo.id;
@@ -3068,6 +3082,11 @@ export const WorkspaceApp = ({
   }, [createMemoMutation, defaultMemoNotebookId, handleCreateMemo, handleCreateNotebook, handleGlobalSearch, notebooks, selectedNotebookId, toggleDesktopFocusMode]);
 
   const handleWorkspaceBackRequest = useCallback(() => {
+    if (quickSwitcherOpen) {
+      setQuickSwitcherOpen(false);
+      setQuickSwitcherQuery("");
+      return true;
+    }
     if (appNoticeDialog) {
       setAppNoticeDialog(null);
       return true;
@@ -3206,6 +3225,7 @@ export const WorkspaceApp = ({
 	    mobileSearchActive,
     notebookDeleteConfirmation,
     notebookNameDialog,
+    quickSwitcherOpen,
     templatesOpen,
     updateNotebookMutation.isPending,
     updateDesktopFocusMode,
@@ -3246,12 +3266,15 @@ export const WorkspaceApp = ({
       if (!action) {
         return;
       }
+      if (event.repeat || event.isComposing) {
+        event.preventDefault();
+        return;
+      }
 
       if (action === "openQuickSwitcher") {
         event.preventDefault();
-        if (event.repeat || event.isComposing) {
-          return;
-        }
+        setQuickSwitcherMode("switcher");
+        setQuickSwitcherInitialScope("all");
         setQuickSwitcherQuery("");
         setQuickSwitcherOpen(true);
         return;
@@ -3263,7 +3286,7 @@ export const WorkspaceApp = ({
       const transientLayerOpen = Boolean(
         appNoticeDialog ||
           pendingCatalogTrustPluginIds.length > 0 ||
-          rightView !== "editor" ||
+          (rightView !== "editor" && action !== "openSearchDialog") ||
           memoDeleteConfirmation ||
           emptyTrashConfirmationOpen ||
           mobileNotebookPickerOpen ||
@@ -3286,7 +3309,7 @@ export const WorkspaceApp = ({
         // workspace even when the current editor cannot perform the action.
         event.preventDefault();
 
-        if (event.repeat || event.isComposing || transientLayerOpen || !selectedMemoId || memoView === "trash") {
+        if (transientLayerOpen || !selectedMemoId || memoView === "trash") {
           return;
         }
 
@@ -3316,6 +3339,12 @@ export const WorkspaceApp = ({
       }
 
       if (transientLayerOpen) {
+        return;
+      }
+
+      if (action === "openSearchDialog") {
+        event.preventDefault();
+        handleOpenMemoSearch();
         return;
       }
 
@@ -3375,6 +3404,7 @@ export const WorkspaceApp = ({
     handleCreateNotebook,
     handleCreateMemo,
     handleGlobalSearch,
+    handleOpenMemoSearch,
     handleMobileSearch,
     shortcutSettings,
     emptyTrashConfirmationOpen,
@@ -3612,6 +3642,7 @@ export const WorkspaceApp = ({
                     setActivePane("memos");
                   }}
                   onCreateMemo={handleCreateMemo}
+                  onSearchMemos={() => handleOpenMemoSearch()}
                   onCreateMemoInNotebook={handleCreateMemoInNotebook}
                   onCreateNotebook={handleCreateNotebook}
                   onRenameNotebook={handleRenameNotebook}
@@ -4107,6 +4138,11 @@ export const WorkspaceApp = ({
       <QuickMemoSwitcher
         open={quickSwitcherOpen}
         query={quickSwitcherQuery}
+        mode={quickSwitcherMode}
+        initialScope={quickSwitcherInitialScope}
+        notebookId={memberNotesActive ? null : selectedNotebookId}
+        notebooks={notebooks}
+        dataScope={localDataScope}
         repository={repository}
         onOpenChange={(open) => {
           setQuickSwitcherOpen(open);

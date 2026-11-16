@@ -91,7 +91,7 @@ const holdNextMemoCreateResponse = async (page: Page) => {
 };
 
 const editNewMemo = async (page: Page, title: string, content: string) => {
-  await page.getByRole("button", { name: "新建笔记", exact: true }).click();
+  await page.locator("#edgeever-notebook-sidebar").getByRole("button", { name: "新建笔记", exact: true }).click();
 
   const titleInput = page.getByPlaceholder("无标题");
   const editor = page.locator(".ProseMirror[contenteditable='true']");

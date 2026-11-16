@@ -1568,11 +1568,15 @@ export const zhCN = {
       },
       focusGlobalSearch: {
         label: "全局搜索笔记",
-        description: "聚焦笔记列表搜索，在全部笔记内容中查找。",
+        description: "在全部笔记中搜索；桌面端打开搜索弹窗。",
       },
       focusReplace: {
         label: "替换文本",
         description: "在当前笔记中打开替换。",
+      },
+      openSearchDialog: {
+        label: "打开搜索弹窗",
+        description: "在当前分类或全部笔记中搜索标题和内容。",
       },
       openQuickSwitcher: {
         label: "快速切换笔记",
@@ -1607,6 +1611,19 @@ export const zhCN = {
         description: "在桌面端显示或隐藏当前笔记的文档大纲。",
       },
     },
+  },
+  memoSearch: {
+    title: "搜索笔记",
+    button: "搜索",
+    description: "搜索当前分类或全部笔记，选择结果即可打开。",
+    scope: "搜索范围",
+    currentNotebook: "当前分类",
+    allMemos: "全部笔记",
+    notebookHint: "{{name}} · 包含子分类",
+    allHint: "搜索所有未删除笔记的标题和内容",
+    failed: "搜索失败，请重试",
+    retry: "重试",
+    loadMore: "加载更多",
   },
   quickSwitcher: {
     title: "快速切换笔记",

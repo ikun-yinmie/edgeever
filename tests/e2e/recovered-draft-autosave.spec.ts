@@ -32,11 +32,13 @@ const writeRecoveredDraft = (
 
 const openMemo = async (page: Page, memoId: string, title: string) => {
   await page.getByRole("button", { name: "全部笔记", exact: true }).click();
-  await page.getByPlaceholder("搜索笔记").fill(title);
+  await page.getByPlaceholder("搜索笔记", { exact: true }).fill(title);
   await page.locator(`[data-memo-id="${memoId}"]`).locator("button").first().click();
 };
 
 test("automatically saves a recovered local draft after reload", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("**/api/v1/plugins/github/**", (route) => route.fulfill({ status: 404, body: "Plugin download disabled in this test" }));
   const marker = `recovered-draft-${Date.now()}`;
   const title = `Recovered draft ${Date.now()}`;
   const notebooksResponse = await page.request.get("/api/v1/notebooks");

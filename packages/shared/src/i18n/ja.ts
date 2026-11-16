@@ -1568,11 +1568,15 @@ export const ja = {
       },
       focusGlobalSearch: {
         label: "すべてのノートを検索",
-        description: "一覧検索にフォーカスし、すべてのノートの内容から探します。",
+        description: "すべてのノートを検索します。デスクトップでは検索ダイアログを開きます。",
       },
       focusReplace: {
         label: "テキストを置換",
         description: "現在のノートで置換を開きます。",
+      },
+      openSearchDialog: {
+        label: "ノート検索を開く",
+        description: "現在のノートブックまたはすべてのノートでタイトルと内容を検索します。",
       },
       openQuickSwitcher: {
         label: "クイックスイッチャー",
@@ -1607,6 +1611,19 @@ export const ja = {
         description: "デスクトップで現在のノートのドキュメントアウトラインを表示または非表示にします。",
       },
     },
+  },
+  memoSearch: {
+    title: "ノート検索",
+    button: "検索",
+    description: "現在のノートブックまたはすべてのノートを検索し、結果を開きます。",
+    scope: "検索範囲",
+    currentNotebook: "現在のノートブック",
+    allMemos: "すべてのノート",
+    notebookHint: "{{name}} · 子ノートブックを含む",
+    allHint: "ゴミ箱以外のすべてのノートのタイトルと内容を検索",
+    failed: "検索に失敗しました。再試行してください。",
+    retry: "再試行",
+    loadMore: "さらに読み込む",
   },
   quickSwitcher: {
     title: "クイックスイッチャー",

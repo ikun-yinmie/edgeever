@@ -1568,11 +1568,15 @@ export const enUS = {
       },
       focusGlobalSearch: {
         label: "Search all notes",
-        description: "Focus list search to find content across all notes.",
+        description: "Search all notes; opens the search dialog on desktop.",
       },
       focusReplace: {
         label: "Replace text",
         description: "Open replace in the current note.",
+      },
+      openSearchDialog: {
+        label: "Open note search",
+        description: "Search titles and content in the current notebook or all notes.",
       },
       openQuickSwitcher: {
         label: "Quick switcher",
@@ -1607,6 +1611,19 @@ export const enUS = {
         description: "Show or hide the current note's document outline on desktop.",
       },
     },
+  },
+  memoSearch: {
+    title: "Search notes",
+    button: "Search",
+    description: "Search the current notebook or all notes and open a result.",
+    scope: "Search scope",
+    currentNotebook: "Current notebook",
+    allMemos: "All notes",
+    notebookHint: "{{name}} · Includes sub-notebooks",
+    allHint: "Search titles and content of all notes outside trash",
+    failed: "Search failed. Please retry.",
+    retry: "Retry",
+    loadMore: "Load more",
   },
   quickSwitcher: {
     title: "Quick switcher",

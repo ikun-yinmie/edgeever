@@ -602,6 +602,9 @@ describe("workspace shortcut preferences", () => {
       shift: false,
       alt: false,
     });
+    expect(DEFAULT_SHORTCUT_SETTINGS.openSearchDialog).toEqual({
+      key: "k", ctrlOrMeta: true, shift: true, alt: false,
+    });
     expect(DEFAULT_SHORTCUT_SETTINGS.openPreviousMemo.key).toBe("[");
     expect(DEFAULT_SHORTCUT_SETTINGS.openNextMemo.key).toBe("]");
     expect(DEFAULT_SHORTCUT_SETTINGS.openAiAssistant).toEqual({
@@ -665,6 +668,7 @@ describe("workspace shortcut preferences", () => {
     expect(settings.createMemo.key).toBe("m");
     expect(settings.openAiAssistant).toEqual(DEFAULT_SHORTCUT_SETTINGS.openAiAssistant);
     expect(settings.focusGlobalSearch).toEqual(DEFAULT_SHORTCUT_SETTINGS.focusGlobalSearch);
+    expect(settings.openSearchDialog).toEqual(DEFAULT_SHORTCUT_SETTINGS.openSearchDialog);
     expect(settings.openQuickSwitcher).toEqual(DEFAULT_SHORTCUT_SETTINGS.openQuickSwitcher);
     expect(settings.openPreviousMemo).toEqual(DEFAULT_SHORTCUT_SETTINGS.openPreviousMemo);
     expect(settings.openNextMemo).toEqual(DEFAULT_SHORTCUT_SETTINGS.openNextMemo);
@@ -719,6 +723,14 @@ describe("workspace shortcut preferences", () => {
       keyboardEvent("f", { metaKey: true, shiftKey: true }),
       DEFAULT_SHORTCUT_SETTINGS,
     )).toBe("focusGlobalSearch");
+    expect(getShortcutActionForEvent(
+      keyboardEvent("k", { ctrlKey: true, shiftKey: true }),
+      DEFAULT_SHORTCUT_SETTINGS,
+    )).toBe("openSearchDialog");
+    expect(getShortcutActionForEvent(
+      keyboardEvent("k", { metaKey: true, shiftKey: true }),
+      DEFAULT_SHORTCUT_SETTINGS,
+    )).toBe("openSearchDialog");
     expect(getShortcutActionForEvent(
       keyboardEvent("o", { ctrlKey: true }),
       DEFAULT_SHORTCUT_SETTINGS,

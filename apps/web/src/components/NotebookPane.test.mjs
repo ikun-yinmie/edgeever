@@ -14,7 +14,7 @@ test("keeps the desktop create-note control a soft pill split button without car
   const css = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
   const createControl = source.split("edgeever-create-memo-split ")[1]?.split("</DropdownMenu>")[0] ?? "";
 
-  expect(source).toContain("edgeever-create-memo-split flex h-10 items-center rounded-full bg-emerald-100");
+  expect(source).toContain("edgeever-create-memo-split flex h-10 items-center gap-2");
   expect(createControl).toContain('aria-label={t("notebookPane.newMemo")}');
   expect(createControl).toContain('aria-label={t("diagram.createType")}');
   expect(createControl).toContain('t("diagram.moreTypes")}');
@@ -29,6 +29,13 @@ test("keeps the desktop create-note control a soft pill split button without car
   expect(source).not.toContain('title={t("notebookPane.newMemo")}');
 });
 
+test("splits search from create and exposes it in the collapsed rail", () => {
+  const searchControl = source.split('aria-label={t("memoSearch.title")}')[1]?.split("</button>")[0];
+  expect(searchControl).toContain("onClick={onSearchMemos}");
+  expect(searchControl).not.toContain("disabled=");
+  expect(source).toContain('label={t("memoSearch.title")}');
+});
+
 test("keeps the desktop sync status bar and sidebar chrome compact without shrinking primary controls", () => {
   const syncBar = source.split("const SyncStatusBar")[1]?.split("export const NotebookPane")[0];
 
@@ -40,7 +47,7 @@ test("keeps the desktop sync status bar and sidebar chrome compact without shrin
   expect(syncBar).not.toContain("mb-3");
   expect(source).toContain('className="px-3 pt-1.5"');
   expect(source).toContain('className="hidden shrink-0 px-3 pb-2 pt-2 lg:block"');
-  expect(source).toContain("edgeever-create-memo-split flex h-10 items-center rounded-full bg-emerald-100");
+  expect(source).toContain("edgeever-create-memo-split flex h-10 items-center gap-2");
   expect(source).toContain("mb-1 hidden h-8 w-full items-center justify-start gap-2");
   expect(source).toContain('className="mb-1 space-y-1"');
   expect(source).not.toContain("mb-3 hidden h-8 w-full");
