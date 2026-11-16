@@ -3,6 +3,7 @@ import {
   addMemoTab,
   closeOtherMemoTabs,
   reorderMemoTabs,
+  remapMemoTabs,
   replaceActiveMemoTab,
   resolveMemoTabOverflow,
 } from "./memo-tabs.ts";
@@ -18,6 +19,14 @@ describe("memo tab state", () => {
     expect(replaceActiveMemoTab(["a", "b"], "b", "a")).toEqual(["a", "b"]);
     expect(replaceActiveMemoTab(["a"], null, "b")).toEqual(["a", "b"]);
     expect(replaceActiveMemoTab(["a"], "missing", "b")).toEqual(["a", "b"]);
+  });
+
+  test("remaps temporary tabs without duplicating durable tabs or changing their order", () => {
+    const mappings = new Map([["local", "remote"]]);
+    expect(remapMemoTabs(["local", "other", "remote"], mappings)).toEqual(["remote", "other"]);
+    const remapped = remapMemoTabs(["local", "other"], mappings);
+    expect(remapMemoTabs(remapped, mappings)).toBe(remapped);
+    expect(remapMemoTabs(["a", "b"], mappings)).toEqual(["a", "b"]);
   });
 
   test("closes other tabs only when the kept tab is open", () => {

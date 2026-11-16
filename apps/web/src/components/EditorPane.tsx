@@ -2615,6 +2615,10 @@ const RichEditorPane = ({
       return;
     }
 
+    const identity = editorInstanceMemoIdentityRef.current;
+    // A remap can reach the editor before its parent stops emitting the local snapshot.
+    if (identity.memoId !== memo.id && identity.aliases.has(memo.id)) return;
+
     const previousMemo = memoRef.current;
     const sameMemo = editingMemoIdRef.current === memo.id;
 
@@ -2771,6 +2775,10 @@ const RichEditorPane = ({
       return;
     }
 
+    const hydrationStillTargetsMemo = () => !cancelled
+      && editingMemoIdRef.current === memo.id
+      && memoRef.current?.id === memo.id;
+
     void (async () => {
       let [indexedDbDraft, queuedUpdate] = memo.isDeleted
         ? [null, null]
@@ -2780,7 +2788,7 @@ const RichEditorPane = ({
           ]);
       let draft = selectNewestLocalDraft(indexedDbDraft, readEmergencyDraft(memo.id));
 
-      if (cancelled) {
+      if (!hydrationStillTargetsMemo()) {
         return;
       }
 
@@ -2799,7 +2807,7 @@ const RichEditorPane = ({
           repository.listResources().catch(() => ({ resources: [] as Array<{ memoId?: string; url: string; filename?: string | null; kind?: string | null }> })),
           window.edgeeverDesktop?.listStagedResources?.().catch(() => []) ?? Promise.resolve([]),
         ]);
-        if (cancelled) return;
+        if (!hydrationStillTargetsMemo()) return;
         const liveStagedIds = new Set((staged ?? []).filter((item) => item.memoId === memo.id).map((item) => item.id));
         const memoResources = listed.resources.filter((resource) => resource.memoId === memo.id);
         if (draft && contentReferencesStagedResourceUrl(draft.contentJson)) {
@@ -2829,6 +2837,7 @@ const RichEditorPane = ({
           localDb.syncQueue.delete(queuedUpdate.id),
           localDb.drafts.delete(memo.id),
         ]);
+        if (!hydrationStillTargetsMemo()) return;
         removeEmergencyDraft(memo.id);
         draft = null;
         queuedUpdate = undefined;
@@ -2837,6 +2846,7 @@ const RichEditorPane = ({
       const resolvedDraft = resolveEditorDraftState({ memo, draft, queuedUpdate });
       if (draft && !queuedUpdate && resolvedDraft.source === "memo") {
         await localDb.drafts.delete(memo.id);
+        if (!hydrationStillTargetsMemo()) return;
         removeEmergencyDraft(memo.id);
       }
       const {
@@ -3001,7 +3011,7 @@ const RichEditorPane = ({
         // A bound editor stays non-editable until the initial sync lands, so
         // the note never shows an empty document that accepts keystrokes.
         && (!collabRealtimeBound || collabSessionStatus === "live")
-      ));
+      ), false);
     }
   }, [editor, effectiveReadOnly, hydratedEditorMemoId, memo, collabRealtimeBound, collabSessionStatus]);
 
@@ -3236,10 +3246,8 @@ const RichEditorPane = ({
         return { memo: savedMemo, snapshot, queued: false };
       }
 
-      const editSession = editSessionRef.current;
-      if (!editSession) {
-        throw new Error("No memo selected");
-      }
+      // Local saves can queue immediately; synchronization obtains the server edit session.
+      const editSession = editSessionRef.current ?? createLocalEditSession(currentMemo);
 
       const payload: MemoUpdateSyncPayload = {
         memoId: currentMemo.id,

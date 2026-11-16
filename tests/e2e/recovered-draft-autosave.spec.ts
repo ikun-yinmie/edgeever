@@ -52,6 +52,7 @@ test("automatically saves a recovered local draft after reload", async ({ page }
   });
   expect(createResponse.status()).toBe(201);
   const memoId = (await createResponse.json() as { memo: { id: string } }).memo.id;
+  let releaseSessions = () => {};
 
   try {
     await page.goto("/");
@@ -59,11 +60,31 @@ test("automatically saves a recovered local draft after reload", async ({ page }
     await expect(page.locator(".ProseMirror[contenteditable='true']")).toContainText("Saved server content");
 
     await writeRecoveredDraft(page, { memoId, title, marker });
+    const sessionsGate = new Promise<void>((resolve) => { releaseSessions = resolve; });
+    await page.route(`**/api/v1/memos/${memoId}/edit-sessions`, async (route) => {
+      await sessionsGate;
+      await route.continue();
+    });
     await page.reload();
     await openMemo(page, memoId, title);
 
     const editor = page.locator(".ProseMirror[contenteditable='true']");
     await expect(editor).toContainText(marker);
+    await expect.poll(() => page.evaluate(({ memoId, marker }) => new Promise<boolean>((resolve, reject) => {
+      const open = indexedDB.open("edgeever-local");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const read = db.transaction("syncQueue", "readonly").objectStore("syncQueue").getAll();
+        read.onerror = () => { db.close(); reject(read.error); };
+        read.onsuccess = () => {
+          db.close();
+          resolve(read.result.some((item) => item.kind === "memo.update" && item.memoId === memoId && JSON.stringify(item.payload).includes(marker)));
+        };
+      };
+    }), { memoId, marker })).toBe(true);
+    await expect(page.getByText("保存失败", { exact: true })).toHaveCount(0);
+    releaseSessions();
 
     await expect.poll(async () => {
       const response = await page.request.get(`/api/v1/memos/${memoId}`);
@@ -73,6 +94,7 @@ test("automatically saves a recovered local draft after reload", async ({ page }
 
     await expect(page.getByText("未保存", { exact: true })).toHaveCount(0);
   } finally {
+    releaseSessions();
     await page.request.delete(`/api/v1/memos/${memoId}`);
     await page.request.delete(`/api/v1/memos/${memoId}?permanent=1`);
   }

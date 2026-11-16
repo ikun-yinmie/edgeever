@@ -95,7 +95,7 @@ import {
   writeInstanceAppShortcutDefaults,
 } from "@/lib/shortcut-settings";
 import { updateMemoSummaryInLists, type MemoListQueryData } from "@/lib/memo-list-cache";
-import { NOTEBOOK_ID_REMAPPED_EVENT } from "@/lib/sync-events";
+import { MEMO_ID_REMAPPED_EVENT, NOTEBOOK_ID_REMAPPED_EVENT } from "@/lib/sync-events";
 import { notebookIdMappingsFromEvent, remapNotebookId } from "@/lib/notebook-id-remap";
 import {
   cacheMemoDetail,
@@ -129,6 +129,7 @@ import { createRepository } from "@/lib/repository";
 import { notifyRepositoryMutation } from "@/lib/repository-events";
 import {
   refreshWorkspaceData,
+  resolveSyncedMemoId,
   shouldNavigateHomeWhenOpeningMemo,
   type WorkspaceRefreshMode,
 } from "@/lib/workspace-refresh";
@@ -137,7 +138,7 @@ import { paneEnterMotion } from "@/lib/motion";
 import { WorkspaceMotionProvider } from "./WorkspaceMotionProvider";
 import { buildOpenMemoWindowUrl, useWorkspaceRoute } from "@/hooks/useWorkspaceRoute";
 import { isDesktopRenderer } from "@/lib/runtime";
-import { closeOtherMemoTabs, reorderMemoTabs, replaceActiveMemoTab } from "@/lib/memo-tabs";
+import { closeOtherMemoTabs, remapMemoTabs, reorderMemoTabs, replaceActiveMemoTab } from "@/lib/memo-tabs";
 import { useWorkspacePreferences } from "@/hooks/useWorkspacePreferences";
 import { useWorkspaceSelection } from "@/hooks/useWorkspaceSelection";
 import { useWorkspaceQueuedSync } from "@/hooks/useWorkspaceQueuedSync";
@@ -328,6 +329,25 @@ export const WorkspaceApp = ({
   const memoDocumentActionIdRef = useRef(0);
   const [openMemoTabs, setOpenMemoTabs] = useState<string[]>([]);
   const [memoTabTitles, setMemoTabTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const handleMemoIdRemapped = (event: Event) => {
+      const mappings = (event as CustomEvent<ReadonlyMap<string, string>>).detail;
+      if (!(mappings instanceof Map)) return;
+      setOpenMemoTabs((current) => remapMemoTabs(current, mappings));
+      pendingQuickSwitcherMemoIdRef.current = resolveSyncedMemoId(mappings, pendingQuickSwitcherMemoIdRef.current);
+      setMemoTabTitles((current) => {
+        const next = { ...current };
+        for (const [from, to] of mappings) {
+          if (from === to || !(from in current)) continue;
+          if (!(to in next)) next[to] = current[from];
+          delete next[from];
+        }
+        return next;
+      });
+    };
+    window.addEventListener(MEMO_ID_REMAPPED_EVENT, handleMemoIdRemapped);
+    return () => window.removeEventListener(MEMO_ID_REMAPPED_EVENT, handleMemoIdRemapped);
+  }, []);
   // Set when the user closes the last note tab; keeps the auto-select effect
   // from instantly re-opening the first memo until they pick one explicitly.
   const suppressAutoOpenRef = useRef(false);

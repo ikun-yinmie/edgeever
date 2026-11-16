@@ -14,6 +14,9 @@ export const replaceActiveMemoTab = (tabs: string[], activeMemoId: string | null
   return tabs.map((id) => (id === activeMemoId ? memoId : id));
 };
 
+export const remapMemoTabs = (tabs: string[], mappings: ReadonlyMap<string, string>) =>
+  tabs.some((id) => mappings.has(id)) ? [...new Set(tabs.map((id) => mappings.get(id) ?? id))] : tabs;
+
 export const closeOtherMemoTabs = (tabs: string[], memoId: string) =>
   tabs.includes(memoId) ? [memoId] : tabs;
 

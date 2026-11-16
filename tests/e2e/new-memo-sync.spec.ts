@@ -206,13 +206,81 @@ const finishSyncAndVerifyReload = async (
 };
 
 test.describe("new memo synchronization", () => {
+  test.setTimeout(90_000);
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/v1/plugins/github/**", (route) => route.fulfill({ status: 404, body: "Plugin download disabled in this test" }));
+  });
+  test("does not leave empty duplicates after a lost create response or a held shortcut", async ({ page }) => {
+    test.setTimeout(90_000);
+    const marker = `Create retry ${Date.now()}`;
+    const notebookResponse = await page.request.post("/api/v1/notebooks", { data: { name: marker } });
+    expect(notebookResponse.status()).toBe(201);
+    const { notebook } = await notebookResponse.json() as { notebook: { id: string } };
+    const creationKeys: unknown[] = [];
+    const createdIds = new Set<string>();
+    let loseResponse = true;
+    await page.route("**/api/v1/memos", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      creationKeys.push(route.request().postDataJSON().creationId);
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      const { memo } = await response.json();
+      createdIds.add(memo.id);
+      if (loseResponse) {
+        loseResponse = false;
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "temporary_failure", message: "Response lost after commit" }) });
+      } else {
+        await route.fulfill({ response });
+      }
+    });
+    try {
+      await page.goto("/");
+      await page.locator(`[data-notebook-id="${notebook.id}"] [data-notebook-tree-button]`).click();
+      await page.locator("#edgeever-notebook-sidebar").getByRole("button", { name: "新建笔记", exact: true }).click();
+      const title = page.getByPlaceholder("无标题");
+      await expect(title).toBeEditable();
+      await title.fill(marker);
+      await expect.poll(() => storeContains(page, "drafts", marker)).toBe(true);
+      await expect.poll(() => creationKeys.length).toBeGreaterThan(0);
+      await page.evaluate(() => {
+        for (let count = 0; count < 10; count += 1) {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", ctrlKey: true, repeat: true, bubbles: true, cancelable: true }));
+        }
+      });
+      await expect(title).toHaveValue(marker);
+      await expect.poll(async () => {
+        const response = await page.request.get(`/api/v1/memos?notebookId=${notebook.id}`);
+        const data = await response.json() as { memos: Array<{ title: string }> };
+        await page.evaluate(() => window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed")));
+        return data.memos.length === 1 && data.memos[0].title === marker;
+      }, { timeout: 60_000 }).toBe(true);
+      expect(creationKeys.length).toBeGreaterThanOrEqual(2);
+      expect(creationKeys[0]).toEqual(expect.any(String));
+      expect(new Set(creationKeys).size).toBe(1);
+      expect(createdIds.size).toBe(1);
+      await expect(title).toHaveValue(marker);
+      await expect(page.getByRole("tablist", { name: "打开的笔记" }).getByRole("tab")).toHaveCount(1);
+      await page.reload();
+      const id = [...createdIds][0];
+      await page.locator(`[data-memo-id="${id}"]`).locator("button").first().click();
+      await expect(title).toHaveValue(marker);
+      await page.screenshot({ path: test.info().outputPath("new-memo-retry-no-duplicates.png") });
+    } finally {
+      for (const id of createdIds) {
+        await page.request.delete(`/api/v1/memos/${id}`);
+        await page.request.delete(`/api/v1/memos/${id}?permanent=1`);
+      }
+      await page.request.delete(`/api/v1/notebooks/${notebook.id}`);
+    }
+  });
+
   test("keeps the new memo editor editable and focused when desktop sync remaps its id early", async ({ page }) => {
     const heldCreate = await holdNextMemoCreateResponse(page);
     let memoId: string | null = null;
 
     try {
       await page.goto("/");
-      await page.getByRole("button", { name: "新建笔记", exact: true }).click();
+      await page.locator("#edgeever-notebook-sidebar").getByRole("button", { name: "新建笔记", exact: true }).click();
       const createdMemo = await heldCreate.createdMemo;
       memoId = createdMemo.id;
 
@@ -225,7 +293,12 @@ test.describe("new memo synchronization", () => {
 
       const editor = page.locator(".ProseMirror[contenteditable='true']");
       await expect(editor).toBeEditable();
+      const remapTitle = `Remap title ${Date.now()}`;
+      const remapContent = "Content must survive the temporary id remap";
+      await page.getByPlaceholder("无标题").fill(remapTitle);
       await editor.click();
+      await page.keyboard.insertText(remapContent);
+      await expect.poll(() => storeContains(page, "drafts", remapContent)).toBe(true);
       await expect(editor).toBeFocused();
 
       const editorObservation = page.evaluate(() => new Promise<{
@@ -287,6 +360,8 @@ test.describe("new memo synchronization", () => {
       });
       await expect(editor).toBeEditable();
       await expect(editor).toBeFocused();
+      await expect(page.getByPlaceholder("无标题")).toHaveValue(remapTitle);
+      await expect(editor).toContainText(remapContent);
 
       heldCreate.releaseCreate();
       const createResponse = await heldCreate.createResponse;
@@ -316,6 +391,13 @@ test.describe("new memo synchronization", () => {
     const title = `E2E create race ${marker}`;
     const content = `Content pasted before create completed ${marker}`;
     const heldCreate = await holdNextMemoCreate(page);
+    const prematureUpdates: string[] = [];
+    let createReleased = false;
+    page.on("request", (request) => {
+      if (!createReleased && request.method() === "PATCH" && request.postDataJSON()?.title === title) {
+        prematureUpdates.push(request.url());
+      }
+    });
 
     await page.goto("/");
     const editing = editNewMemo(page, title, content);
@@ -323,8 +405,15 @@ test.describe("new memo synchronization", () => {
     await editing;
 
     const queuedBeforeCreate = await readIndexedDbStore<StoredQueueItem>(page, "syncQueue");
-    expect(queuedBeforeCreate.some((item) => item.kind === "memo.update")).toBe(false);
+    const creatingId = queuedBeforeCreate.find((item) => item.kind === "memo.create")?.memoId;
+    expect(creatingId).toBeTruthy();
+    expect(queuedBeforeCreate.filter((item) => item.kind === "memo.update" && item.memoId === creatingId)
+      .every((item) => item.status === "pending")).toBe(true);
+    expect(prematureUpdates).toEqual([]);
 
-    await finishSyncAndVerifyReload(page, heldCreate.createResponse, heldCreate.releaseCreate, title, content);
+    await finishSyncAndVerifyReload(page, heldCreate.createResponse, () => {
+      createReleased = true;
+      heldCreate.releaseCreate();
+    }, title, content);
   });
 });
