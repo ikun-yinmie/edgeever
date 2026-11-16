@@ -1,20 +1,20 @@
 {
-  "version": "1.103.24",
+  "version": "1.103.25",
   "changes": {
     "en-US": [
-      "Searches now open in a dedicated dialog: Ctrl+Shift+F searches all notes and Ctrl+Shift+K searches the current notebook, with a scope toggle, notebook names, pagination and inline retry.",
-      "Creating a note is now idempotent: retrying after a lost response returns the existing note instead of leaving empty duplicates, and a deleted note is never recreated.",
-      "A newly created note keeps its title, content, tab and cursor focus while its temporary id is replaced by the server id."
+      "Add a task overview that collects tasks across notes, derives progress from child items, and edits marks without opening the note.",
+      "Keep Ctrl or Command S saving from code block titles and other embedded editor inputs.",
+      "Close the task dialog on the first Escape and cover the new views with end-to-end tests."
     ],
     "zh-CN": [
-      "搜索改为独立弹窗：Ctrl+Shift+F 搜索全部笔记，Ctrl+Shift+K 搜索当前分类；支持范围切换、显示所属分类、分页加载和失败重试。",
-      "新建笔记支持幂等重试：响应丢失后重试会返回已创建的笔记，不再产生空白的重复笔记；已删除的笔记不会被重新创建。",
-      "新建笔记在临时 ID 替换为服务器 ID 期间，标题、正文、页签和光标焦点都会保留。"
+      "新增待办总览：汇总各笔记的待办，按子级自动判断进行中，并可不开原文直接改标记。",
+      "修复在代码块标题等编辑器内嵌输入框中 Ctrl+S 无法保存的问题。",
+      "修复待办弹窗第一次按 Esc 关不掉的问题，并为新界面补充端到端测试。"
     ],
     "ja": [
-      "検索が専用ダイアログに変わりました。Ctrl+Shift+F で全ノート、Ctrl+Shift+K で現在のノートブックを検索でき、範囲の切り替え・所属ノートブック表示・ページ送り・失敗時の再試行に対応します。",
-      "ノート作成が冪等になりました。応答が失われて再試行しても既存のノートが返り、空の重複ノートは作られません。削除済みのノートが復活することもありません。",
-      "新規ノートの一時 ID がサーバー ID に置き換わる間も、タイトル・本文・タブ・カーソル位置が保持されます。"
+      "タスク一覧を追加し、ノートを開かずに子項目から進行状況を判定してマークを変更できるようにしました。",
+      "コードブロックのタイトルなど埋め込み入力欄でも Ctrl+S で保存できるよう修正しました。",
+      "タスクダイアログが最初の Esc で閉じない問題を修正し、新しい画面の E2E テストを追加しました。"
     ]
   }
 }
