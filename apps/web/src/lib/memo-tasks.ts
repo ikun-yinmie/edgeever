@@ -76,6 +76,10 @@ export const findMemoTaskNode = (doc: TiptapDoc, path: number[]): TiptapNode | n
   return node?.type === "taskItem" ? node : null;
 };
 
+/** Cycle only explicit marks; a parent's derived "doing" state is not a fourth mark. */
+export const nextMemoTaskMark = (attrs: { checked?: unknown; rejected?: unknown }): MemoTaskMark =>
+  attrs.rejected === true ? "pending" : attrs.checked === true ? "rejected" : "done";
+
 export const memoTaskAttributes = (mark: MemoTaskMark) => ({
   checked: mark === "done",
   rejected: mark === "rejected",

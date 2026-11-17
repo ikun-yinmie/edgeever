@@ -1,12 +1,32 @@
 import { describe, expect, test } from "bun:test";
 import { getSchema } from "@tiptap/core";
 import { createEdgeEverDocumentExtensions, markdownToDoc } from "@edgeever/shared";
-import { collectMemoTasks, updateMemoTaskDocument } from "./memo-tasks";
+import { collectMemoTasks, memoTaskAttributes, nextMemoTaskMark, updateMemoTaskDocument } from "./memo-tasks";
 
 const cross = "❌";
 const tasksFor = source => collectMemoTasks(markdownToDoc(source), "memo");
 
 describe("memo task progress", () => {
+  test("cycles explicit marks through checked, crossed out and empty", () => {
+    let attrs = { checked: false, rejected: false };
+    for (const expected of ["done", "rejected", "pending", "done", "rejected", "pending"]) {
+      const mark = nextMemoTaskMark(attrs);
+      expect(mark).toBe(expected);
+      attrs = memoTaskAttributes(mark);
+      expect(attrs.checked && attrs.rejected).toBe(false);
+    }
+    expect(nextMemoTaskMark({})).toBe("done");
+    expect(nextMemoTaskMark({ checked: true })).toBe("rejected");
+    expect(nextMemoTaskMark({ rejected: true })).toBe("pending");
+  });
+  test("cycling a parent leaves child marks intact and restores automatic progress", () => {
+    let doc = markdownToDoc(`- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child`);
+    for (const expected of ["done", "rejected", "doing"]) {
+      const task = collectMemoTasks(doc, "memo")[0];
+      doc = updateMemoTaskDocument(doc, task, nextMemoTaskMark(task));
+      expect(collectMemoTasks(doc, "memo").map(task => task.status)).toEqual([expected, "done", "rejected"]);
+    }
+  });
   test("derives progress from completed and crossed descendants without marking parents", () => {
     const tasks = tasksFor(`## Plan\n\n- [ ] Parent\n  - [x] Done\n  - [${cross}] Cancelled\n  - [ ] Pending\n- [ ] Untouched\n  - [ ] Child`);
     expect(tasks.map(task => task.status)).toEqual(["doing", "done", "rejected", "pending", "pending", "pending"]);

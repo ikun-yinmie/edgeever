@@ -3,7 +3,12 @@ import { expect, test } from "@playwright/test";
 const cross = "❌";
 
 test("task overview and in-note dialog derive progress and persist marks", async ({ page }) => {
-  test.setTimeout(120_000);
+  // The overview walks every note and each mark save waits for a server
+  // acknowledgement, so a loaded local machine can take minutes.
+  test.setTimeout(240_000);
+  // Keep the dev API from proxying GitHub plugin manifests: an unreachable
+  // github.com stalls workerd fast enough that unrelated PATCH saves 503.
+  await page.route("**/api/v1/plugins/github/**", (route) => route.fulfill({ status: 404, body: "Plugin download disabled in this test" }));
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   const { notebooks } = await (await page.request.get("/api/v1/notebooks")).json();
@@ -31,11 +36,14 @@ test("task overview and in-note dialog derive progress and persist marks", async
     const group = dialog.locator('[data-task-group="doing"]');
     expect(await group.evaluate(element => element.querySelector("[data-task-group-content]")!.getBoundingClientRect().left > element.querySelector("[data-task-group-label]")!.getBoundingClientRect().right)).toBe(true);
     await dialog.getByRole("button", { name: "展开 Parent", exact: true }).click();
-    const pending = dialog.locator('[data-task-status="pending"]').filter({ has: page.getByText("Pending child", { exact: true }) }).first();
-    await pending.getByRole("button", { name: /更改标记/ }).click();
-    await page.getByRole("menuitem", { name: "已完成", exact: true }).click();
-    await expect(parent).toBeVisible();
-    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain("- [x] Pending child");
+    const childRow = dialog.locator('[data-task-id]').filter({ has: page.getByText("Pending child", { exact: true }) }).first();
+    for (const [status, marker] of [["done", "x"], ["rejected", cross], ["pending", " "], ["done", "x"]]) {
+      await childRow.getByRole("button", { name: /更改标记/ }).click();
+      await expect(childRow).toHaveAttribute("data-task-status", status);
+      await expect(parent).toBeVisible();
+      await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain(`- [${marker}] Pending child`);
+    }
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("article-tasks-desktop.png") });
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
@@ -55,7 +63,6 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await page.screenshot({ path: test.info().outputPath("task-overview-desktop.png") });
     const globalParent = page.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
     await globalParent.getByRole("button", { name: /更改标记/ }).click();
-    await page.getByRole("menuitem", { name: "已完成", exact: true }).click();
     await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain("- [x] Parent");
     await overviewSearch.fill("No such task anywhere");
     await expect(page.getByText("没有匹配的待办", { exact: true })).toBeVisible();
@@ -66,7 +73,9 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await expect(editor).toContainText("Parent");
     await expect(editor.locator('li[data-type="taskItem"]').first()).toHaveAttribute("data-checked", "true");
     await page.reload();
-    await expect(editor).toContainText("Text outside tasks.");
+    // The editor remounts after the reload; hydration can outlast the default
+    // expect timeout while the dev API proxies slow plugin manifests.
+    await expect(editor).toContainText("Text outside tasks.", { timeout: 30_000 });
     await expect(editor.locator('li[data-type="taskItem"]').first()).toHaveAttribute("data-checked", "true");
     await page.getByRole("radio", { name: "预览", exact: true }).click();
     await page.getByRole("button", { name: "本文待办", exact: true }).click();

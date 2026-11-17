@@ -229,7 +229,7 @@ test("task input keeps IME, Shift and caret edits in the current item", async ({
   }
 });
 
-test("marks tasks red, persists them, and optionally exports a clickable HTML outline", async ({ page }) => {
+test("crosses out tasks, persists them, and optionally exports a clickable HTML outline", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -252,11 +252,20 @@ test("marks tasks red, persists them, and optionally exports a clickable HTML ou
     await pending.locator("p").click();
     const moreTools = page.getByRole("button", { name: "显示更多编辑工具", exact: true });
     if (await moreTools.isVisible()) await moreTools.click();
-    const crossButton = page.getByRole("button", { name: "标记 / 取消红色 ❌", exact: true });
+    const crossButton = page.getByRole("button", { name: "标记 / 取消叉号", exact: true });
     await crossButton.click();
     await expect(pending).toHaveAttribute("data-rejected", "true");
     await expect(pending).toHaveAttribute("data-checked", "false");
-    await page.screenshot({ path: test.info().outputPath("red-task.png") });
+    const crossStyle = await pending.locator("label").evaluate((label) => {
+      const style = getComputedStyle(label, "::after");
+      const checkbox = label.querySelector("input")!.getBoundingClientRect();
+      return { content: style.content, mask: style.maskImage, width: parseFloat(style.width), height: parseFloat(style.height), checkboxWidth: checkbox.width, checkboxHeight: checkbox.height };
+    });
+    expect(crossStyle.content).toBe('""');
+    expect(crossStyle.mask).toContain("data:image/svg+xml");
+    expect(crossStyle.width).toBeCloseTo(crossStyle.checkboxWidth);
+    expect(crossStyle.height).toBeCloseTo(crossStyle.checkboxHeight);
+    await page.screenshot({ path: test.info().outputPath("crossed-out-task.png") });
     await expect.poll(async () => {
       const response = await page.request.get(`/api/v1/memos/${memo.id}`);
       return (await response.json()).memo.contentMarkdown as string;
@@ -267,7 +276,10 @@ test("marks tasks red, persists them, and optionally exports a clickable HTML ou
     await expect(editor).toContainText("待办任务", { timeout: 30_000 });
     await expect(editor.locator('li[data-rejected="true"]')).toHaveCount(2);
 
-    // The original checkbox still marks a red task completed and clears the cross.
+    // A crossed-out task now cycles to empty, then to completed on the next click.
+    await pending.locator('input[type="checkbox"]').click();
+    await expect(pending).toHaveAttribute("data-checked", "false");
+    await expect(pending).not.toHaveAttribute("data-rejected", "true");
     await pending.locator('input[type="checkbox"]').click();
     await expect(pending).toHaveAttribute("data-checked", "true");
     await expect(pending).not.toHaveAttribute("data-rejected", "true");
@@ -289,7 +301,8 @@ test("marks tasks red, persists them, and optionally exports a clickable HTML ou
     const exported = await readDownload(await withOutline);
     expect(exported).toContain('<nav class="edgeever-html-outline"');
     expect(exported).toContain('data-rejected="true"');
-    expect(exported).toContain('content: "❌"');
+    expect(exported).toContain('mask: url("data:image/svg+xml,');
+    expect(exported).not.toContain('content: "❌"');
     await expect(dialog).toHaveCount(0);
     const parsed = await page.evaluate((html) => {
       const root = document.createElement("div");

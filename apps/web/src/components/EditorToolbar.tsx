@@ -15,6 +15,7 @@ import {
   ListOrdered,
   Quote,
   SquareCode,
+  SquareX,
   ChartNoAxesCombined,
   Minus,
   Paperclip,
@@ -638,7 +639,7 @@ export const EditorToolbar = ({
               rejected: current.getAttributes("taskItem").rejected !== true,
             }).run())}
           >
-            <span aria-hidden="true">❌</span>
+            <SquareX className="h-4 w-4" />
           </EditorToolbarButton>
           <EditorToolbarButton
             title={`${t("editorToolbar.numberedTaskList")} · ${t("editorToolbar.listIndentHint")}`}

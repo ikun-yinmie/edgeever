@@ -7,6 +7,7 @@ import {
   toggleTaskItemCollapseAtSelection,
 } from "@edgeever/shared";
 import i18n from "@/i18n";
+import { memoTaskAttributes, nextMemoTaskMark } from "@/lib/memo-tasks";
 import { hasTaskItemSubContent, isTaskItemCollapsed } from "./task-item-collapse";
 
 const visuallyHiddenStyle = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
@@ -109,21 +110,21 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
         }
       };
 
-      checkbox.addEventListener("change", (event) => {
+      checkbox.addEventListener("change", () => {
         if (!editor.isEditable) {
           checkbox.checked = !checkbox.checked;
           return;
         }
-        const checked = (event.target as HTMLInputElement).checked;
         if (typeof getPos !== "function") return;
         const position = getPos();
         if (typeof position !== "number") return;
         const currentNode = editor.state.doc.nodeAt(position);
         if (!currentNode) return;
+        // Read the document, not the browser's two-state checkbox toggle.
+        const mark = nextMemoTaskMark(currentNode.attrs);
         editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
           ...currentNode.attrs,
-          checked,
-          rejected: false,
+          ...memoTaskAttributes(mark),
         }));
       });
 
