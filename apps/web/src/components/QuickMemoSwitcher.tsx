@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { FileText, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -51,8 +51,10 @@ export const QuickMemoSwitcher = ({
   onOpenMemo,
 }: QuickMemoSwitcherProps) => {
   const { t } = useTranslation();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [selectedMemoId, setSelectedMemoId] = useState("");
   const [scope, setScope] = useState(initialScope);
+  const [visiblePageCount, setVisiblePageCount] = useState(1);
   const deferredQuery = useDeferredValue(query.trim());
   const currentNotebook = notebooks.find((notebook) => notebook.id === notebookId) ?? null;
   const scopedNotebookId = mode === "search" && scope === "notebook" ? currentNotebook?.id ?? null : null;
@@ -79,10 +81,31 @@ export const QuickMemoSwitcher = ({
     staleTime: 0,
   });
   const memos = useMemo(() => Array.from(new Map(
-    (memoQuery.data?.pages ?? []).flatMap((page) => page.memos).map((memo) => [memo.id, memo]),
-  ).values()), [memoQuery.data]);
+    (memoQuery.data?.pages ?? []).slice(0, visiblePageCount).flatMap((page) => page.memos).map((memo) => [memo.id, memo]),
+  ).values()), [memoQuery.data, visiblePageCount]);
+  const availablePageCount = memoQuery.data?.pages.length ?? 0;
+  const hasCachedMore = visiblePageCount < availablePageCount;
+  const hasMore = hasCachedMore || memoQuery.hasNextPage;
+  const loadMoreError = memoQuery.isFetchNextPageError && !hasCachedMore;
   const loading = memoQuery.isPending || query.trim() !== deferredQuery;
   const copyKey = mode === "search" ? "memoSearch" : "quickSwitcher";
+  const paginationContext = JSON.stringify([mode, scopedNotebookId, deferredQuery, notebookIds, dataScope]);
+
+  // Cached pages may be reused, but "load more" is local to this opening/search.
+  useEffect(() => {
+    setVisiblePageCount(1);
+  }, [open, paginationContext]);
+
+  const handleLoadMore = () => {
+    if (hasCachedMore) {
+      setVisiblePageCount((current) => Math.min(current + 1, availablePageCount));
+      return;
+    }
+    // Advance before fetching so a late response cannot re-expand a closed dialog.
+    // On retry, keep the same target page instead of skipping another page.
+    setVisiblePageCount(availablePageCount + 1);
+    void memoQuery.fetchNextPage();
+  };
 
   useEffect(() => {
     if (open) setScope(initialScope);
@@ -96,20 +119,18 @@ export const QuickMemoSwitcher = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-[18%] block w-[calc(100%-2rem)] max-w-xl translate-y-0 overflow-hidden p-0">
+      <DialogContent
+        className="top-[18%] flex max-h-[74dvh] w-[calc(100%-2rem)] max-w-xl translate-y-0 flex-col overflow-hidden p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
         <DialogTitle className="sr-only">{t(`${copyKey}.title`)}</DialogTitle>
         <DialogDescription className="sr-only">{t(`${copyKey}.description`)}</DialogDescription>
-        <Command shouldFilter={false} value={selectedMemoId} onValueChange={setSelectedMemoId}>
-          <CommandInput
-            autoFocus
-            aria-label={t(`${copyKey}.title`)}
-            className="pr-9"
-            placeholder={t("quickSwitcher.placeholder")}
-            value={query}
-            onValueChange={onQueryChange}
-          />
+        <Command className="min-h-0" shouldFilter={false} value={selectedMemoId} onValueChange={setSelectedMemoId}>
           {mode === "search" && (
-            <div className="space-y-2 border-b border-slate-100 px-3 py-2.5">
+            <div className="shrink-0 space-y-2 px-4 pb-3 pr-12 pt-5">
               <div className="flex gap-1" role="group" aria-label={t("memoSearch.scope")} onKeyDown={(event) => event.stopPropagation()}>
                 {(["notebook", "all"] as const).map((value) => (
                   <button
@@ -136,7 +157,19 @@ export const QuickMemoSwitcher = ({
               </p>
             </div>
           )}
-          <CommandList className="max-h-[min(26rem,50dvh)] p-1.5">
+          <CommandInput
+            ref={inputRef}
+            autoFocus
+            aria-label={t(`${copyKey}.title`)}
+            className={mode === "search" ? "h-11" : "pr-9"}
+            wrapperClassName={mode === "search"
+              ? "mx-4 mb-4 h-11 shrink-0 rounded-lg border border-slate-200 bg-slate-50 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/15 [&>svg]:text-slate-600"
+              : "shrink-0"}
+            placeholder={t("quickSwitcher.placeholder")}
+            value={query}
+            onValueChange={onQueryChange}
+          />
+          <CommandList className="min-h-0 max-h-[min(26rem,50dvh)] flex-1 p-1.5">
             {memoQuery.isError && !memoQuery.data ? (
               <div className="space-y-2 py-8 text-center text-sm text-slate-500" role="alert">
                 <p>{t("memoSearch.failed")}</p>
@@ -174,15 +207,15 @@ export const QuickMemoSwitcher = ({
               </>
             )}
           </CommandList>
-          {!loading && memoQuery.hasNextPage && (
-            <div className="px-3 pb-2 text-center" onKeyDown={(event) => event.stopPropagation()}>
-              {memoQuery.isFetchNextPageError && <p className="mb-2 text-xs text-red-600" role="alert">{t("memoSearch.failed")}</p>}
-              <Button size="sm" variant="ghost" disabled={memoQuery.isFetchingNextPage} onClick={() => void memoQuery.fetchNextPage()}>
-                {t(memoQuery.isFetchingNextPage ? "quickSwitcher.loading" : memoQuery.isFetchNextPageError ? "memoSearch.retry" : "memoSearch.loadMore")}
+          {!loading && hasMore && (
+            <div className="shrink-0 px-3 pb-2 text-center" onKeyDown={(event) => event.stopPropagation()}>
+              {loadMoreError && <p className="mb-2 text-xs text-red-600" role="alert">{t("memoSearch.failed")}</p>}
+              <Button size="sm" variant="outline" disabled={memoQuery.isFetchingNextPage} onClick={handleLoadMore}>
+                {t(memoQuery.isFetchingNextPage ? "quickSwitcher.loading" : loadMoreError ? "memoSearch.retry" : "memoSearch.loadMore")}
               </Button>
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-400">
+          <div className="flex shrink-0 items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-400">
             <span>{t("quickSwitcher.openHint")}</span>
             <span>{t("quickSwitcher.closeHint")}</span>
           </div>

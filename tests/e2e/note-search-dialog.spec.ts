@@ -22,6 +22,19 @@ test("loads search results beyond the first page using the keyboard", async ({ p
     await dialog.getByRole("button", { name: "加载更多", exact: true }).press("Enter");
     await expect(dialog.getByRole("option")).toHaveCount(51);
     await expect(dialog.getByRole("button", { name: "加载更多", exact: true })).toHaveCount(0);
+    // Reopening must show the initial page even when the last page is cached.
+    // Loading more can reveal the cached page again, including when nextCursor is null.
+    for (let reopening = 0; reopening < 2; reopening += 1) {
+      await dialog.getByRole("combobox").press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await page.locator("#edgeever-notebook-sidebar").getByRole("button", { name: "搜索笔记", exact: true }).click();
+      await dialog.getByRole("combobox").fill(marker);
+      await expect(dialog.getByRole("option")).toHaveCount(50);
+      await expect(dialog.getByRole("button", { name: "加载更多", exact: true })).toBeVisible();
+      await dialog.getByRole("button", { name: "加载更多", exact: true }).press("Enter");
+      await expect(dialog.getByRole("option")).toHaveCount(51);
+      await expect(dialog.getByRole("button", { name: "加载更多", exact: true })).toHaveCount(0);
+    }
     await dialog.getByRole("combobox").press("End");
     await dialog.getByRole("combobox").press("Enter");
     await expect(dialog).toHaveCount(0);
@@ -76,6 +89,12 @@ test("searches current notebook descendants or all notes without disturbing the 
     const dialog = page.getByRole("dialog", { name: "搜索笔记", exact: true });
     const input = dialog.getByRole("combobox");
     await expect(input).toBeFocused();
+    const scopeGroup = dialog.getByRole("group", { name: "搜索范围", exact: true });
+    const scopeBounds = await scopeGroup.boundingBox();
+    const inputBounds = await input.boundingBox();
+    const dialogBounds = await dialog.boundingBox();
+    expect(scopeBounds!.y + scopeBounds!.height).toBeLessThan(inputBounds!.y);
+    expect(inputBounds!.y - dialogBounds!.y).toBeGreaterThan(48);
     await expect(dialog.getByRole("button", { name: "当前分类", exact: true })).toHaveAttribute("aria-pressed", "true");
     await input.fill(marker);
     await expect(dialog.getByRole("option")).toHaveCount(2);
@@ -116,7 +135,13 @@ test("searches current notebook descendants or all notes without disturbing the 
     await expect(dialog.getByRole("option")).toHaveCount(3);
     await page.evaluate(() => document.documentElement.classList.add("dark"));
     await page.screenshot({ path: test.info().outputPath("note-search-dialog-dark.png") });
+    const originalViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 600 });
+    const compactBounds = await dialog.boundingBox();
+    expect(compactBounds!.y + compactBounds!.height).toBeLessThanOrEqual(600);
+    await page.screenshot({ path: test.info().outputPath("note-search-dialog-compact.png") });
     await input.press("Escape");
+    await page.setViewportSize(originalViewport);
     await page.evaluate(() => document.documentElement.classList.remove("dark"));
 
     await page.goto("/settings");

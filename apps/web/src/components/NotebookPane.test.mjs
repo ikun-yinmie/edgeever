@@ -32,6 +32,9 @@ test("keeps the desktop create-note control a soft pill split button without car
 test("splits search from create and exposes it in the collapsed rail", () => {
   const searchControl = source.split('aria-label={t("memoSearch.title")}')[1]?.split("</button>")[0];
   expect(searchControl).toContain("onClick={onSearchMemos}");
+  expect(searchControl).toContain("border border-emerald-300/80");
+  expect(searchControl).toContain("bg-emerald-50");
+  expect(searchControl).toContain("font-semibold text-emerald-800");
   expect(searchControl).not.toContain("disabled=");
   expect(source).toContain('label={t("memoSearch.title")}');
 });

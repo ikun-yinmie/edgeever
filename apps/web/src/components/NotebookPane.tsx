@@ -933,7 +933,7 @@ export const NotebookPane = ({
             type="button"
             aria-label={t("memoSearch.title")}
             onClick={onSearchMemos}
-            className="flex h-full min-w-0 flex-[2] items-center justify-center gap-1.5 rounded-full bg-slate-100 px-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+            className="flex h-full min-w-0 flex-[2] items-center justify-center gap-1.5 rounded-full border border-emerald-300/80 bg-emerald-50 px-2 text-sm font-semibold text-emerald-800 shadow-sm transition-colors hover:border-emerald-400 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
           >
             <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="truncate">{t("memoSearch.button")}</span>
