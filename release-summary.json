@@ -1,20 +1,20 @@
 {
-  "version": "1.103.25",
+  "version": "1.103.26",
   "changes": {
     "en-US": [
-      "Add a task overview that collects tasks across notes, derives progress from child items, and edits marks without opening the note.",
-      "Keep Ctrl or Command S saving from code block titles and other embedded editor inputs.",
-      "Close the task dialog on the first Escape and cover the new views with end-to-end tests."
+      "Task checkboxes now cycle empty, checked, crossed out and back to empty, and the task overview advances the same marks on click. Crossed-out tasks render a monochrome square icon sized to the checkbox instead of the emoji.",
+      "Adjacent images inside a task now share one row with a 9rem minimum while paragraphs and nested lists still span the full width; resizing measures against the task content.",
+      "The note search dialog stacks scope controls, input and results into one scrollable card capped at 74dvh and resets paging when reopened; the sidebar search button is highlighted."
     ],
     "zh-CN": [
-      "新增待办总览：汇总各笔记的待办，按子级自动判断进行中，并可不开原文直接改标记。",
-      "修复在代码块标题等编辑器内嵌输入框中 Ctrl+S 无法保存的问题。",
-      "修复待办弹窗第一次按 Esc 关不掉的问题，并为新界面补充端到端测试。"
+      "待办勾选框改为三态循环（空框 → 勾选 → 叉号 → 空框），待办总览点击图标同样循环；叉号改为与复选框同尺寸的单色方块图标，不再使用彩色 emoji。",
+      "待办内的相邻图片改为同行排布（每张最小 9rem），段落与子列表仍占满整行；拖动缩放按待办内容宽度计算。",
+      "搜索笔记弹窗改为单张可滚动卡片（最高 74dvh），范围切换位于输入框上方，重新打开时回到第一页；侧栏搜索按钮改为翠绿高亮。"
     ],
     "ja": [
-      "タスク一覧を追加し、ノートを開かずに子項目から進行状況を判定してマークを変更できるようにしました。",
-      "コードブロックのタイトルなど埋め込み入力欄でも Ctrl+S で保存できるよう修正しました。",
-      "タスクダイアログが最初の Esc で閉じない問題を修正し、新しい画面の E2E テストを追加しました。"
+      "タスクのチェックボックスが空欄 → チェック → バツ → 空欄の順に切り替わり、タスク一覧でもクリックで同じマークが進みます。バツ印は絵文字ではなくチェックボックスと同じ大きさの単色スクエアアイコンで表示します。",
+      "タスク内の隣り合う画像は 1 行に並び（各 9rem 以上）、段落や子リストは引き続き全幅を使います。サイズ変更はタスク本文の幅を基準に計算します。",
+      "ノート検索ダイアログは範囲切り替え・入力欄・結果を 1 枚のスクロール可能なカード（最大 74dvh）にまとめ、開き直すと 1 ページ目に戻ります。サイドバーの検索ボタンも強調表示にしました。"
     ]
   }
 }
