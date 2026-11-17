@@ -1604,13 +1604,32 @@ textarea {
   outline-offset: 2px;
 }
 
+/* Adjacent task images share a row; paragraphs and nested blocks still span it. */
 .ProseMirror ul[data-type="taskList"] li[data-checked] > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 0.75rem;
   min-width: 0;
   flex: 1 1 auto;
 }
 
-.ProseMirror ul[data-type="taskList"] li[data-checked] > div .edgeever-image-node:not([data-width]) {
-  width: 25%;
+.ProseMirror ul[data-type="taskList"] li[data-checked] > div > * {
+  min-width: 0;
+  flex: 0 0 100%;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked] > div > :is(.node-image, img:not(.ProseMirror-separator)) {
+  flex: 0 0 auto;
+  width: var(--edgeever-image-width, 25%);
+  min-width: min(9rem, calc((100% - 0.75rem) / 2));
+  max-width: 100%;
+}
+
+/* React's outer NodeView owns the percentage; the inner figure fills that box. */
+.ProseMirror ul[data-type="taskList"] li[data-checked] > div > .node-image > .edgeever-image-node {
+  width: 100% !important;
+  min-width: 0;
 }
 
 .ProseMirror ul[data-type="taskList"] li[data-checked] > div > p {

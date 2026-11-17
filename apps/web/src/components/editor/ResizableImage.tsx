@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { mergeAttributes } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import { NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from "@tiptap/react";
@@ -69,6 +69,17 @@ const ResizableImageNodeView = ({
   const alt = typeof node.attrs.alt === "string" ? node.attrs.alt : "";
   const title = typeof node.attrs.title === "string" ? node.attrs.title : "";
   const src = typeof node.attrs.src === "string" ? node.attrs.src : "";
+
+  useLayoutEffect(() => {
+    // TipTap places the React figure inside a separate .node-image block.
+    // Give that outer box the current width without changing the document.
+    const nodeView = wrapperRef.current?.parentElement;
+    nodeView?.style.setProperty("--edgeever-image-width", `${width}%`);
+    return () => {
+      nodeView?.style.removeProperty("--edgeever-image-width");
+    };
+  }, [width]);
+
   const reloadImage = useCallback(() => {
     setLoadState("loading");
     setReloadKey((value) => value + 1);
@@ -203,17 +214,19 @@ const ResizableImageNodeView = ({
     if (!editable || isImageInGallery(editor.state.doc, getPos())) return;
 
     const wrapper = wrapperRef.current;
-    const parent = wrapper?.parentElement;
-    if (!wrapper || !parent) return;
+    const nodeView = wrapper?.parentElement;
+    if (!wrapper || !nodeView) return;
+    const taskContent = nodeView.parentElement;
+    const parent = taskContent?.matches('li[data-checked] > div') ? taskContent : nodeView;
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const parentWidth = parent.getBoundingClientRect().width;
+    const wrapperLeft = wrapper.getBoundingClientRect().left;
     if (parentWidth <= 0) return;
 
     let pendingWidth = nodeWidth;
     const previewFromPointer = (clientX: number) => {
-      const wrapperLeft = wrapper.getBoundingClientRect().left;
       pendingWidth = clampImageWidth(((clientX - wrapperLeft) / parentWidth) * 100);
       setPreviewWidth(pendingWidth);
     };
