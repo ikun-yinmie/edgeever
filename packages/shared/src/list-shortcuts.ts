@@ -232,6 +232,7 @@ export const toggleTaskItemCollapseAtSelection = (
  * 1. The new taskItem does NOT inherit inline marks (such as textStyle backgroundColor, color, fontSize, bold, italic).
  * 2. tr.setStoredMarks([]) is cleared so that any typing in the new task item begins clean without formatting.
  * 3. Attributes such as checked: false and collapsed: false are reset on the new taskItem.
+ * 4. Splitting a collapsed task's leading paragraph keeps its hidden sub-content on the original item.
  */
 export const splitTaskItemWithoutInheritedMarks = (
   state: EditorState,
@@ -247,6 +248,36 @@ export const splitTaskItemWithoutInheritedMarks = (
     }
   }
   if (taskItemDepth < 1) return false;
+
+  const taskItem = selection.$from.node(taskItemDepth);
+  if (
+    taskItem.attrs.collapsed === true
+    && taskItem.childCount > 1
+    && selection.$from.depth === taskItemDepth + 1
+    && selection.$from.index(taskItemDepth) === 0
+    && selection.$from.parent.type === state.schema.nodes.paragraph
+    && selection.$from.sameParent(selection.$to)
+  ) {
+    if (!dispatch) return true;
+
+    // Split only the visible title. A regular list split would move all hidden
+    // children to the new sibling and expose them beneath the wrong task.
+    const paragraph = selection.$from.parent;
+    const remainingTitle = paragraph.content.cut(selection.$to.parentOffset);
+    const sibling = taskItem.type.create(
+      { checked: false, collapsed: false },
+      state.schema.nodes.paragraph.create(null, remainingTitle),
+    );
+    const tr = state.tr.delete(selection.from, selection.$from.end());
+    const siblingPos = tr.mapping.map(selection.$from.after(taskItemDepth));
+    tr.insert(siblingPos, sibling);
+    const cursor = siblingPos + 2;
+    tr.setSelection(TextSelection.create(tr.doc, cursor));
+    tr.removeMark(cursor, cursor + remainingTitle.size);
+    tr.setStoredMarks([]);
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
 
   // If the cursor is inside an empty textblock, let consecutive list enter handle it
   if (
