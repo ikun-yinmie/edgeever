@@ -15,7 +15,7 @@ export const MemoTaskStatusIcon = ({ status }: { status: MemoTaskStatus }) => (
     status === "pending" && "border-slate-500 text-slate-500 dark:border-slate-400",
     status === "doing" && "border-amber-700 bg-amber-50 text-amber-800 dark:border-amber-400 dark:bg-amber-950 dark:text-amber-300",
     status === "done" && "border-emerald-700 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-950 dark:text-emerald-300",
-    status === "rejected" && "border-rose-700 bg-rose-50 text-rose-800 dark:border-rose-400 dark:bg-rose-950 dark:text-rose-300")}
+    status === "rejected" && "border-[#dc2626] bg-red-50 text-[#dc2626] dark:border-red-400 dark:bg-red-950 dark:text-red-400")}
   >
     {status === "doing" ? <Minus className="h-3 w-3" /> : status === "done" ? <Check className="h-3 w-3" /> : status === "rejected" ? <X className="h-3 w-3" /> : null}
   </span>
@@ -84,7 +84,7 @@ export const MemoTasksView = ({ tasks, memoTitles, readOnly = false, onMark, onN
             </TooltipContent>
           </Tooltip>
           <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onSelect ? onSelect(task) : onNavigate(task)}>
-            <span className={cn("block break-words text-sm text-slate-900 dark:text-slate-100", task.status === "done" && "text-slate-500 line-through dark:text-slate-400")}>{task.text || t("common.untitledMemo")}</span>
+            <span className={cn("block break-words text-sm text-slate-900 dark:text-slate-100", task.status === "done" && "text-slate-500 line-through dark:text-slate-400", task.status === "rejected" && "line-through decoration-[#dc2626] decoration-[1.5px] dark:decoration-red-400")}>{task.text || t("common.untitledMemo")}</span>
             <span className="mt-1 flex min-w-0 items-start gap-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
               {allChildren.length > 0 ? t("memoTasks.progress", { done: allChildren.filter(child => child.checked).length, rejected: allChildren.filter(child => child.rejected).length, pending: allChildren.filter(child => !child.checked && !child.rejected).length }) : <><FileText className="mt-0.5 h-3 w-3 shrink-0" /><span className="break-words">{pathLabel(task)}</span></>}
             </span>

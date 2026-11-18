@@ -62,7 +62,7 @@ export const MemoTasksPane = ({ repository, scope, notebooks, onClose, onNavigat
     }
   };
   const preview = (task: MemoTask) => <div key={task.id}>
-    <button type="button" className={cn("flex w-full items-start gap-2 rounded px-2 py-2 text-left text-sm", task.id === selected?.id && "bg-emerald-50 dark:bg-emerald-950/40")} onClick={() => navigate(task)}><span className="mt-0.5"><MemoTaskStatusIcon status={task.status} /></span><span className={cn("min-w-0 break-words", task.checked && "text-slate-500 line-through")}>{task.text}</span></button>
+    <button type="button" className={cn("flex w-full items-start gap-2 rounded px-2 py-2 text-left text-sm", task.id === selected?.id && "bg-emerald-50 dark:bg-emerald-950/40")} onClick={() => navigate(task)}><span className="mt-0.5"><MemoTaskStatusIcon status={task.status} /></span><span className={cn("min-w-0 break-words", task.checked && "text-slate-500 line-through", task.rejected && "line-through decoration-[#dc2626] decoration-[1.5px] dark:decoration-red-400")}>{task.text}</span></button>
     <div className="ml-6">{tasks.filter(child => child.parentId === task.id).map(preview)}</div>
   </div>;
   return (

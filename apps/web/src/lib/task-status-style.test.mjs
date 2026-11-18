@@ -25,12 +25,12 @@ const desktopMask = rule(surfaces[0].css, `${rejectedSelector(surfaces[0].root)}
 
 describe("crossed-out task styling", () => {
   for (const { name, root, css } of surfaces) {
-    test(`${name} renders a monochrome square cross without changing checkbox dimensions`, () => {
+    test(`${name} renders a red square cross without changing checkbox dimensions`, () => {
       const icon = rule(css, `${rejectedSelector(root)}::after`);
       expect(icon).toContain('content: "";');
       expect(icon).toContain("position: absolute;");
       expect(icon).toContain("inset: 0;");
-      expect(icon).toContain("background-color:");
+      expect(icon).toContain("background-color: #dc2626;");
       expect(icon).toContain("pointer-events: none;");
       expect(icon.match(/mask: ([^;]+);/)?.[1]).toBe(desktopMask);
       expect(icon).not.toContain("font-size:");
@@ -57,13 +57,13 @@ describe("crossed-out task styling", () => {
     }
   });
 
-  test("mobile dark mode provides a lighter cross", () => {
-    expect(surfaces[1].css).toContain(`html.dark ${rejectedSelector(surfaces[1].root)}::after {\n  background-color: #94a3b8;`);
+  test("mobile dark mode provides a lighter red cross", () => {
+    expect(surfaces[1].css).toContain(`html.dark ${rejectedSelector(surfaces[1].root)}::after {\n  background-color: #f87171;`);
   });
 
-  test("toolbar uses the matching line icon instead of a colorful emoji", () => {
+  test("toolbar uses the matching red line icon instead of an emoji", () => {
     const toolbar = readFileSync(new URL("../components/EditorToolbar.tsx", import.meta.url), "utf8");
-    expect(toolbar).toContain('<SquareX className="h-4 w-4" />');
+    expect(toolbar).toContain('<SquareX className="h-4 w-4 text-[#dc2626] dark:text-red-400" />');
     expect(toolbar).not.toContain('<span aria-hidden="true">❌</span>');
   });
 });

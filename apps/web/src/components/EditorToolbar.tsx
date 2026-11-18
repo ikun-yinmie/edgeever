@@ -639,7 +639,7 @@ export const EditorToolbar = ({
               rejected: current.getAttributes("taskItem").rejected !== true,
             }).run())}
           >
-            <SquareX className="h-4 w-4" />
+            <SquareX className="h-4 w-4 text-[#dc2626] dark:text-red-400" />
           </EditorToolbarButton>
           <EditorToolbarButton
             title={`${t("editorToolbar.numberedTaskList")} · ${t("editorToolbar.listIndentHint")}`}
