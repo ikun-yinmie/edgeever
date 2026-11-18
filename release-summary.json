@@ -1,14 +1,14 @@
 {
-  "version": "1.103.27",
+  "version": "1.103.28",
   "changes": {
     "en-US": [
-      "Make rejected tasks easier to recognize with red cross icons and red strikethrough text in the editor, task overview, and HTML and PDF exports, with lighter red accents in dark mode."
+      "Pressing Enter in a collapsed task now creates a sibling at the same level while keeping hidden subtasks and details under the original task, including nested tasks."
     ],
     "zh-CN": [
-      "为否定待办统一使用红色叉号和红色删除线，同步编辑器、待办总览及 HTML、PDF 导出，深色模式采用更清晰的浅红色。"
+      "修复折叠待办中按回车时子项被移动的问题：新待办保持同级，隐藏的子任务和详细内容保留在原待办下，多级嵌套同样适用。"
     ],
     "ja": [
-      "否定済みタスクを赤い×アイコンと赤い取り消し線で統一し、エディター、タスク一覧、HTML・PDF出力に反映しました。ダークモードでは見やすい明るい赤を使用します。"
+      "折りたたんだタスクで Enter を押すと、非表示のサブタスクと詳細を元のタスクに保持したまま、同じ階層に新しいタスクを作成するよう修正しました。入れ子のタスクにも対応します。"
     ]
   }
 }
