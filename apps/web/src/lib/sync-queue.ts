@@ -432,6 +432,87 @@ export const discardWebMemoConflict = async (scope: string, memoId: string) => {
   return remote.memo;
 };
 
+/**
+ * Resolve sync conflicts in favour of the local draft: take a fresh edit
+ * session on the current server revision and push the queued content with the
+ * destructive-overwrite escape hatch. Conflicts whose note no longer exists on
+ * the server stay queued because there is nothing to overwrite there.
+ */
+export const forceUploadWebConflicts = async (scope: string) => {
+  const conflicts: SyncQueueItem[] = [];
+  for (const item of await localDb.syncQueue.where("status").equals("conflict").toArray()) {
+    if (item.kind !== "memo.update") continue;
+    if (item.scope === scope) {
+      conflicts.push(item);
+      continue;
+    }
+    if (!item.scope && await localDb.memos.get([scope, item.memoId])) {
+      conflicts.push(item);
+    }
+  }
+  const { putLocalMemo } = await import("@/lib/local-mirror");
+  let uploaded = 0;
+  for (const item of conflicts) {
+    const payload = item.payload as MemoUpdateSyncPayload;
+    try {
+      const session = (await api.createMemoEditSession(item.memoId)).editSession;
+      const data = await api.updateMemo(item.memoId, {
+        expectedRevision: session.baseRevision,
+        expectedContentHash: session.baseContentHash,
+        editSessionId: session.id,
+        title: payload.title,
+        contentJson: payload.contentJson,
+        contentMarkdown: payload.contentMarkdown,
+        tags: payload.tags,
+        allowDestructiveOverwrite: true,
+      });
+      const current = await localDb.syncQueue.get(item.id);
+      if (current && current.updatedAt === item.updatedAt && current.status === "conflict") {
+        await putLocalMemo(scope, data.memo);
+        await localDb.drafts.delete(item.memoId);
+        await localDb.syncQueue.delete(item.id);
+      } else if (current) {
+        // A newer autosave landed while the overwrite was in flight. Keep its
+        // local content and rebase it onto the acknowledged revision instead of
+        // dropping those edits.
+        const local = await localDb.memos.get([scope, item.memoId]);
+        if (local) {
+          await putLocalMemo(scope, {
+            ...local,
+            revision: data.memo.revision,
+            contentHash: data.memo.contentHash,
+          });
+        }
+        await localDb.syncQueue.update(item.id, {
+          status: "pending",
+          payload: {
+            ...(current.payload as MemoUpdateSyncPayload),
+            expectedRevision: data.memo.revision,
+            expectedContentHash: data.memo.contentHash,
+          },
+          attemptCount: 0,
+          lastError: null,
+          lastErrorCode: null,
+          lastErrorDetails: null,
+          nextAttemptAt: null,
+          claimId: null,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        // The queue row disappeared while the overwrite was in flight (for
+        // example a sync pass acknowledged it); keep the server snapshot.
+        await putLocalMemo(scope, data.memo);
+      }
+      uploaded += 1;
+    } catch {
+      // Keep the conflict when the server cannot accept the local version
+      // (offline, or the note was deleted remotely); the user can retry or
+      // adopt the cloud version instead.
+    }
+  }
+  return uploaded;
+};
+
 export const isMemoUpdateAlreadyApplied = (memo: MemoDetail, item: SyncQueueItem) => {
   if (item.kind !== "memo.update") {
     return false;

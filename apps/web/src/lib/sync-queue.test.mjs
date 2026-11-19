@@ -7,7 +7,7 @@ globalThis.IDBKeyRange = IDBKeyRange;
 const { localDb } = await import("./local-db.ts");
 const { ApiRequestError, api } = await import("./api.ts");
 const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources } = await import("./local-mirror.ts");
-const { discardWebConflicts, getLocalActionQueueId, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, shouldRetryMissingMemoBatch, syncQueuedChanges } = await import("./sync-queue.ts");
+const { discardWebConflicts, forceUploadWebConflicts, getLocalActionQueueId, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, shouldRetryMissingMemoBatch, syncQueuedChanges } = await import("./sync-queue.ts");
 
 afterEach(async () => {
   await localDb.transaction(
@@ -447,6 +447,99 @@ describe("web sync conflict recovery", () => {
     expect((await getLocalMemo(scope, memo.id))?.title).toBe("Remote version");
     expect(await localDb.syncQueue.get("memo.update:conflict")).toBeUndefined();
     api.getMemo = originalGetMemo;
+  });
+
+  test("force uploads a conflicted local draft over the cloud version", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox", title: "Local draft" });
+    const localDraft = {
+      ...memo,
+      id: "memo-force-upload",
+      title: "Local draft",
+      revision: 2,
+      contentHash: "hash-2",
+    };
+    await putLocalMemo(scope, localDraft);
+    await queueMemoUpdate({
+      memoId: localDraft.id,
+      expectedRevision: 2,
+      expectedContentHash: "hash-2",
+      editSessionId: "stale-session",
+      title: localDraft.title,
+      contentJson: localDraft.contentJson,
+      tags: [],
+    }, scope);
+    await localDb.syncQueue.update(getMemoUpdateQueueId(localDraft.id), {
+      status: "conflict",
+      lastError: "Note changed before the offline draft could sync.",
+      lastErrorCode: "revision_conflict",
+    });
+
+    const original = {
+      createMemoEditSession: api.createMemoEditSession,
+      updateMemo: api.updateMemo,
+    };
+    let receivedPayload = null;
+    api.createMemoEditSession = async () => ({
+      editSession: { id: "fresh-session", baseRevision: 5, baseContentHash: "hash-5" },
+    });
+    api.updateMemo = async (_memoId, payload) => {
+      receivedPayload = payload;
+      return {
+        memo: {
+          ...localDraft,
+          revision: 6,
+          contentHash: "hash-6",
+          title: payload.title,
+          contentJson: payload.contentJson,
+        },
+      };
+    };
+    try {
+      expect(await forceUploadWebConflicts(scope)).toBe(1);
+      expect(receivedPayload).toMatchObject({
+        expectedRevision: 5,
+        expectedContentHash: "hash-5",
+        editSessionId: "fresh-session",
+        title: "Local draft",
+        allowDestructiveOverwrite: true,
+      });
+      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(localDraft.id))).toBeUndefined();
+      expect((await getLocalMemo(scope, localDraft.id))?.revision).toBe(6);
+    } finally {
+      api.createMemoEditSession = original.createMemoEditSession;
+      api.updateMemo = original.updateMemo;
+    }
+  });
+
+  test("keeps a conflict when the note no longer exists on the server", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox", title: "Gone remotely" });
+    await queueMemoUpdate({
+      memoId: memo.id,
+      expectedRevision: 0,
+      expectedContentHash: memo.contentHash,
+      editSessionId: "session",
+      title: memo.title ?? "",
+      contentJson: memo.contentJson,
+      tags: [],
+    }, scope);
+    await localDb.syncQueue.update(getMemoUpdateQueueId(memo.id), {
+      status: "conflict",
+      lastError: "Memo not found",
+      lastErrorCode: "memo_not_found",
+    });
+
+    const original = api.createMemoEditSession;
+    api.createMemoEditSession = async () => {
+      throw new ApiRequestError("Memo not found", 404, "not_found", null);
+    };
+    try {
+      expect(await forceUploadWebConflicts(scope)).toBe(0);
+      expect(await localDb.syncQueue.get(getMemoUpdateQueueId(memo.id))).toBeDefined();
+    } finally {
+      api.createMemoEditSession = original;
+    }
   });
 
   test("uploads an offline resource and rewrites its memo reference", async () => {

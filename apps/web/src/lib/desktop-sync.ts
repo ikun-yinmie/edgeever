@@ -1228,6 +1228,57 @@ export const discardDesktopConflicts = async () => {
 };
 
 /**
+ * Push a conflicted local draft to the server instead of adopting the cloud
+ * version. A fresh edit session supplies the current base, and the destructive
+ * overwrite flag tells the server this replacement is intentional.
+ */
+const pushDesktopConflictToCloud = async (item: DesktopOutboxItem) => {
+  const payload = normalizeDesktopMemoPayload(item.payload);
+  const memoId = String(payload.memoId ?? item.entityId);
+  const session = (await api.createMemoEditSession(memoId)).editSession;
+  const data = await api.updateMemo(memoId, {
+    expectedRevision: session.baseRevision,
+    expectedContentHash: session.baseContentHash,
+    editSessionId: session.id,
+    title: String(payload.title ?? ""),
+    contentJson: payload.contentJson as TiptapDoc,
+    contentMarkdown: typeof payload.contentMarkdown === "string" ? payload.contentMarkdown : undefined,
+    tags: Array.isArray(payload.tags) ? payload.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    allowDestructiveOverwrite: true,
+  });
+  await request("sync.apply", {
+    changes: [{ entityType: "memo", operation: "upsert", entityId: data.memo.id, memo: data.memo, notebook: null }],
+  });
+  await request("sync.outbox.ack", { id: item.id, version: item.version, remoteMemo: data.memo });
+  return data.memo;
+};
+
+export const forceUploadDesktopSyncIssue = async (item: DesktopOutboxItem) => {
+  if (item.kind !== "memo.update") {
+    throw new Error("Only note edits can be uploaded from a sync conflict.");
+  }
+  const memo = await pushDesktopConflictToCloud(item);
+  window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
+  return memo;
+};
+
+export const forceUploadDesktopConflicts = async () => {
+  const response = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
+  const conflicts = response.items.filter((item) => item.status === "conflict" && item.kind === "memo.update");
+  let uploaded = 0;
+  for (const item of conflicts) {
+    try {
+      await pushDesktopConflictToCloud(item);
+      uploaded += 1;
+    } catch {
+      // Keep conflicts the server cannot accept (offline, or the note was
+      // deleted remotely) so the user can retry or adopt the cloud version.
+    }
+  }
+  return uploaded;
+};
+
+/**
  * Discard a single note's conflicted desktop outbox item and replace the local
  * store with the authoritative cloud memo.
  */

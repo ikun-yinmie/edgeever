@@ -12,6 +12,7 @@ import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
 import {
   createDesktopSyncDiagnosticText,
   discardDesktopSyncIssue,
+  forceUploadDesktopSyncIssue,
   getDesktopSyncIssues,
   pullEverythingFromServer,
   recoverDesktopMemoUpdate,
@@ -51,6 +52,7 @@ export const DesktopSyncIssuesDialog = ({
   const [error, setError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState<DesktopOutboxItem | null>(null);
   const [discarding, setDiscarding] = useState<DesktopOutboxItem | null>(null);
+  const [uploadingConflict, setUploadingConflict] = useState<DesktopOutboxItem | null>(null);
   const [recoveryNotebookId, setRecoveryNotebookId] = useState("");
   const [maintenanceBusy, setMaintenanceBusy] = useState<"pull" | "upload" | null>(null);
   const [maintenanceProgress, setMaintenanceProgress] = useState<DesktopMaintenanceProgress | null>(null);
@@ -172,6 +174,13 @@ export const DesktopSyncIssuesDialog = ({
     void runAction(item, () => discardDesktopSyncIssue(item));
   };
 
+  const confirmUploadLocal = () => {
+    if (!uploadingConflict) return;
+    const item = uploadingConflict;
+    setUploadingConflict(null);
+    void runAction(item, () => forceUploadDesktopSyncIssue(item));
+  };
+
   const retryGlobalIssue = async () => {
     setWorkingGlobal(true);
     setError(null);
@@ -217,7 +226,7 @@ export const DesktopSyncIssuesDialog = ({
 
   return (
     <>
-      <Dialog open={open && !recovering && !discarding && !pullConfirm && !uploadConfirm} onOpenChange={(nextOpen) => { if (workingId === null && !workingGlobal && maintenanceBusy === null) onOpenChange(nextOpen); }}>
+      <Dialog open={open && !recovering && !discarding && !uploadingConflict && !pullConfirm && !uploadConfirm} onOpenChange={(nextOpen) => { if (workingId === null && !workingGlobal && maintenanceBusy === null) onOpenChange(nextOpen); }}>
         <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("notebookPane.syncDetails.title")}</DialogTitle>
@@ -291,6 +300,12 @@ export const DesktopSyncIssuesDialog = ({
                         {t("notebookPane.syncDetails.recover")}
                       </Button>
                     )}
+                    {item.status === "conflict" && item.kind === "memo.update" ? (
+                      <Button size="sm" variant="outline" disabled={working} onClick={() => setUploadingConflict(item)}>
+                        <CloudUpload className="mr-1.5 h-3.5 w-3.5" />
+                        {t("notebookPane.syncDetails.uploadLocal")}
+                      </Button>
+                    ) : null}
                     <Button size="sm" variant="outline" disabled={working} onClick={() => void runAction(item, () => retryDesktopSyncIssue(item))}>
                       <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                       {t("notebookPane.syncDetails.retry")}
@@ -384,6 +399,16 @@ export const DesktopSyncIssuesDialog = ({
           confirmLabel={t("notebookPane.syncDetails.discard")}
           onCancel={() => setDiscarding(null)}
           onConfirm={confirmDiscard}
+        />
+      )}
+
+      {uploadingConflict && (
+        <AppConfirmDialog
+          title={t("notebookPane.syncDetails.uploadLocalTitle")}
+          description={t("notebookPane.syncDetails.uploadLocalDescription")}
+          confirmLabel={t("notebookPane.syncDetails.uploadLocal")}
+          onCancel={() => setUploadingConflict(null)}
+          onConfirm={confirmUploadLocal}
         />
       )}
 

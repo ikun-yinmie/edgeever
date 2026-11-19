@@ -9,7 +9,7 @@ import {
 } from "@/lib/memo-save-conflict";
 import type { EditorSavePhase } from "./useEditorSaveStatus";
 
-export type EditorConflictAction = "adopt" | "copy";
+export type EditorConflictAction = "adopt" | "copy" | "upload";
 
 export const useEditorSaveConflictActions = ({
   saveState,
@@ -18,6 +18,7 @@ export const useEditorSaveConflictActions = ({
   tagsText,
   getLocalDraftMarkdown,
   adoptCloudMemo,
+  uploadLocalVersion,
 }: {
   saveState: EditorSavePhase;
   saveConflictInfo: MemoSaveConflictInfo | null;
@@ -25,6 +26,7 @@ export const useEditorSaveConflictActions = ({
   tagsText: string;
   getLocalDraftMarkdown: () => string;
   adoptCloudMemo: () => Promise<void>;
+  uploadLocalVersion: () => Promise<void>;
 }) => {
   const { t } = useTranslation();
   const [conflictActionPending, setConflictActionPending] = useState<EditorConflictAction | null>(null);
@@ -90,11 +92,26 @@ export const useEditorSaveConflictActions = ({
     }
   }, [adoptCloudMemo, conflictActionPending, t]);
 
+  const handleUploadLocalVersion = useCallback(async () => {
+    if (conflictActionPending) {
+      return;
+    }
+
+    setConflictActionPending("upload");
+    setConflictActionMessage(null);
+    try {
+      await uploadLocalVersion();
+    } finally {
+      setConflictActionPending(null);
+    }
+  }, [conflictActionPending, uploadLocalVersion]);
+
   return {
     conflictActionMessage,
     conflictActionPending,
     handleAdoptCloudAndReload,
     handleCopyLocalDraft,
+    handleUploadLocalVersion,
     saveConflictReason,
   };
 };

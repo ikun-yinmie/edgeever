@@ -4025,40 +4025,8 @@ const RichEditorPane = ({
     await queryClient.invalidateQueries({ queryKey: ["memo", remoteMemo.id] });
   }, [hydrateMarkdownSource, onSaved, queryClient, repository]);
 
-  const {
-    conflictActionMessage,
-    conflictActionPending,
-    handleAdoptCloudAndReload,
-    handleCopyLocalDraft,
-    saveConflictReason,
-  } = useEditorSaveConflictActions({
-    adoptCloudMemo,
-    getLocalDraftMarkdown,
-    saveConflictInfo,
-    saveState,
-    tagsText,
-    title,
-  });
-
-  // --- Yuque-style collaboration presence (shared notes only) ---
-  // The heartbeat keeps running until the realtime session goes live, so the
-  // peer badge never blinks during connect and reconnect windows.
-  const collabEnabled = isGroupSharedNote && Boolean(sharedAccess?.canEdit) && !memo?.isDeleted;
-  const { peers: collabPeers } = useCollabPresence({
-    memoId: collabEnabled && !collabRealtimeLive ? memo?.id ?? null : null,
-    enabled: collabEnabled && !collabRealtimeLive,
-  });
-  const collabPeerNames = collabRealtimeLive && collabRealtimePeers.length > 0
-    ? collabRealtimePeers.map((peer) => peer.name)
-    : collabPeers
-      .filter((peer) => !peer.isSelf)
-      .map((peer) => peer.displayName || peer.actorId);
-  const collabConflictPeerNames = collabPeerNames.length > 0 ? collabPeerNames : [t("collab.someone")];
-  const [collabConflict, setCollabConflict] = useState<CollabConflictInfo | null>(null);
-  const [collabCopiedMine, setCollabCopiedMine] = useState(false);
-
-  // A conscious overwrite after a collaboration conflict: refresh the local
-  // edit session against the remote revision, then save the local draft again.
+  // A conscious overwrite after a conflict: refresh the local edit session
+  // against the remote revision, then save the local draft again.
   const forceOverwriteAfterConflict = useCallback(async () => {
     const currentMemo = memoRef.current;
     if (!currentMemo) return;
@@ -4079,6 +4047,40 @@ const RichEditorPane = ({
       setSaveState("error");
     }
   }, [markDirty, saveMutation, setHasUnsavedChanges, setSaveConflictInfo, setSaveState]);
+
+  const {
+    conflictActionMessage,
+    conflictActionPending,
+    handleAdoptCloudAndReload,
+    handleCopyLocalDraft,
+    handleUploadLocalVersion,
+    saveConflictReason,
+  } = useEditorSaveConflictActions({
+    adoptCloudMemo,
+    getLocalDraftMarkdown,
+    saveConflictInfo,
+    saveState,
+    tagsText,
+    title,
+    uploadLocalVersion: forceOverwriteAfterConflict,
+  });
+
+  // --- Yuque-style collaboration presence (shared notes only) ---
+  // The heartbeat keeps running until the realtime session goes live, so the
+  // peer badge never blinks during connect and reconnect windows.
+  const collabEnabled = isGroupSharedNote && Boolean(sharedAccess?.canEdit) && !memo?.isDeleted;
+  const { peers: collabPeers } = useCollabPresence({
+    memoId: collabEnabled && !collabRealtimeLive ? memo?.id ?? null : null,
+    enabled: collabEnabled && !collabRealtimeLive,
+  });
+  const collabPeerNames = collabRealtimeLive && collabRealtimePeers.length > 0
+    ? collabRealtimePeers.map((peer) => peer.name)
+    : collabPeers
+      .filter((peer) => !peer.isSelf)
+      .map((peer) => peer.displayName || peer.actorId);
+  const collabConflictPeerNames = collabPeerNames.length > 0 ? collabPeerNames : [t("collab.someone")];
+  const [collabConflict, setCollabConflict] = useState<CollabConflictInfo | null>(null);
+  const [collabCopiedMine, setCollabCopiedMine] = useState(false);
 
   // Surface collaborative conflicts through the Yuque-style bar instead of
   // the generic conflict UI. Personal notes keep the existing behaviour.
@@ -4937,6 +4939,8 @@ const RichEditorPane = ({
           actionPending={conflictActionPending}
           actionMessage={conflictActionMessage}
           onAdoptCloud={handleAdoptCloudAndReload}
+          onUploadLocal={handleUploadLocalVersion}
+          canUploadLocal={saveConflictInfo?.code !== "memo_not_found"}
           onCopyDraft={handleCopyLocalDraft}
           onRetry={mutateSave}
         />

@@ -736,6 +736,7 @@ export const WorkspaceApp = ({
     runQueuedSync,
     setSyncSummary,
     syncSummary,
+    uploadLocalConflictsNow,
   } = useWorkspaceQueuedSync({
     isOnline,
     localDataScope,
@@ -3767,6 +3768,7 @@ export const WorkspaceApp = ({
                   isSyncingQueuedChanges={isSyncingQueuedChanges}
                   onSyncQueuedChanges={() => void runQueuedSync()}
                   onDiscardConflicts={() => void discardConflictsNow()}
+                  onUploadLocalConflicts={() => void uploadLocalConflictsNow()}
                   onOpenAssets={handleOpenAssets}
                   onOpenTags={handleOpenTags}
                   onOpenTemplates={handleOpenTemplates}

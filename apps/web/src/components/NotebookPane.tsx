@@ -24,6 +24,7 @@ import {
   KeyRound,
   LogOut,
   CloudOff,
+  CloudUpload,
   AlertTriangle,
   RefreshCw,
   CircleUserRound,
@@ -42,6 +43,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -368,6 +370,7 @@ const SyncStatusBar = ({
   isSyncing,
   onSyncNow,
   onDiscardConflicts,
+  onUploadLocalConflicts,
   notebooks,
 }: {
   summary: SyncQueueSummary;
@@ -375,10 +378,12 @@ const SyncStatusBar = ({
   isSyncing: boolean;
   onSyncNow: () => void;
   onDiscardConflicts: () => void;
+  onUploadLocalConflicts: () => void;
   notebooks: Notebook[];
 }) => {
   const { t } = useTranslation();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [uploadConfirmOpen, setUploadConfirmOpen] = useState(false);
   const hasQueuedWork = summary.total > 0;
   const label = getSyncStatusLabel(summary, isOnline, isSyncing, t);
   const statusClassName = !isOnline
@@ -419,14 +424,32 @@ const SyncStatusBar = ({
         {label}
       </button>
       {summary.conflict > 0 && (
-        <button
-          className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-800 transition-colors hover:bg-card/70 disabled:opacity-50"
-          type="button"
-          disabled={!isOnline || isSyncing}
-          onClick={onDiscardConflicts}
-        >
-          {t("notebookPane.sync.discardConflicts")}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-amber-800 transition-colors hover:bg-card/70 disabled:opacity-50"
+                  type="button"
+                  aria-label={t("notebookPane.sync.uploadConflicts")}
+                  disabled={!isOnline || isSyncing}
+                  onClick={() => setUploadConfirmOpen(true)}
+                >
+                  <CloudUpload className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t("notebookPane.sync.uploadConflicts")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <button
+            className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-800 transition-colors hover:bg-card/70 disabled:opacity-50"
+            type="button"
+            disabled={!isOnline || isSyncing}
+            onClick={onDiscardConflicts}
+          >
+            {t("notebookPane.sync.discardConflicts")}
+          </button>
+        </div>
       )}
       {hasQueuedWork && (
         <TooltipProvider delayDuration={0}>
@@ -455,6 +478,18 @@ const SyncStatusBar = ({
             onSyncNow={onSyncNow}
           />
         </Suspense>
+      )}
+      {uploadConfirmOpen && (
+        <AppConfirmDialog
+          title={t("notebookPane.syncDetails.uploadLocalTitle")}
+          description={t("notebookPane.syncDetails.uploadLocalDescription")}
+          confirmLabel={t("notebookPane.syncDetails.uploadLocal")}
+          onCancel={() => setUploadConfirmOpen(false)}
+          onConfirm={() => {
+            setUploadConfirmOpen(false);
+            onUploadLocalConflicts();
+          }}
+        />
       )}
     </div>
   );
@@ -499,6 +534,7 @@ export const NotebookPane = ({
   isSyncingQueuedChanges,
   onSyncQueuedChanges,
   onDiscardConflicts,
+  onUploadLocalConflicts,
   imageCompressionEnabled,
   onImageCompressionChange,
   authRequired,
@@ -550,6 +586,7 @@ export const NotebookPane = ({
   isSyncingQueuedChanges: boolean;
   onSyncQueuedChanges: () => void;
   onDiscardConflicts: () => void;
+  onUploadLocalConflicts: () => void;
   imageCompressionEnabled: boolean;
   onImageCompressionChange: (enabled: boolean) => void;
   authRequired: boolean;
@@ -888,6 +925,7 @@ export const NotebookPane = ({
             isSyncing={isSyncingQueuedChanges}
             onSyncNow={onSyncQueuedChanges}
             onDiscardConflicts={onDiscardConflicts}
+            onUploadLocalConflicts={onUploadLocalConflicts}
             notebooks={notebooks}
           />
         </div>

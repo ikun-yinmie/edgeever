@@ -193,6 +193,27 @@ export const useWorkspaceQueuedSync = ({
     }
   }, [isOnline, localDataScope, queryClient]);
 
+  const uploadLocalConflictsNow = useCallback(async () => {
+    if (!isOnline) return;
+    setIsSyncingQueuedChanges(true);
+    try {
+      if (window.edgeeverDesktop?.isAvailable) {
+        const { forceUploadDesktopConflicts, getDesktopSyncSummary } = await import("@/lib/desktop-sync");
+        await forceUploadDesktopConflicts();
+        setSyncSummary(await getDesktopSyncSummary());
+      } else {
+        const { forceUploadWebConflicts } = await import("@/lib/sync-queue");
+        await forceUploadWebConflicts(localDataScope);
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["memos"] }),
+        queryClient.invalidateQueries({ queryKey: ["memo"] }),
+      ]);
+    } finally {
+      setIsSyncingQueuedChanges(false);
+    }
+  }, [isOnline, localDataScope, queryClient]);
+
   return {
     discardConflictsNow,
     // The desktop sidecar reports only aggregate counts; the web queue knows
@@ -202,5 +223,6 @@ export const useWorkspaceQueuedSync = ({
     runQueuedSync,
     setSyncSummary,
     syncSummary,
+    uploadLocalConflictsNow,
   };
 };

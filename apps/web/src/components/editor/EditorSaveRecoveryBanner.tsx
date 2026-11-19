@@ -11,6 +11,8 @@ export const EditorSaveRecoveryBanner = ({
   actionPending,
   actionMessage,
   onAdoptCloud,
+  onUploadLocal,
+  canUploadLocal = true,
   onCopyDraft,
   onRetry,
 }: {
@@ -18,9 +20,12 @@ export const EditorSaveRecoveryBanner = ({
   conflictReason: string | null;
   storageSaveError: boolean;
   savePending: boolean;
-  actionPending: "adopt" | "copy" | null;
+  actionPending: "adopt" | "copy" | "upload" | null;
   actionMessage: string | null;
   onAdoptCloud: () => Promise<void> | void;
+  onUploadLocal: () => Promise<void> | void;
+  /** A note deleted remotely has no cloud row left to overwrite. */
+  canUploadLocal?: boolean;
   onCopyDraft: () => Promise<void> | void;
   onRetry: () => void;
 }) => {
@@ -54,6 +59,19 @@ export const EditorSaveRecoveryBanner = ({
               : t("editor.saveState.conflictAdoptCloud")
             : t("editor.saveState.storageRetry")}
         </Button>
+        {isConflict && canUploadLocal ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2.5 text-[11px] text-rose-800 hover:bg-rose-100"
+            disabled={actionPending !== null}
+            onClick={() => void onUploadLocal()}
+          >
+            {actionPending === "upload"
+              ? t("editor.saveState.conflictUploading")
+              : t("editor.saveState.conflictUploadLocal")}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="ghost"
