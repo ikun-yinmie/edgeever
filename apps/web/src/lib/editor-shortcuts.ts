@@ -160,6 +160,9 @@ export const preserveEmptyListIndentOnBackspace = (
     currentItemStart + currentItem.nodeSize,
     mergedItem,
   );
+  if (previousItem.type.name === "taskItem" && previousItem.attrs.collapsed === true) {
+    transaction.setNodeAttribute(previousItemStart, "collapsed", false);
+  }
   const paragraphCursor = previousItemStart + previousItem.content.size + 2;
   transaction.setSelection(TextSelection.create(transaction.doc, paragraphCursor));
   dispatch(transaction.scrollIntoView());

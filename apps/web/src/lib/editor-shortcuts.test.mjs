@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { Schema } from "@tiptap/pm/model";
-import { Editor } from "@tiptap/core";
+import { history, undo } from "@tiptap/pm/history";
+import { Editor, getSchema } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskItem } from "@tiptap/extension-list";
 import { EdgeEverTaskList, EdgeEverTaskItem, createEdgeEverCodeBlock } from "@edgeever/shared";
@@ -321,6 +322,35 @@ describe("editor shortcut actions", () => {
         }],
       }],
     });
+  });
+
+  test.each([false, true])("Backspace reveals the new sub-paragraph inside a collapsed task (nested: %s)", (nested) => {
+    const taskSchema = getSchema([StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })]);
+    const paragraph = (text) => taskSchema.nodes.paragraph.create(null, text ? taskSchema.text(text) : null);
+    const task = (text, attrs = null, children = []) => taskSchema.nodes.taskItem.create(attrs, [paragraph(text), ...children]);
+    const taskList = (items) => taskSchema.nodes.taskList.create({ numbered: true }, items);
+    const children = taskList([task("Existing child", { rejected: true })]);
+    const parent = task("Parent", { collapsed: true, checked: true }, [children]);
+    const following = task("Following sibling");
+    const list = taskList([parent, task(""), following]);
+    const doc = taskSchema.nodes.doc.create(null, nested ? taskList([task("Outer", null, [list])]) : list);
+    const listStart = nested ? doc.firstChild.firstChild.firstChild.nodeSize + 3 : 1;
+    const selection = TextSelection.create(doc, listStart + parent.nodeSize + 2);
+    const state = EditorState.create({ doc, selection, plugins: [history()] });
+
+    const result = runListBackspace(state);
+    expect(result.handled).toBe(true);
+    const next = result.state;
+    const updatedParent = next.selection.$from.node(-1);
+    expect(updatedParent.eq(task("Parent", { checked: true }, [children, paragraph()]))).toBe(true);
+    expect(next.selection.$from.parent).toBe(updatedParent.lastChild);
+    expect(next.selection.$from.node(-2).lastChild.eq(following)).toBe(true);
+    next.doc.check();
+
+    let restored;
+    expect(undo(next, (transaction) => { restored = next.apply(transaction); })).toBe(true);
+    expect(restored.doc.eq(doc)).toBe(true);
+    expect(restored.selection.eq(selection)).toBe(true);
   });
 
   test("keeps the default Backspace behavior outside a removable sibling list item", () => {

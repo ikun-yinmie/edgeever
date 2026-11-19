@@ -5,7 +5,7 @@ import { ReplaceAroundStep, canSplit } from "@tiptap/pm/transform";
 
 /**
  * Consecutive Enter behavior for list items (both taskItem and listItem):
- * 1. When on a newly created empty list item (itemIndex > 0, childCount === 1):
+ * 1. When on an empty list item (itemIndex > 0):
  *    Pressing Enter removes the item's marker and merges it into the previous
  *    item as a sub-content paragraph (making the previous item collapsible,
  *    ready for sub-items/images/sub-text).
@@ -61,8 +61,11 @@ export const handleConsecutiveListEnter = (
     return true;
   }
 
-  // Case 1: On an empty new item (itemIndex > 0, childCount === 1):
-  if (itemIndex > 0 && currentItem.childCount === 1) {
+  // Case 1: On an empty item (itemIndex > 0). An empty title has nothing to
+  // split, so Enter merges the item — and any visible sub-content it carries
+  // after a split of its expanded parent — into the previous item.
+  const carriesHiddenSubContent = currentItem.attrs.collapsed === true && currentItem.childCount > 1;
+  if (itemIndex > 0 && !carriesHiddenSubContent) {
     const previousItem = list.child(itemIndex - 1);
     if (previousItem.type !== currentItem.type) {
       return false;
@@ -176,11 +179,12 @@ export const sinkListItemPreservingAttrs = (
       0,
     );
     const { start: before, end: after } = range;
-    dispatch(
-      state.tr
-        .step(new ReplaceAroundStep(before - (nestedBefore ? 3 : 1), after, before, after, slice, 1, true))
-        .scrollIntoView(),
-    );
+    const transaction = state.tr;
+    if (nodeBefore.type.name === "taskItem" && nodeBefore.attrs.collapsed === true) {
+      transaction.setNodeAttribute(before - nodeBefore.nodeSize, "collapsed", false);
+    }
+    transaction.step(new ReplaceAroundStep(before - (nestedBefore ? 3 : 1), after, before, after, slice, 1, true));
+    dispatch(transaction.scrollIntoView());
   }
   return true;
 };

@@ -1,4 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+import type { Editor } from "@tiptap/core";
+
+const focusParagraphEnd = (paragraph: Locator) => paragraph.evaluate((element) => {
+  const editorElement = element.closest(".ProseMirror") as HTMLElement & { editor: Editor };
+  const { commands, view } = editorElement.editor;
+  commands.setTextSelection(view.posAtDOM(element, element.childNodes.length));
+  view.focus();
+});
 
 for (const [name, viewport] of [
   ["desktop", { width: 1280, height: 900 }],
@@ -67,12 +75,70 @@ for (const [name, viewport] of [
       expect(await editor.evaluate((element) => (element as any).editor.getJSON().content[0].content[0])).toEqual(parentBefore);
       await page.screenshot({ path: test.info().outputPath(`collapsed-task-enter-${name}.png`) });
 
-      await parent.locator(":scope > .edgeever-task-toggle").click();
-      await expect(child).toBeVisible();
+      const parentTitle = parent.locator(":scope > div > p").first();
+      const enterAfterParent = async () => {
+        await focusParagraphEnd(parentTitle);
+        await page.keyboard.press("Enter");
+        await expect(rootItems).toHaveCount(4);
+      };
+      await enterAfterParent();
+      if (name === "compact") {
+        await page.getByRole("button", { name: "增加列表层级（Tab）", exact: true }).click();
+      } else {
+        await page.keyboard.press("Tab");
+      }
+      await expect(parent).toHaveAttribute("data-collapsed", "false");
+      await expect(rootItems).toHaveCount(3);
+      await expect(parent.locator(":scope > div > p").first()).toHaveText("Parent task");
+      await page.keyboard.insertText("Indented child");
+      await expect(children.last().locator("p")).toHaveText("Indented child");
+      await expect(children.last()).toBeVisible();
       await expect(grandchild).toBeHidden();
+
+      await parent.locator(":scope > .edgeever-task-toggle").click();
+      await enterAfterParent();
+      await page.keyboard.press("Backspace");
+      await expect(parent).toHaveAttribute("data-collapsed", "false");
+      await expect(rootItems).toHaveCount(3);
+      await page.keyboard.insertText("Child paragraph");
+      await expect(parent.locator(":scope > div > p")).toHaveText(["Parent task", "Child paragraph"]);
       await child.locator(":scope > .edgeever-task-toggle").click();
       await expect(grandchild).toBeVisible();
       await expect(grandchild.locator("p")).toHaveText("Grandchild task");
+
+      const followingParagraphs = rootItems.last().locator(":scope > div > p");
+      await followingParagraphs.first().click();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await expect(rootItems).toHaveCount(4);
+      await page.keyboard.press("Enter");
+      await expect(rootItems).toHaveCount(3);
+      await page.keyboard.insertText("Consecutive Enter paragraph");
+      await page.keyboard.press("Shift+Enter");
+      await page.keyboard.insertText("Shift+Enter paragraph");
+      await expect(followingParagraphs).toHaveText([
+        "Following sibling", "Consecutive Enter paragraph", "Shift+Enter paragraph",
+      ]);
+
+      const expandedParent = rootItems.last();
+      await focusParagraphEnd(expandedParent.locator(":scope > div > p").first());
+      const beforeExpandedDoubleEnter = await editor.evaluate((element) => {
+        const document = (element as any).editor.getJSON();
+        return structuredClone(document.content[0].content.at(-1).content.at(-1));
+      });
+      await page.keyboard.press("Enter");
+      await expect(rootItems).toHaveCount(4);
+      await page.keyboard.press("Enter");
+      await expect(rootItems).toHaveCount(3);
+      await page.keyboard.insertText("Expanded child paragraph");
+      await expect(expandedParent.locator(":scope > div > p")).toHaveText([
+        "Following sibling", "Expanded child paragraph", "Consecutive Enter paragraph", "Shift+Enter paragraph",
+      ]);
+      expect(await editor.evaluate((element) => (element as any).editor.getJSON().content[0].content.at(-1).content.at(-1)))
+        .toEqual(beforeExpandedDoubleEnter);
+
+      await page.screenshot({ path: test.info().outputPath(`task-sub-items-${name}.png`) });
+      if (name === "compact") await page.getByRole("button", { name: "完成", exact: true }).click();
       await expect.poll(async () => {
         const response = await page.request.get(`/api/v1/memos/${memo.id}`);
         return (await response.json()).memo.contentMarkdown;

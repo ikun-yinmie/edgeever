@@ -3,7 +3,7 @@ import { getSchema } from "@tiptap/core";
 import { history, undo } from "@tiptap/pm/history";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { createEdgeEverDocumentExtensions } from "./document-extensions.ts";
-import { handleConsecutiveListEnter, splitTaskItemWithoutInheritedMarks } from "./list-shortcuts.ts";
+import { handleConsecutiveListEnter, sinkListItemPreservingAttrs, splitTaskItemWithoutInheritedMarks } from "./list-shortcuts.ts";
 
 const schema = getSchema(createEdgeEverDocumentExtensions({ mathematics: [] }));
 const paragraph = (text = "", marks = []) => schema.nodes.paragraph.create(
@@ -117,11 +117,67 @@ describe("Enter on collapsed task items", () => {
 
   test("expanded task items keep their existing split behavior", () => {
     const state = createState({ attrs: { collapsed: false } });
+    const previous = state.doc.firstChild.firstChild;
     const next = enter(state);
     const list = next.doc.firstChild;
     expect(list.firstChild.eq(task("Parent"))).toBe(true);
     expect(list.child(1).childCount).toBe(3);
-    expect(list.child(1).child(1).eq(state.doc.firstChild.firstChild.child(1))).toBe(true);
+    expect(list.child(1).child(1).eq(previous.child(1))).toBe(true);
     expect(list.child(1).child(2).textContent).toBe("Child details");
+  });
+
+  test("consecutive Enter merges an expanded task's split sub-content into a child paragraph", () => {
+    const state = createState({ attrs: { collapsed: false } });
+    const originalParent = state.doc.firstChild.firstChild;
+    const originalSibling = state.doc.firstChild.lastChild;
+    const split = enter(state);
+    const fresh = EditorState.create({ doc: split.doc, selection: split.selection, plugins: [history()] });
+    let subContent;
+    expect(handleConsecutiveListEnter(fresh, (transaction) => {
+      subContent = fresh.apply(transaction);
+    })).toBe(true);
+
+    expect(subContent.doc.firstChild.childCount).toBe(2);
+    const parent = subContent.doc.firstChild.firstChild;
+    expect(parent.attrs.collapsed).toBe(false);
+    expect(parent.firstChild.eq(originalParent.firstChild)).toBe(true);
+    expect(parent.child(1).type.name).toBe("paragraph");
+    expect(parent.child(1).content.size).toBe(0);
+    expect(parent.child(2).eq(originalParent.child(1))).toBe(true);
+    expect(parent.child(3).eq(originalParent.child(2))).toBe(true);
+    expect(subContent.doc.firstChild.lastChild.eq(originalSibling)).toBe(true);
+    expect(subContent.selection.$from.parent).toBe(parent.child(1));
+    expect(subContent.selection.$from.parentOffset).toBe(0);
+    subContent.doc.check();
+
+    let restored;
+    expect(undo(subContent, (transaction) => { restored = subContent.apply(transaction); })).toBe(true);
+    expect(restored.doc.eq(fresh.doc)).toBe(true);
+  });
+
+  test("Tab expands a collapsed parent when sinking a new sibling task into it", () => {
+    const state = createState();
+    const { doc, selection } = enter(state);
+    const createdSibling = EditorState.create({ doc, selection, plugins: [history()] });
+    let next;
+
+    expect(sinkListItemPreservingAttrs(createdSibling, (transaction) => {
+      next = createdSibling.apply(transaction);
+    })).toBe(true);
+
+    const originalParent = doc.firstChild.firstChild;
+    const parent = next.doc.firstChild.firstChild;
+    expect(parent.attrs).toEqual({ ...originalParent.attrs, collapsed: false });
+    expect(parent.content.cut(0, originalParent.content.size).eq(originalParent.content)).toBe(true);
+    expect(parent.lastChild.attrs.numbered).toBe(true);
+    expect(parent.lastChild.firstChild.eq(task(""))).toBe(true);
+    expect(next.selection.$from.node(-1)).toBe(parent.lastChild.firstChild);
+    expect(next.doc.firstChild.child(1).eq(doc.firstChild.lastChild)).toBe(true);
+    next.doc.check();
+
+    let restored;
+    expect(undo(next, (transaction) => { restored = next.apply(transaction); })).toBe(true);
+    expect(restored.doc.eq(doc)).toBe(true);
+    expect(restored.selection.eq(selection)).toBe(true);
   });
 });
