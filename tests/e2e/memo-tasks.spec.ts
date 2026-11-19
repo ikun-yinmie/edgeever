@@ -54,6 +54,16 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await doneChild.getByRole("button", { name: /定位原文/ }).click();
     await expect(dialog).toBeHidden();
     await expect(editor.locator("p").filter({ hasText: /^Pending child$/ })).toBeInViewport();
+    const parentItem = editor.locator('li[data-type="taskItem"]').first();
+    await parentItem.locator(":scope > .edgeever-task-toggle").click();
+    await expect(parentItem).toHaveAttribute("data-collapsed", "true");
+    await trigger.click();
+    await dialog.locator('button[aria-pressed]').filter({ hasText: "进行中" }).click();
+    const parentTarget = dialog.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await parentTarget.getByRole("button", { name: /定位原文/ }).click();
+    await expect(dialog).toBeHidden();
+    await expect(parentItem).toHaveAttribute("data-collapsed", "true");
+    await expect(parentItem.locator(":scope > div > p").first()).toBeInViewport();
 
     await page.getByRole("button", { name: "待办总览", exact: true }).click();
     await expect(page.getByRole("heading", { name: "待办总览", exact: true })).toBeVisible();

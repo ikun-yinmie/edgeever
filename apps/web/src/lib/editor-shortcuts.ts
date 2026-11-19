@@ -182,7 +182,7 @@ export const wrapIndentedParagraphInList = (
   const { selection } = state;
   if (
     selection.$from.parent.type.name !== "paragraph"
-    || selection.$to.parent !== selection.$from.parent
+    || selection.$to.parent.type.name !== "paragraph"
   ) {
     return false;
   }
@@ -198,7 +198,10 @@ export const wrapIndentedParagraphInList = (
 
   if (
     listItemDepth < 1
+    || selection.$to.depth <= listItemDepth
+    || selection.$from.before(listItemDepth) !== selection.$to.before(listItemDepth)
     || selection.$from.index(listItemDepth) === 0
+    || selection.$from.blockRange(selection.$to)?.depth !== listItemDepth
   ) {
     return false;
   }

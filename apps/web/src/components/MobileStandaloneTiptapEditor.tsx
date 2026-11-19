@@ -244,7 +244,11 @@ export const MobileStandaloneTiptapEditor = ({
     editorProps: {
       attributes: getMobileEditorInputAttributes("edgeever-mobile-tiptap-content"),
       transformPastedHTML: (html) => wrapDetailsContentHtml(html),
+      handleDOMEvents: {
+        keydown: (view, event) => view.composing || event.isComposing || event.keyCode === 229,
+      },
       handleKeyDown: (view, event) => {
+        if (!view.editable || view.composing || event.isComposing || event.keyCode === 229) return false;
         if (event.key === "Backspace" && preserveEmptyListIndentOnBackspace(view.state, view.dispatch)) {
           event.preventDefault();
           return true;
@@ -1040,7 +1044,7 @@ export const MobileStandaloneTiptapEditor = ({
           boldActive={Boolean(editor?.isActive("bold"))}
           bulletListActive={Boolean(editor?.isActive("bulletList"))}
           taskListActive={Boolean(editor?.isActive("taskList"))}
-          increaseListIndentAvailable={canWrapIndentedParagraph || Boolean(editor?.can().chain().focus().sinkListItem(activeListItemType).run())}
+          increaseListIndentAvailable={canWrapIndentedParagraph || Boolean(editor && sinkListItemPreservingAttrs(editor.state, undefined))}
           decreaseListIndentAvailable={Boolean(editor?.can().chain().focus().liftListItem(activeListItemType).run())}
           blockquoteActive={Boolean(editor?.isActive("blockquote"))}
           locale={locale}

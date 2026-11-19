@@ -210,6 +210,37 @@ test("task input keeps IME, Shift and caret edits in the current item", async ({
     });
     expect(unchanged).toBe(true);
     await page.keyboard.press("End");
+    for (const [index, text] of ["继续", "再写"].entries()) {
+      for (const pinyin of ["pinyinn", "pinyin", "piny", "pin", "pi", "p", ""]) {
+        const prevented = await editor.evaluate(element => {
+          const event = new KeyboardEvent("keydown", { key: "Backspace", keyCode: 8, isComposing: true, bubbles: true, cancelable: true });
+          element.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        expect(prevented).toBe(false);
+        await cdp.send("Input.imeSetComposition", { text: pinyin, selectionStart: pinyin.length, selectionEnd: pinyin.length });
+      }
+      if (index === 1) {
+        const moved = await items.nth(1).locator("p").evaluate(element => {
+          const selection = window.getSelection()!;
+          selection.collapse(element.firstChild ?? element, 0);
+          return element.contains(selection.anchorNode);
+        });
+        expect(moved).toBe(true);
+        await expect.poll(() => firstParagraph.evaluate(element => element.contains(window.getSelection()?.anchorNode ?? null))).toBe(true);
+      }
+      await cdp.send("Input.insertText", { text });
+      await expect(items).toHaveCount(2);
+      await expect(firstParagraph).toHaveText(`第一项中文输光标ABC入${index === 0 ? "继续" : "继续再写"}`);
+      await expect(items.nth(1).locator("p")).toHaveText("第二项");
+      expect(await firstParagraph.evaluate(element => element.contains(window.getSelection()?.anchorNode ?? null))).toBe(true);
+    }
+    await cdp.send("Input.imeSetComposition", { text: "cancel", selectionStart: 6, selectionEnd: 6 });
+    await cdp.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+    await items.nth(1).locator("p").click({ position: { x: 1, y: 5 } });
+    await expect.poll(() => items.nth(1).locator("p").evaluate(element => element.contains(window.getSelection()?.anchorNode ?? null))).toBe(true);
+    await firstParagraph.click();
+    await page.keyboard.press("End");
     await page.keyboard.press("Enter");
     await expect(items).toHaveCount(3);
     await page.keyboard.insertText("正常回车创建的任务");

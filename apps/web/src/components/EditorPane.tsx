@@ -1383,7 +1383,7 @@ const RichEditorPane = ({
       },
       handleDOMEvents: {
         // Leave IME confirmation to the browser without running any editor keymaps.
-        keydown: (_view, event) => event.isComposing || event.keyCode === 229,
+        keydown: (view, event) => view.composing || event.isComposing || event.keyCode === 229,
       },
       handleKeyDown: (view, event) => {
         if (!view.editable || view.composing || event.isComposing || event.keyCode === 229) {
@@ -3210,7 +3210,7 @@ const RichEditorPane = ({
       if (!isEditorReady(current) || position === null || memoRef.current?.id !== task.memoId) return;
       let tr = current.state.tr;
       const resolved = current.state.doc.resolve(position + 1);
-      for (let depth = 1; depth <= resolved.depth; depth++) {
+      for (let depth = 1; depth < resolved.depth; depth++) {
         const ancestor = resolved.node(depth);
         if (ancestor.attrs.collapsed === true) tr = tr.setNodeMarkup(resolved.before(depth), undefined, { ...ancestor.attrs, collapsed: false });
       }

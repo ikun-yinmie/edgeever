@@ -150,3 +150,78 @@ for (const [name, viewport] of [
     }
   });
 }
+
+test("expanded task insertion, folding and selected-block indentation preserve task trees", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const { notebooks } = await (await page.request.get("/api/v1/notebooks")).json();
+  const created = await page.request.post("/api/v1/memos", { data: {
+    notebookId: notebooks[0].id,
+    title: `task-hierarchy-${Date.now()}`,
+    contentMarkdown: "- [ ] Parent\n  - [x] Existing child\n    - [❌] Grandchild\n  - [ ] Second child\n- [ ] Following\n\nSelected one\n\nSelected two\n\nUnselected",
+  } });
+  expect(created.status()).toBe(201);
+  const { memo } = await created.json();
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: "全部笔记", exact: true }).click();
+    await page.locator(`[data-memo-id="${memo.id}"]`).locator("button").first().click();
+    await page.getByRole("radio", { name: "编辑", exact: true }).click();
+    const editor = page.locator(".ProseMirror").first();
+    await expect(editor).toContainText("Parent");
+    const rootItems = editor.locator(':scope > ul[data-type="taskList"] > li');
+    const parent = rootItems.first();
+    const title = parent.locator(":scope > div > p").first();
+    const children = parent.locator(':scope > div > ul[data-type="taskList"] > li');
+    const originalChild = await editor.evaluate(element => (element as any).editor.getJSON().content[0].content[0].content[1].content[0]);
+
+    await focusParagraphEnd(title);
+    await page.keyboard.press("Enter");
+    await expect(rootItems).toHaveCount(3);
+    await expect(children).toHaveCount(2);
+    await page.keyboard.press("Tab");
+    await expect(rootItems).toHaveCount(2);
+    await expect(children).toHaveCount(3);
+    await page.keyboard.insertText("First inserted");
+    await expect(children.first().locator("p")).toHaveText("First inserted");
+    expect(await editor.evaluate(element => (element as any).editor.getJSON().content[0].content[0].content[1].content[1])).toEqual(originalChild);
+
+    await parent.locator(":scope > .edgeever-task-toggle").click();
+    await expect(parent).toHaveAttribute("data-collapsed", "true");
+    await expect(children.first()).toBeHidden();
+    expect(await title.evaluate(element => element.contains(window.getSelection()?.anchorNode ?? null))).toBe(true);
+    await page.keyboard.insertText(" continued");
+    await expect(title).toHaveText("Parent continued");
+    await expect(rootItems.last().locator("p")).toHaveText("Following");
+    await page.keyboard.press("Control+z");
+    await expect(title).toHaveText("Parent");
+    await expect(parent).toHaveAttribute("data-collapsed", "true");
+
+    await editor.evaluate(element => {
+      const instance = (element as any).editor as Editor;
+      const paragraphs = Array.from(element.children).filter(child => child.tagName === "P");
+      const first = paragraphs.find(child => child.textContent === "Selected one")!;
+      const second = paragraphs.find(child => child.textContent === "Selected two")!;
+      instance.commands.setTextSelection({
+        from: instance.view.posAtDOM(first, 0),
+        to: instance.view.posAtDOM(second, second.childNodes.length),
+      });
+      instance.view.focus();
+    });
+    await page.keyboard.press("Tab");
+    await expect(rootItems.last().locator(":scope > div > p")).toHaveText(["Following", "Selected one", "Selected two"]);
+    await expect(editor.locator(":scope > p")).toHaveText(["Unselected"]);
+    await expect(parent).toHaveAttribute("data-collapsed", "true");
+    await page.screenshot({ path: test.info().outputPath("task-hierarchy-selection.png") });
+    await expect.poll(async () => {
+      const { memo: saved } = await (await page.request.get(`/api/v1/memos/${memo.id}`)).json();
+      return saved.contentJson.content[0].content.at(-1).content.map((node: any) => node.content?.[0]?.text ?? "");
+    }, { timeout: 60_000 }).toEqual(["Following", "Selected one", "Selected two"]);
+    expect(errors).toEqual([]);
+  } finally {
+    await page.request.delete(`/api/v1/memos/${memo.id}`);
+    await page.request.delete(`/api/v1/memos/${memo.id}?permanent=1`);
+  }
+});

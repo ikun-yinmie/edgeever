@@ -61,11 +61,8 @@ export const handleConsecutiveListEnter = (
     return true;
   }
 
-  // Case 1: On an empty item (itemIndex > 0). An empty title has nothing to
-  // split, so Enter merges the item — and any visible sub-content it carries
-  // after a split of its expanded parent — into the previous item.
-  const carriesHiddenSubContent = currentItem.attrs.collapsed === true && currentItem.childCount > 1;
-  if (itemIndex > 0 && !carriesHiddenSubContent) {
+  // Never merge an empty task title that still owns descendants.
+  if (itemIndex > 0 && (currentItem.type.name !== "taskItem" || currentItem.childCount === 1)) {
     const previousItem = list.child(itemIndex - 1);
     if (previousItem.type !== currentItem.type) {
       return false;
@@ -77,16 +74,21 @@ export const handleConsecutiveListEnter = (
     const updatedAttrs = previousItem.attrs.collapsed
       ? { ...previousItem.attrs, collapsed: false }
       : previousItem.attrs;
+    const insertionOffset = previousItem.type.name === "taskItem" && previousItem.attrs.collapsed !== true
+      ? previousItem.firstChild!.nodeSize
+      : previousItem.content.size;
     const mergedItem = previousItem.type.create(
       updatedAttrs,
-      previousItem.content.append(currentItem.content),
+      previousItem.content.cut(0, insertionOffset)
+        .append(currentItem.content)
+        .append(previousItem.content.cut(insertionOffset)),
     );
     const transaction = state.tr.replaceWith(
       previousItemStart,
       currentItemStart + currentItem.nodeSize,
       mergedItem,
     );
-    const paragraphCursor = previousItemStart + previousItem.content.size + 2;
+    const paragraphCursor = previousItemStart + insertionOffset + 2;
     transaction.setSelection(TextSelection.create(transaction.doc, paragraphCursor));
     dispatch(transaction.scrollIntoView());
     return true;
@@ -143,13 +145,42 @@ export const insertListItemChildParagraph = (
   return true;
 };
 
-/**
- * Sinks a taskItem or listItem while preserving list attributes (such as numbered: true).
- */
+const sinkSelectedBlocksIntoTask = (
+  state: EditorState,
+  dispatch: ((transaction: Transaction) => void) | undefined,
+): boolean => {
+  const { selection } = state;
+  if (selection.empty) return false;
+  const range = selection.$from.blockRange(selection.$to);
+  if (!range || range.startIndex === 0) return false;
+  const previous = range.parent.child(range.startIndex - 1);
+  if (previous.type.name !== "taskList" || previous.lastChild?.type.name !== "taskItem") return false;
+
+  const parent = previous.lastChild;
+  const blocks = state.doc.slice(range.start, range.end).content;
+  if (!parent.canReplace(parent.childCount, parent.childCount, blocks)) return false;
+  if (!dispatch) return true;
+
+  const expandedParent = parent.type.create({ ...parent.attrs, collapsed: false }, parent.content, parent.marks);
+  const list = previous.copy(previous.content.replaceChild(previous.childCount - 1, expandedParent));
+  const tr = state.tr.step(new ReplaceAroundStep(
+    range.start - previous.nodeSize,
+    range.end,
+    range.start,
+    range.end,
+    new Slice(Fragment.from(list), 0, 0),
+    list.nodeSize - 2,
+  ));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/** Sinks list items without losing list attributes or selected block content. */
 export const sinkListItemPreservingAttrs = (
   state: EditorState,
   dispatch: ((transaction: Transaction) => void) | undefined,
 ): boolean => {
+  if (sinkSelectedBlocksIntoTask(state, dispatch)) return true;
   let listItemDepth = -1;
   for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
     const name = state.selection.$from.node(depth).type.name;
@@ -169,6 +200,33 @@ export const sinkListItemPreservingAttrs = (
   const parent = range.parent;
   const nodeBefore = parent.child(startIndex - 1);
   if (nodeBefore.type !== itemType) return false;
+
+  const currentItem = parent.child(startIndex);
+  if (
+    itemType.name === "taskItem"
+    && state.selection.empty
+    && currentItem.childCount === 1
+    && currentItem.firstChild?.content.size === 0
+    && nodeBefore.childCount > 1
+    && nodeBefore.attrs.collapsed !== true
+  ) {
+    if (!dispatch) return true;
+    const titleSize = nodeBefore.firstChild!.nodeSize;
+    const hasLeadingList = nodeBefore.child(1).type === parent.type;
+    const content = hasLeadingList ? nodeBefore.content : nodeBefore.content.cut(0, titleSize)
+      .append(Fragment.from(parent.type.create(parent.attrs)))
+      .append(nodeBefore.content.cut(titleSize));
+    const tr = state.tr.step(new ReplaceAroundStep(
+      range.start - nodeBefore.nodeSize,
+      range.end,
+      range.start,
+      range.end,
+      new Slice(Fragment.from(nodeBefore.copy(content)), 0, 0),
+      titleSize + 2,
+    ));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
 
   if (dispatch) {
     const nestedBefore = Boolean(nodeBefore.lastChild && nodeBefore.lastChild.type === parent.type);
@@ -195,21 +253,24 @@ export const sinkListItemPreservingAttrs = (
 export const toggleTaskItemCollapseAtSelection = (
   state: EditorState,
   dispatch: ((transaction: Transaction) => void) | undefined,
+  position?: number,
 ): boolean => {
   const { selection } = state;
-  let taskItemPos = -1;
-  let taskItemNode: ProseMirrorNode | null = null;
+  let taskItemPos = position ?? -1;
+  let taskItemNode: ProseMirrorNode | null = position === undefined ? null : state.doc.nodeAt(position);
 
-  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
-    const node = selection.$from.node(depth);
-    if (node.type.name === "taskItem") {
-      taskItemPos = selection.$from.before(depth);
-      taskItemNode = node;
-      break;
+  if (position === undefined) {
+    for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+      const node = selection.$from.node(depth);
+      if (node.type.name === "taskItem") {
+        taskItemPos = selection.$from.before(depth);
+        taskItemNode = node;
+        break;
+      }
     }
   }
 
-  if (!taskItemNode || taskItemPos < 0) {
+  if (!taskItemNode || taskItemNode.type.name !== "taskItem" || taskItemPos < 0) {
     return false;
   }
 
@@ -222,12 +283,13 @@ export const toggleTaskItemCollapseAtSelection = (
   }
 
   const collapsed = !(taskItemNode.attrs.collapsed === true);
-  dispatch(
-    state.tr.setNodeMarkup(taskItemPos, undefined, {
-      ...taskItemNode.attrs,
-      collapsed,
-    }),
-  );
+  const tr = state.tr.setNodeMarkup(taskItemPos, undefined, { ...taskItemNode.attrs, collapsed });
+  const hiddenFrom = taskItemPos + 1 + taskItemNode.firstChild!.nodeSize;
+  const hiddenTo = taskItemPos + taskItemNode.nodeSize - 1;
+  if (collapsed && selection.from < hiddenTo && selection.to >= hiddenFrom) {
+    tr.setSelection(TextSelection.create(tr.doc, hiddenFrom - 1));
+  }
+  dispatch(tr.setMeta("addToHistory", false));
   return true;
 };
 
@@ -236,7 +298,7 @@ export const toggleTaskItemCollapseAtSelection = (
  * 1. The new taskItem does NOT inherit inline marks (such as textStyle backgroundColor, color, fontSize, bold, italic).
  * 2. tr.setStoredMarks([]) is cleared so that any typing in the new task item begins clean without formatting.
  * 3. Attributes such as checked: false and collapsed: false are reset on the new taskItem.
- * 4. Splitting a collapsed task's leading paragraph keeps its hidden sub-content on the original item.
+ * 4. Splitting a task's leading paragraph keeps its existing sub-content on the original item.
  */
 export const splitTaskItemWithoutInheritedMarks = (
   state: EditorState,
@@ -255,8 +317,7 @@ export const splitTaskItemWithoutInheritedMarks = (
 
   const taskItem = selection.$from.node(taskItemDepth);
   if (
-    taskItem.attrs.collapsed === true
-    && taskItem.childCount > 1
+    taskItem.childCount > 1
     && selection.$from.depth === taskItemDepth + 1
     && selection.$from.index(taskItemDepth) === 0
     && selection.$from.parent.type === state.schema.nodes.paragraph
@@ -264,8 +325,7 @@ export const splitTaskItemWithoutInheritedMarks = (
   ) {
     if (!dispatch) return true;
 
-    // Split only the visible title. A regular list split would move all hidden
-    // children to the new sibling and expose them beneath the wrong task.
+    // A title split must not reparent the task's existing descendants.
     const paragraph = selection.$from.parent;
     const remainingTitle = paragraph.content.cut(selection.$to.parentOffset);
     const sibling = taskItem.type.create(

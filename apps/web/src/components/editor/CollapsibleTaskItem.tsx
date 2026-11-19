@@ -9,6 +9,7 @@ import {
 import i18n from "@/i18n";
 import { memoTaskAttributes, nextMemoTaskMark } from "@/lib/memo-tasks";
 import { hasTaskItemSubContent, isTaskItemCollapsed } from "./task-item-collapse";
+import { createTaskItemCompositionPlugin } from "./task-item-composition";
 
 const visuallyHiddenStyle = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
 
@@ -67,6 +68,9 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       }),
     };
   },
+  addProseMirrorPlugins() {
+    return [...(this.parent?.() ?? []), createTaskItemCompositionPlugin()];
+  },
   addNodeView() {
     return ({ node, HTMLAttributes, getPos, editor }) => {
       const listItem = document.createElement("li");
@@ -89,13 +93,17 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       const syncCheckboxA11y = (currentNode: typeof node) => {
         const text = currentNode.textContent || i18n.t("editorToolbar.taskList");
         const label = currentNode.attrs.rejected === true ? `${i18n.t("editorToolbar.taskRejected")} · ${text}` : text;
-        checkbox.setAttribute("aria-label", label);
-        checkboxStyler.textContent = label;
+        if (checkbox.getAttribute("aria-label") !== label) checkbox.setAttribute("aria-label", label);
+        if (checkboxStyler.textContent !== label) checkboxStyler.textContent = label;
       };
 
+      let renderedCollapseState = "";
       const syncCollapseState = (currentNode: typeof node) => {
         const collapsible = hasTaskItemSubContent(currentNode.childCount);
         const collapsed = isTaskItemCollapsed(currentNode.attrs.collapsed);
+        const collapseState = `${collapsible}:${collapsed}`;
+        if (collapseState === renderedCollapseState) return;
+        renderedCollapseState = collapseState;
         listItem.dataset.collapsed = collapsed ? "true" : "false";
         toggle.classList.toggle("is-placeholder", !collapsible);
         toggle.tabIndex = collapsible ? 0 : -1;
@@ -134,12 +142,7 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
         if (typeof getPos !== "function") return;
         const position = getPos();
         if (typeof position !== "number") return;
-        const currentNode = editor.state.doc.nodeAt(position);
-        if (!currentNode || !hasTaskItemSubContent(currentNode.childCount)) return;
-        editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
-          ...currentNode.attrs,
-          collapsed: !isTaskItemCollapsed(currentNode.attrs.collapsed),
-        }));
+        toggleTaskItemCollapseAtSelection(editor.state, editor.view.dispatch, position);
       });
 
       Object.entries(this.options.HTMLAttributes).forEach(([key, value]) => {
@@ -163,6 +166,15 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       });
 
       let previousRenderedAttributeKeys = new Set(Object.keys(HTMLAttributes));
+      let destroyed = false;
+      const finishComposition = () => queueMicrotask(() => {
+        if (destroyed || editor.isDestroyed || editor.view.composing || typeof getPos !== "function") return;
+        const position = getPos();
+        if (typeof position !== "number") return;
+        const currentNode = editor.state.doc.nodeAt(position);
+        if (currentNode?.type === this.type) syncCheckboxA11y(currentNode);
+      });
+      content.addEventListener("compositionend", finishComposition);
 
       return {
         dom: listItem,
@@ -187,19 +199,26 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
           });
           Object.entries(newHTMLAttributes).forEach(([key, value]) => {
             if (value === null || value === undefined) {
-              if (key in staticAttrs) listItem.setAttribute(key, staticAttrs[key]);
-              else listItem.removeAttribute(key);
-            } else {
+              if (key in staticAttrs) {
+                if (listItem.getAttribute(key) !== String(staticAttrs[key])) listItem.setAttribute(key, staticAttrs[key]);
+              } else if (listItem.hasAttribute(key)) listItem.removeAttribute(key);
+            } else if (listItem.getAttribute(key) !== String(value)) {
               listItem.setAttribute(key, value);
             }
           });
           previousRenderedAttributeKeys = newKeys;
-          listItem.dataset.type = this.name;
-          listItem.dataset.checked = String(updatedNode.attrs.checked === true);
-          checkbox.checked = updatedNode.attrs.checked === true;
-          syncCheckboxA11y(updatedNode);
+          if (listItem.dataset.type !== this.name) listItem.dataset.type = this.name;
+          const checked = updatedNode.attrs.checked === true;
+          if (listItem.dataset.checked !== String(checked)) listItem.dataset.checked = String(checked);
+          if (checkbox.checked !== checked) checkbox.checked = checked;
+          // Updating non-editable label text can disturb the browser's IME selection.
+          if (!editor.view.composing) syncCheckboxA11y(updatedNode);
           syncCollapseState(updatedNode);
           return true;
+        },
+        destroy: () => {
+          destroyed = true;
+          content.removeEventListener("compositionend", finishComposition);
         },
       };
     };

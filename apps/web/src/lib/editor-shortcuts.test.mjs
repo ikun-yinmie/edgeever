@@ -353,6 +353,35 @@ describe("editor shortcut actions", () => {
     expect(restored.selection.eq(selection)).toBe(true);
   });
 
+  test("Tab wraps all selected child paragraphs into sibling tasks", () => {
+    const taskSchema = getSchema([StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })]);
+    const paragraph = text => taskSchema.nodes.paragraph.create(null, taskSchema.text(text));
+    const title = paragraph("Parent");
+    const first = paragraph("First");
+    const second = paragraph("Second");
+    const task = taskSchema.nodes.taskItem.create(null, [title, first, second]);
+    const doc = taskSchema.nodes.doc.create(null, taskSchema.nodes.taskList.create({ numbered: true }, [task]));
+    const from = title.nodeSize + 3;
+    const to = from + first.nodeSize + second.content.size;
+    const state = EditorState.create({ doc, selection: TextSelection.create(doc, from, to), plugins: [history()] });
+    let next;
+    expect(wrapIndentedParagraphInList(state, undefined)).toBe(true);
+    expect(wrapIndentedParagraphInList(state, tr => { next = state.apply(tr); })).toBe(true);
+    const parent = next.doc.firstChild.firstChild;
+    expect(parent.childCount).toBe(2);
+    expect(parent.firstChild.eq(title)).toBe(true);
+    expect(parent.lastChild.type.name).toBe("taskList");
+    expect(parent.lastChild.attrs.numbered).toBe(true);
+    expect(parent.lastChild.childCount).toBe(2);
+    expect(parent.lastChild.firstChild.firstChild.eq(first)).toBe(true);
+    expect(parent.lastChild.lastChild.firstChild.eq(second)).toBe(true);
+    next.doc.check();
+    let restored;
+    expect(undo(next, tr => { restored = next.apply(tr); })).toBe(true);
+    expect(restored.doc.eq(doc)).toBe(true);
+    expect(restored.selection.eq(state.selection)).toBe(true);
+  });
+
   test("keeps the default Backspace behavior outside a removable sibling list item", () => {
     const firstItemOnly = schema.node("doc", null, [
       schema.node("bulletList", null, [
