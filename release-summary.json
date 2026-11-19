@@ -1,14 +1,14 @@
 {
-  "version": "1.103.28",
+  "version": "1.103.29",
   "changes": {
     "en-US": [
-      "Pressing Enter in a collapsed task now creates a sibling at the same level while keeping hidden subtasks and details under the original task, including nested tasks."
+      "Tab-indenting a new task under a collapsed parent, or pressing Backspace on an empty task below one, now expands that parent so the new sub-task or sub-paragraph is visible; pressing Enter twice on an expanded task merges the empty item into a child paragraph instead of leaving it behind."
     ],
     "zh-CN": [
-      "修复折叠待办中按回车时子项被移动的问题：新待办保持同级，隐藏的子任务和详细内容保留在原待办下，多级嵌套同样适用。"
+      "折叠待办下的新子项不再“消失”：在其下方新建待办后按 Tab 缩进，或在空待办上按 Backspace，父待办会自动展开，新子项/子段落立即可见；展开的待办连续按两次回车会把空项并成子段落，而不是残留空行。"
     ],
     "ja": [
-      "折りたたんだタスクで Enter を押すと、非表示のサブタスクと詳細を元のタスクに保持したまま、同じ階層に新しいタスクを作成するよう修正しました。入れ子のタスクにも対応します。"
+      "折りたたまれたタスクの下に新しいタスクを作成して Tab でインデントするか、空のタスクで Backspace を押すと、親タスクが自動的に展開されて新しいサブタスクやサブ段落がすぐに表示されるようになりました。展開したタスクで Enter を 2 回押すと、空の項目が子段落に統合されます。"
     ]
   }
 }
