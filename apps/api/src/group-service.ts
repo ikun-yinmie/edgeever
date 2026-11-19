@@ -43,6 +43,7 @@ export type GroupShareRow = {
   edit_mode: "author" | "group";
   editor_user_ids: string;
   display_policy_json: string | null;
+  allow_copy: number;
   note: string | null;
   created_by: string | null;
   created_at: string;
@@ -60,6 +61,8 @@ export type GroupShareView = {
   editMode: "author" | "group";
   editorUserIds: string[];
   displayPolicy: ShareDisplayPolicy;
+  /** The author allows readers to save this share as a personal note. */
+  allowCopy: boolean;
   note: string | null;
   createdAt: string;
   authorUsername: string | null;
@@ -121,6 +124,8 @@ export type SharedAccess = {
   groupId: string | null;
   groupName: string | null;
   editMode: "author" | "group" | null;
+  /** Whether the reader may branch off a personal copy of the shared note. */
+  allowCopy: boolean;
   authorUsername: string | null;
   authorDisplayName: string | null;
 };
@@ -150,6 +155,7 @@ const emptyAccess = (workspaceId: string): SharedAccess => ({
   groupId: null,
   groupName: null,
   editMode: null,
+  allowCopy: false,
   authorUsername: null,
   authorDisplayName: null,
 });
@@ -186,7 +192,7 @@ const loadNotebookAncestorIds = async (database: DatabaseAdapter, notebookId: st
 
 type ActiveShareRow = Pick<
   GroupShareRow,
-  "id" | "group_id" | "target_type" | "target_id" | "edit_mode" | "editor_user_ids"
+  "id" | "group_id" | "target_type" | "target_id" | "edit_mode" | "editor_user_ids" | "allow_copy"
 > & {
   group_name: string;
   author_username: string | null;
@@ -196,7 +202,7 @@ type ActiveShareRow = Pick<
 const findSharesForActor = async (database: DatabaseAdapter, userId: string) => {
   const rows = await database
     .prepare(
-      `SELECT s.id, s.group_id, s.target_type, s.target_id, s.edit_mode, s.editor_user_ids,
+      `SELECT s.id, s.group_id, s.target_type, s.target_id, s.edit_mode, s.editor_user_ids, s.allow_copy,
               g.name AS group_name,
               u.username AS author_username, u.display_name AS author_display_name
        FROM group_shares s
@@ -247,6 +253,8 @@ export const resolveMemoAccess = async (
       groupId: null,
       groupName: null,
       editMode: null,
+      // Owners are not browsing through a share, so nothing restricts copies.
+      allowCopy: true,
       authorUsername: null,
       authorDisplayName: null,
     };
@@ -269,6 +277,7 @@ export const resolveMemoAccess = async (
     groupId: share.group_id,
     groupName: share.group_name,
     editMode: share.edit_mode,
+    allowCopy: share.allow_copy !== 0,
     authorUsername: share.author_username,
     authorDisplayName: share.author_display_name,
   };
@@ -284,7 +293,7 @@ export const resolveNotebookAccess = async (
     .first<{ id: string; workspace_id: string; is_deleted: number }>();
   if (!notebook) return null;
   if (notebook.workspace_id === options.ownWorkspaceId) {
-    return { ...emptyAccess(notebook.workspace_id), isOwner: true, canRead: true, canEdit: true };
+    return { ...emptyAccess(notebook.workspace_id), isOwner: true, canRead: true, canEdit: true, allowCopy: true };
   }
 
   const shares = await findSharesForActor(database, options.userId);
@@ -301,6 +310,7 @@ export const resolveNotebookAccess = async (
     groupId: share.group_id,
     groupName: share.group_name,
     editMode: share.edit_mode,
+    allowCopy: share.allow_copy !== 0,
     authorUsername: share.author_username,
     authorDisplayName: share.author_display_name,
   };
@@ -479,7 +489,7 @@ export const removeGroupMember = async (database: DatabaseAdapter, groupId: stri
 };
 
 const SHARE_SELECT = `SELECT s.id, s.group_id, s.target_type, s.target_id, s.source_workspace_id,
-    s.edit_mode, s.editor_user_ids, s.display_policy_json, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
+    s.edit_mode, s.editor_user_ids, s.display_policy_json, s.allow_copy, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
     g.name AS group_name,
     COALESCE(n.name, m.title, '') AS target_title,
     u.username AS author_username, u.display_name AS author_display_name
@@ -504,6 +514,7 @@ const mapShareView = (row: GroupShareRow & {
   editMode: row.edit_mode,
   editorUserIds: parseEditorIds(row.editor_user_ids),
   displayPolicy: parseShareDisplayPolicyView(row.display_policy_json),
+  allowCopy: row.allow_copy !== 0,
   note: row.note,
   createdAt: row.created_at,
   authorUsername: row.author_username,
@@ -544,7 +555,7 @@ export const getGroupShareRow = async (database: DatabaseAdapter, shareId: strin
   database
     .prepare(
       `SELECT id, group_id, target_type, target_id, source_workspace_id, edit_mode,
-              editor_user_ids, display_policy_json, note, created_by, created_at, updated_at, revoked_at
+              editor_user_ids, display_policy_json, allow_copy, note, created_by, created_at, updated_at, revoked_at
        FROM group_shares WHERE id = ?`,
     )
     .bind(shareId)
@@ -560,6 +571,7 @@ export const createGroupShare = async (
     editMode: "author" | "group";
     editorUserIds: string[];
     displayPolicy: ShareDisplayPolicy;
+    allowCopy?: boolean;
     note: string | null;
     createdBy: string | null;
   },
@@ -570,8 +582,8 @@ export const createGroupShare = async (
   await database
     .prepare(
       `INSERT INTO group_shares (id, group_id, target_type, target_id, source_workspace_id,
-          edit_mode, editor_user_ids, display_policy_json, note, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          edit_mode, editor_user_ids, display_policy_json, allow_copy, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -582,6 +594,7 @@ export const createGroupShare = async (
       input.editMode,
       JSON.stringify(input.editorUserIds),
       JSON.stringify(displayPolicy),
+      input.allowCopy === false ? 0 : 1,
       input.note,
       input.createdBy,
       now,
@@ -598,6 +611,7 @@ export const updateGroupShare = async (
     editMode?: "author" | "group";
     editorUserIds?: string[];
     displayPolicy?: ShareDisplayPolicy;
+    allowCopy?: boolean;
     note?: string | null;
   },
 ) => {
@@ -614,6 +628,10 @@ export const updateGroupShare = async (
   if (input.displayPolicy !== undefined) {
     updates.push("display_policy_json = ?");
     binds.push(JSON.stringify(input.displayPolicy));
+  }
+  if (input.allowCopy !== undefined) {
+    updates.push("allow_copy = ?");
+    binds.push(input.allowCopy ? 1 : 0);
   }
   if (input.note !== undefined) {
     updates.push("note = ?");
@@ -645,7 +663,7 @@ type SharedQueryRow = GroupShareRow & {
 };
 
 const SHARED_WITH_ME_SELECT = `SELECT s.id, s.group_id, s.target_type, s.target_id, s.source_workspace_id,
-    s.edit_mode, s.editor_user_ids, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
+    s.edit_mode, s.editor_user_ids, s.allow_copy, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
     g.name AS group_name,
     n.name AS notebook_name, n.icon AS notebook_icon, n.parent_id AS notebook_parent_id,
     m.title AS memo_title, m.excerpt AS memo_excerpt, m.updated_at AS memo_updated_at,

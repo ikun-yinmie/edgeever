@@ -90,6 +90,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
   const [editMode, setEditMode] = useState<"author" | "group">("author");
   const [editorIds, setEditorIds] = useState<string[]>([]);
   const [displayPolicy, setDisplayPolicy] = useState<ShareDisplayPolicySummary>(DEFAULT_SHARE_DISPLAY_POLICY);
+  const [allowCopy, setAllowCopy] = useState(true);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -113,6 +114,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
         editMode,
         editorUserIds: editMode === "group" ? editorIds : [],
         displayPolicy,
+        allowCopy,
       }),
     onSuccess: onShared,
     onError: (mutationError) => {
@@ -141,6 +143,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
   );
 
   return {
+    allowCopy,
     createMutation,
     displayPolicy,
     editMode,
@@ -153,6 +156,7 @@ const useGroupShareForm = ({ groups, memoId, onCancel, onShared }: Omit<ShareToG
     needle,
     notebookOptions,
     search,
+    setAllowCopy,
     setDisplayPolicy,
     setEditMode,
     setEditorIds,
@@ -340,6 +344,18 @@ export const ShareToGroupForm = ({ groups, memoId, memoTitle, onCancel, onShared
             value={form.displayPolicy}
             onChange={form.setDisplayPolicy}
           />
+
+          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5">
+            <Checkbox
+              checked={form.allowCopy}
+              className="mt-0.5"
+              onCheckedChange={(checked) => form.setAllowCopy(checked === true)}
+            />
+            <span className="text-sm">
+              <span className="block font-medium text-slate-900">{t("sharedPane.allowCopyTitle")}</span>
+              <span className="block text-xs text-slate-500">{t("sharedPane.allowCopyHint")}</span>
+            </span>
+          </label>
 
           {form.error ? <p className="text-sm font-medium text-rose-600">{form.error}</p> : null}
         </div>

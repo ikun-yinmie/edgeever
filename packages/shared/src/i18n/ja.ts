@@ -2194,6 +2194,8 @@ export const ja = {
     saveSharedCopyFailed: "保存に失敗しました。再試行してください",
     saveSharedCopyTitle: "{{title}}（コピー）",
     saveSharedCopyTitleWithAuthor: "{{title}}（{{author}}）",
+    saveSharedCopyBlocked: "共有者がコピーの保存を禁止しています",
+    sharedCopyNotebook: "マイノート",
   },
   sharing: {
     action: "ノートを共有",
@@ -2598,6 +2600,8 @@ export const ja = {
     chooseEditors: "編集できるメンバー",
     chooseEditorsHint: "誰も選ばなければグループ全員が編集できます。",
     savePolicy: "権限を保存",
+    allowCopyTitle: "コピーの保存を許可",
+    allowCopyHint: "メンバーはこの共有内容を自分のノートとして保存できます。オフにすると閲覧（または編集）のみになります。",
     shareDialogTitle: "グループに共有",
     shareDialogDescription: "ノートブック（下位のノートブックを含む）または 1 件のノートをグループに共有します。メンバー全員が見られます。",
     chooseGroup: "グループを選ぶ",

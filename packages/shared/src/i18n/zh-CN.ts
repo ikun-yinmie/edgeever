@@ -2192,6 +2192,8 @@ export const zhCN = {
     saveSharedCopyFailed: "保存失败，请重试",
     saveSharedCopyTitle: "{{title}}（副本）",
     saveSharedCopyTitleWithAuthor: "{{title}}（{{author}}）",
+    saveSharedCopyBlocked: "分享者已禁止保存为副本",
+    sharedCopyNotebook: "我的笔记",
   },
   sharing: {
     action: "分享笔记",
@@ -2596,6 +2598,8 @@ export const zhCN = {
     chooseEditors: "可以编辑的成员",
     chooseEditorsHint: "不勾选任何人表示全组都可以编辑。",
     savePolicy: "保存权限",
+    allowCopyTitle: "允许保存为副本",
+    allowCopyHint: "成员可以把这项共享内容保存为自己的笔记；关闭后只能阅读或协作编辑。",
     shareDialogTitle: "共享到群组",
     shareDialogDescription: "把笔记本（连同子笔记本）或单篇笔记共享给一个群组，组内成员都能看到。",
     chooseGroup: "选择群组",

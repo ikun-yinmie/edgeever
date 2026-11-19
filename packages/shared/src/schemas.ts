@@ -414,6 +414,8 @@ export const GroupShareCreateSchema = z.object({
   editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).default([]),
   note: z.string().trim().max(200).nullable().optional(),
   displayPolicy: ShareDisplayPolicySchema.optional(),
+  /** Whether readers may save this shared item as their own note. */
+  allowCopy: z.boolean().default(true),
 });
 
 export const GroupShareUpdateSchema = z
@@ -422,6 +424,7 @@ export const GroupShareUpdateSchema = z
     editorUserIds: z.array(z.string().trim().min(1).max(80)).max(200).optional(),
     note: z.string().trim().max(200).nullable().optional(),
     displayPolicy: ShareDisplayPolicySchema.optional(),
+    allowCopy: z.boolean().optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "At least one field is required.");
 

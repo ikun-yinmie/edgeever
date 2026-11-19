@@ -1472,11 +1472,32 @@ export const WorkspaceApp = ({
   const realtimeCapable = collabRuntimeQuery.data?.runtime === "self-hosted-bun";
 
   const handleSaveSharedCopy = useCallback(async (memo: MemoDetail) => {
-    const targetNotebookId = memoView === "notebook" && selectedNotebookId
+    // The copy needs a notebook that belongs to the viewer. Prefer what they
+    // are looking at, then the inbox, and only fall back to creating one: a
+    // shared group account starts with an empty workspace, which used to make
+    // "save as my note" fail before anything was written.
+    const selectedTargetId = memoView === "notebook"
+      && selectedNotebookId
+      && notebooks.some((notebook) => notebook.id === selectedNotebookId)
       ? selectedNotebookId
-      : notebooks[0]?.id ?? null;
+      : null;
+    const fallbackTargetId = notebooks.find((notebook) => notebook.slug === "inbox")?.id
+      ?? notebooks[0]?.id
+      ?? null;
+    let targetNotebookId = selectedTargetId ?? fallbackTargetId;
     if (!targetNotebookId) {
-      throw new Error("No notebook available for the copy");
+      // Ask for the notebook right away instead of queueing it: a queued
+      // notebook create would only reach the API after the copy's own create
+      // request, which the server rejects because the container does not exist.
+      // The desktop sidecar owns its database, so there the RPC is the
+      // synchronous path.
+      const notebookName = t("editor.sharedCopyNotebook");
+      const created = window.edgeeverDesktop?.isAvailable
+        ? await repository.createNotebook({ name: notebookName })
+        : await api.createNotebook({ name: notebookName });
+      await putLocalNotebook(localDataScope, created.notebook);
+      targetNotebookId = created.notebook.id;
+      await queryClient.invalidateQueries({ queryKey: ["notebooks"] });
     }
     // A group can contain several notes with the same title. Keep the copy
     // distinguishable by naming the person who shared it.
@@ -1489,7 +1510,9 @@ export const WorkspaceApp = ({
     });
     const result = await repository.createMemo({
       notebookId: targetNotebookId,
-      title: copyTitle,
+      // The API rejects titles above 160 characters; the copy suffix must never
+      // push an otherwise valid shared title over that limit.
+      title: copyTitle.slice(0, 160),
       contentMarkdown: memo.contentMarkdown,
       contentJson: memo.contentJson,
       tags: memo.tags,

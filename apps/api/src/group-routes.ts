@@ -258,6 +258,7 @@ export const registerGroupRoutes = (
           editMode: input.editMode,
           editorUserIds: input.editMode === "group" ? editors : [],
           displayPolicy: input.displayPolicy ?? { html: "rendered", markdown: "rendered" },
+          allowCopy: input.allowCopy,
           note: input.note ?? null,
           createdBy: auth.actorId,
         });
@@ -296,6 +297,7 @@ export const registerGroupRoutes = (
           ? input.editorUserIds.filter((userId) => memberIds.has(userId))
           : undefined,
         displayPolicy: input.displayPolicy,
+        allowCopy: input.allowCopy,
         note: input.note,
       });
       return context.json({ ok: true });
@@ -378,6 +380,7 @@ export const registerGroupRoutes = (
         groupId: access.groupId,
         groupName: access.groupName,
         editMode: access.editMode,
+        allowCopy: access.allowCopy,
         workspaceId: access.workspaceId,
         authorUsername: access.authorUsername,
         authorDisplayName: access.authorDisplayName,

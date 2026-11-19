@@ -358,7 +358,13 @@ type EditorPaneProps = {
   memo: MemoDetail | null;
   repository: EdgeEverRepository;
   /** Present when the open note lives in another workspace via a group share. */
-  sharedAccess?: { canEdit: boolean; groupId: string | null; groupName: string | null } | null;
+  sharedAccess?: {
+    canEdit: boolean;
+    groupId: string | null;
+    groupName: string | null;
+    /** False when the sharer forbade keeping a personal copy of the note. */
+    allowCopy?: boolean;
+  } | null;
   /** Group share display policy for this view, when the server filtered it. */
   sharedDisplayPolicy?: ShareDisplayPolicySummary | null;
   /** Display name shown on our caret and in peers' lists during realtime editing. */
@@ -3271,9 +3277,12 @@ const RichEditorPane = ({
   }, [memo]);
 
   const [saveCopyState, setSaveCopyState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // The sharer decides whether this note may be kept as a personal copy; the
+  // server reports the decision through the share access payload.
+  const canSaveCopy = sharedAccess?.allowCopy !== false;
   const handleSaveSharedCopy = useCallback(async () => {
     const currentMemo = memoRef.current;
-    if (!currentMemo || !onSaveSharedCopy) return;
+    if (!currentMemo || !onSaveSharedCopy || !canSaveCopy) return;
     setSaveCopyState("saving");
     try {
       const saved = await onSaveSharedCopy(currentMemo);
@@ -3284,7 +3293,7 @@ const RichEditorPane = ({
       setSaveCopyState("error");
       window.setTimeout(() => setSaveCopyState("idle"), 3200);
     }
-  }, [onSaveSharedCopy]);
+  }, [canSaveCopy, onSaveSharedCopy]);
 
   useEffect(() => {
     const persistBeforeSuspend = () => {
@@ -4806,28 +4815,35 @@ const RichEditorPane = ({
               {t(sharedReadOnly ? "editor.groupSharedReadOnly" : "editor.groupSharedEditable")}
             </span>
             <CollabPresenceBadge peerNames={collabPeerNames} />
-            <Button
-              className="h-7 shrink-0 px-2 text-xs"
-              disabled={saveCopyState === "saving" || saveCopyState === "saved"}
-              size="sm"
-              variant="outline"
-              onClick={() => void handleSaveSharedCopy()}
-            >
-              {saveCopyState === "saving" ? (
-                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-              ) : saveCopyState === "saved" ? (
-                <Check className="h-3.5 w-3.5" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              {t(
-                saveCopyState === "saved"
-                  ? "editor.saveSharedCopyDone"
-                  : saveCopyState === "error"
-                    ? "editor.saveSharedCopyFailed"
-                    : "editor.saveSharedCopy",
-              )}
-            </Button>
+            {canSaveCopy ? (
+              <Button
+                className="h-7 shrink-0 px-2 text-xs"
+                disabled={saveCopyState === "saving" || saveCopyState === "saved"}
+                size="sm"
+                variant="outline"
+                onClick={() => void handleSaveSharedCopy()}
+              >
+                {saveCopyState === "saving" ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : saveCopyState === "saved" ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {t(
+                  saveCopyState === "saved"
+                    ? "editor.saveSharedCopyDone"
+                    : saveCopyState === "error"
+                      ? "editor.saveSharedCopyFailed"
+                      : "editor.saveSharedCopy",
+                )}
+              </Button>
+            ) : (
+              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
+                <Lock className="h-3 w-3" />
+                {t("editor.saveSharedCopyBlocked")}
+              </span>
+            )}
           </div>
         ) : null}
 

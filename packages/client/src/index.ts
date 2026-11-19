@@ -270,6 +270,8 @@ export type GroupShareSummary = {
   editMode: "author" | "group";
   editorUserIds: string[];
   displayPolicy: ShareDisplayPolicySummary;
+  /** Readers may save this shared item as a note of their own. */
+  allowCopy: boolean;
   note: string | null;
   createdAt: string;
   authorUsername: string | null;
@@ -460,6 +462,8 @@ export type ObjectStorageSettingsResponse = {
 export type SharedMemoAccess = {
   shared: true;
   canEdit: boolean;
+  /** False when the sharer forbade keeping a personal copy of this note. */
+  allowCopy?: boolean;
   groupId: string | null;
   groupName: string | null;
   authorUsername?: string | null;
@@ -1581,6 +1585,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         editMode: "author" | "group";
         editorUserIds?: string[];
         displayPolicy?: ShareDisplayPolicySummary;
+        allowCopy?: boolean;
         note?: string | null;
       },
     ) =>
@@ -1592,7 +1597,12 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     updateGroupShare: (
       groupId: string,
       shareId: string,
-      payload: { editMode?: "author" | "group"; editorUserIds?: string[]; note?: string | null },
+      payload: {
+        editMode?: "author" | "group";
+        editorUserIds?: string[];
+        allowCopy?: boolean;
+        note?: string | null;
+      },
     ) =>
       request<{ ok: true }>(
         `/api/v1/groups/${encodeURIComponent(groupId)}/shares/${encodeURIComponent(shareId)}`,

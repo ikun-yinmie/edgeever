@@ -21,15 +21,17 @@ export const GroupSharePolicyDialog = ({ groupId, share, members, onClose, onCha
   const [open, setOpen] = useState(true);
   const [editMode, setEditMode] = useState<"author" | "group">(share.editMode);
   const [editorIds, setEditorIds] = useState<string[]>(share.editorUserIds);
+  const [allowCopy, setAllowCopy] = useState(share.allowCopy);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setEditMode(share.editMode);
     setEditorIds(share.editorUserIds);
-  }, [share.editMode, share.editorUserIds]);
+    setAllowCopy(share.allowCopy);
+  }, [share.editMode, share.editorUserIds, share.allowCopy]);
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { editMode?: "author" | "group"; editorUserIds?: string[]; note?: string | null }) =>
+    mutationFn: (payload: { editMode?: "author" | "group"; editorUserIds?: string[]; allowCopy?: boolean; note?: string | null }) =>
       api.updateGroupShare(groupId, share.id, payload),
     onSuccess: () => {
       setOpen(false);
@@ -110,6 +112,20 @@ export const GroupSharePolicyDialog = ({ groupId, share, members, onClose, onCha
             </div>
           ) : null}
 
+          <div>
+            <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 px-3 py-2.5">
+              <Checkbox
+                checked={allowCopy}
+                className="mt-0.5"
+                onCheckedChange={(checked) => setAllowCopy(checked === true)}
+              />
+              <span className="text-sm">
+                <span className="block font-medium text-slate-900">{t("sharedPane.allowCopyTitle")}</span>
+                <span className="block text-xs text-slate-500">{t("sharedPane.allowCopyHint")}</span>
+              </span>
+            </label>
+          </div>
+
           {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
         </div>
 
@@ -123,6 +139,7 @@ export const GroupSharePolicyDialog = ({ groupId, share, members, onClose, onCha
               updateMutation.mutate({
                 editMode,
                 editorUserIds: editMode === "group" ? editorIds : [],
+                allowCopy,
               })
             }
             variant="solid"

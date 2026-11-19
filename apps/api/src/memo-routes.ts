@@ -230,6 +230,7 @@ export const registerMemoRoutes = (
           canEdit: scope.access.canEdit,
           groupId: scope.access.groupId,
           groupName: scope.access.groupName,
+          allowCopy: scope.access.allowCopy,
           authorUsername: scope.access.authorUsername,
           authorDisplayName: scope.access.authorDisplayName,
         },

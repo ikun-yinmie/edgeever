@@ -401,4 +401,51 @@ describe("shared with me overview", () => {
     const [share] = await listGroupShares(database, group.id);
     expect(share).toMatchObject({ editMode: "group", editorUserIds: ["usr_a"] });
   });
+
+  test("lets the sharer withdraw the right to keep a personal copy", async () => {
+    const { database, seedUser, seedNotebook, seedMemo } = createEnvironment();
+    seedUser("usr_owner", "owner");
+    seedUser("usr_a", "alice");
+    seedNotebook("nb_root", "ws_usr_owner");
+    seedMemo("memo_root", "ws_usr_owner", "nb_root");
+    const group = await createGroup(database, { name: "家庭", description: null, createdBy: "usr_owner" });
+    await addGroupMembers(database, group.id, ["usr_a"]);
+    await createGroupShare(database, {
+      groupId: group.id,
+      targetType: "notebook",
+      targetId: "nb_root",
+      sourceWorkspaceId: "ws_usr_owner",
+      editMode: "author",
+      editorUserIds: [],
+      note: null,
+      createdBy: "usr_owner",
+    });
+
+    // Default: a share handed over before this option existed still allows copies.
+    const defaultAccess = await resolveMemoAccess(database, {
+      userId: "usr_a",
+      ownWorkspaceId: "ws_usr_a",
+      memoId: "memo_root",
+    });
+    expect(defaultAccess).toMatchObject({ canRead: true, allowCopy: true });
+
+    const [share] = await listGroupShares(database, group.id);
+    expect(share).toMatchObject({ allowCopy: true });
+
+    await updateGroupShare(database, share.id, { allowCopy: false });
+
+    const restricted = await resolveMemoAccess(database, {
+      userId: "usr_a",
+      ownWorkspaceId: "ws_usr_a",
+      memoId: "memo_root",
+    });
+    expect(restricted).toMatchObject({ canRead: true, allowCopy: false });
+
+    const owner = await resolveMemoAccess(database, {
+      userId: "usr_owner",
+      ownWorkspaceId: "ws_usr_owner",
+      memoId: "memo_root",
+    });
+    expect(owner).toMatchObject({ isOwner: true, allowCopy: true });
+  });
 });

@@ -2194,6 +2194,8 @@ export const enUS = {
     saveSharedCopyFailed: "Save failed, try again",
     saveSharedCopyTitle: "{{title}} (copy)",
     saveSharedCopyTitleWithAuthor: "{{title}} ({{author}})",
+    saveSharedCopyBlocked: "The sharer turned off saving copies",
+    sharedCopyNotebook: "My notes",
   },
   sharing: {
     action: "Share note",
@@ -2598,6 +2600,8 @@ export const enUS = {
     chooseEditors: "Members who may edit",
     chooseEditorsHint: "With nobody selected, the whole group can edit.",
     savePolicy: "Save rights",
+    allowCopyTitle: "Allow saving a copy",
+    allowCopyHint: "Members can keep this shared item as a note of their own. Turning this off leaves them read (or edit) access only.",
     shareDialogTitle: "Share to a group",
     shareDialogDescription: "Share a notebook (with everything nested underneath) or a single note with a group; every member can see it.",
     chooseGroup: "Choose a group",
