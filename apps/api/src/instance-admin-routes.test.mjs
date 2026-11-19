@@ -426,12 +426,31 @@ describe("registration invite codes", () => {
 });
 
 describe("member invite codes", () => {
+  test("refuses to mint a member code while invite codes are disabled", async () => {
+    const { sqlite, environment } = createEnvironment();
+    const app = createTestApp("member");
+    const adminApp = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 0 });
+
+    const empty = await (await app.request("/api/v1/me/invite-code", {}, environment)).json();
+    expect(empty).toMatchObject({ invite: null, canCreate: false, inviteRequired: false });
+
+    const created = await app.request("/api/v1/me/invite-code", { method: "POST" }, environment);
+    expect(created.status).toBe(409);
+    expect(await created.json()).toMatchObject({ error: { code: "invite_not_required" } });
+
+    const listed = await (await adminApp.request("/api/v1/admin/registration/invites", {}, environment)).json();
+    expect(listed.invites).toHaveLength(0);
+    sqlite.close();
+  });
+
   test("hands every member one code that stays copyable", async () => {
     const { sqlite, environment } = createEnvironment();
     const app = createTestApp("member");
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 1 });
 
     const empty = await (await app.request("/api/v1/me/invite-code", {}, environment)).json();
-    expect(empty).toMatchObject({ invite: null, canCreate: true });
+    expect(empty).toMatchObject({ invite: null, canCreate: true, inviteRequired: true });
 
     const created = await app.request("/api/v1/me/invite-code", { method: "POST" }, environment);
     expect(created.status).toBe(201);
@@ -500,11 +519,13 @@ describe("member invite codes", () => {
     const { sqlite, environment } = createEnvironment();
     const memberApp = createTestApp("member");
     const adminApp = createTestApp();
+    updateSettings(sqlite, { registration_enabled: 1, registration_invite_required: 1 });
     const created = await (await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment)).json();
     await adminApp.request(`/api/v1/admin/registration/invites/${created.invite.id}/revoke`, { method: "POST" }, environment);
 
     const retry = await memberApp.request("/api/v1/me/invite-code", { method: "POST" }, environment);
     expect(retry.status).toBe(409);
+    expect(await retry.json()).toMatchObject({ error: { code: "invite_already_used" } });
     sqlite.close();
   });
 });

@@ -213,6 +213,13 @@ export const isRegistrationCodeRequired = async (database: DatabaseAdapter) => {
   return Boolean(row?.registration_code_required);
 };
 
+export const isRegistrationInviteRequired = async (database: DatabaseAdapter) => {
+  const row = await database
+    .prepare(`SELECT registration_invite_required FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
+    .first<{ registration_invite_required: number }>();
+  return Boolean(row?.registration_invite_required);
+};
+
 export const getShareMissingMessage = async (database: DatabaseAdapter) => {
   const row = await database
     .prepare(`SELECT share_missing_message FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)

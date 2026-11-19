@@ -29,7 +29,11 @@ export const MyInviteCard = () => {
   });
 
   const invite = inviteQuery.data?.invite ?? null;
-  const inviteRequired = registrationQuery.data?.registration.inviteRequired ?? false;
+  const inviteRequired =
+    registrationQuery.data?.registration.inviteRequired ?? inviteQuery.data?.inviteRequired ?? false;
+  // The server rejects minting while invites are off; the button simply follows
+  // the same toggle so the hint and the action never contradict each other.
+  const canCreate = inviteRequired && !invite;
   const consumed = Boolean(invite && (invite.revokedAt || invite.useCount >= invite.maxUses));
 
   const handleCopy = async () => {
@@ -83,7 +87,7 @@ export const MyInviteCard = () => {
                 {consumed ? t("myInvite.usedHint") : t("myInvite.unusedHint")}
               </p>
             </div>
-          ) : (
+          ) : canCreate ? (
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 className="h-8"
@@ -95,7 +99,7 @@ export const MyInviteCard = () => {
               </Button>
               <span className="text-xs text-slate-500">{t("myInvite.generateHint")}</span>
             </div>
-          )}
+          ) : null}
 
           {error ? <p className="text-xs font-medium text-rose-600">{error}</p> : null}
         </div>

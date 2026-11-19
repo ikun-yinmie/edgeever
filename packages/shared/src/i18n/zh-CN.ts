@@ -2702,7 +2702,7 @@ export const zhCN = {
     statusUsed: "已使用",
     unusedHint: "复制后发给对方即可；对方注册成功后这个邀请码会自动失效。",
     usedHint: "这个邀请码已经用掉了，无法再生成新的；需要重置请联系管理员。",
-    registrationHint: "当前站点没有开启「注册需要邀请码」，你的邀请码暂时用不上。",
+    registrationHint: "当前站点没有开启「注册需要邀请码」，因此暂时无法生成邀请码；如需使用，请先让管理员开启。",
   },
   users: {
     title: "成员管理",

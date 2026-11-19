@@ -2704,7 +2704,7 @@ export const enUS = {
     statusUsed: "Used",
     unusedHint: "Copy it and send it over — it stops working as soon as the other person registers.",
     usedHint: "This invite code has already been used and cannot be regenerated. Ask an administrator to reset it.",
-    registrationHint: "This instance does not require an invite code to register, so your code has no effect yet.",
+    registrationHint: "This instance does not require an invite code to register, so codes cannot be generated yet. Ask an administrator to enable it first.",
   },
   users: {
     title: "Members",

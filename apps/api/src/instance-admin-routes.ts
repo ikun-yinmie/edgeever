@@ -25,6 +25,7 @@ import {
   getSmtpPassword,
   isRegistrationCodeRequired,
   isRegistrationEnabled,
+  isRegistrationInviteRequired,
   mapInstanceSettingsRow,
   normalizeShareServerUrl,
   parseShareServerEntries,
@@ -235,10 +236,7 @@ export const registerInstanceAdminRoutes = (
     const [enabled, codeRequired, inviteRequired] = await Promise.all([
       isRegistrationEnabled(database),
       isRegistrationCodeRequired(database),
-      database
-        .prepare(`SELECT registration_invite_required FROM instance_settings WHERE id = '${INSTANCE_SETTINGS_ID}'`)
-        .first<{ registration_invite_required: number }>()
-        .then((row) => Boolean(row?.registration_invite_required)),
+      isRegistrationInviteRequired(database),
     ]);
     return context.json({
       registration: {
@@ -870,10 +868,17 @@ export const registerInstanceAdminRoutes = (
     if (denied) return denied;
     const userId = context.get("auth")!.actorId;
     if (!userId) return unauthorizedResponse(context);
-    const invite = await loadOwnInvite(context.env.storage.db, userId);
+    const database = context.env.storage.db;
+    const [invite, inviteRequired] = await Promise.all([
+      loadOwnInvite(database, userId),
+      isRegistrationInviteRequired(database),
+    ]);
     return context.json({
       invite: invite ? await mapInviteRow(invite, context.env) : null,
-      canCreate: !invite,
+      // Minting a code is pointless while the instance does not ask for invites,
+      // so the server never advertises it as available in that case.
+      canCreate: inviteRequired && !invite,
+      inviteRequired,
     });
   });
 
@@ -885,11 +890,15 @@ export const registerInstanceAdminRoutes = (
     if (!userId) return unauthorizedResponse(context);
     const database = context.env.storage.db;
 
+    if (!(await isRegistrationInviteRequired(database))) {
+      return conflict(context, "invite_not_required", "This instance does not require invite codes, so none can be created.");
+    }
+
     const existing = await loadOwnInvite(database, userId);
     if (existing) {
       // Still unused: hand the same code back so the member can copy it again.
       if (!existing.revoked_at && existing.use_count < existing.max_uses) {
-        return context.json({ invite: await mapInviteRow(existing, context.env), canCreate: false });
+        return context.json({ invite: await mapInviteRow(existing, context.env), canCreate: false, inviteRequired: true });
       }
       // Single use is locked in: a consumed code is never replaced silently.
       return conflict(context, "invite_already_used", "Your invite code has already been used. Ask an administrator to reset it.");
@@ -933,6 +942,7 @@ export const registerInstanceAdminRoutes = (
           createdAt: now,
         },
         canCreate: false,
+        inviteRequired: true,
       },
       201,
     );

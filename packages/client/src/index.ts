@@ -233,6 +233,7 @@ export type CreateRegistrationInviteResponse = {
 export type MyRegistrationInviteResponse = {
   invite: RegistrationInvite | null;
   canCreate: boolean;
+  inviteRequired?: boolean;
 };
 
 export type CollaborationGroup = {
