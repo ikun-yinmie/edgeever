@@ -1,20 +1,17 @@
 {
-  "version": "1.103.30",
+  "version": "1.103.31",
   "changes": {
     "en-US": [
-      "Group shares can forbid saving a personal copy; readers see why the copy action is unavailable.",
-      "Saving a shared note as a copy now creates a notebook when the viewer owns none, instead of failing on an empty workspace.",
-      "Sync conflicts now offer uploading the local version instead of only adopting the cloud copy."
+      "Task lists keep their hierarchy while editing: Enter at the end of a task title creates a child task, Tab indents selected blocks into the task above, and folding a task no longer strands the caret in hidden content. IME input in task titles stays in the task being edited.",
+      "Invite codes are hidden and rejected while the instance does not require them, instead of letting members mint codes that can never gate a registration."
     ],
     "zh-CN": [
-      "群组共享可禁止保存为副本；阅读者会看到对应操作不可用的提示。",
-      "保存共享笔记为副本时，如果接收者还没有笔记本会自动创建，不再因空工作区失败。",
-      "同步冲突新增「上传本地版本」，不再只能采用云端版本。"
+      "待办列表编辑时层级不再被打乱：在任务标题末尾回车直接创建子任务，选中多段内容按 Tab 可缩进到上方任务里，折叠任务不会再把光标丢进隐藏内容；中文输入法在任务标题里输入也不会跳到别的任务。",
+      "站点未开启「注册需要邀请码」时，成员邀请卡片不再显示生成按钮，服务端也会拒绝生成，避免生成根本用不上的邀请码。"
     ],
     "ja": [
-      "グループ共有で個人コピーの保存を禁止できるようになり、閲覧者には理由が表示されます。",
-      "共有ノートのコピー保存時、閲覧者にノートブックが無ければ自動作成され、空のワークスペースで失敗しなくなりました。",
-      "同期の競合でローカル版をアップロードできるようになりました（クラウド版の適用だけではありません）。"
+      "タスクリストの階層が編集で崩れにくくなりました。タスク行末で Enter を押すと子タスクが作られ、選択したブロックは Tab で上のタスクの子になり、折りたたんでもカーソルが隠れた内容に取り残されません。日本語入力中に別のタスクへ移動することもなくなりました。",
+      "サイトで「招待コード必須」がオフの間は、メンバーの招待カードに発行ボタンを表示せず、サーバー側でも発行を拒否するようにしました。"
     ]
   }
 }
