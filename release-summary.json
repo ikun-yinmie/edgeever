@@ -1,14 +1,20 @@
 {
-  "version": "1.103.29",
+  "version": "1.103.30",
   "changes": {
     "en-US": [
-      "Tab-indenting a new task under a collapsed parent, or pressing Backspace on an empty task below one, now expands that parent so the new sub-task or sub-paragraph is visible; pressing Enter twice on an expanded task merges the empty item into a child paragraph instead of leaving it behind."
+      "Group shares can forbid saving a personal copy; readers see why the copy action is unavailable.",
+      "Saving a shared note as a copy now creates a notebook when the viewer owns none, instead of failing on an empty workspace.",
+      "Sync conflicts now offer uploading the local version instead of only adopting the cloud copy."
     ],
     "zh-CN": [
-      "折叠待办下的新子项不再“消失”：在其下方新建待办后按 Tab 缩进，或在空待办上按 Backspace，父待办会自动展开，新子项/子段落立即可见；展开的待办连续按两次回车会把空项并成子段落，而不是残留空行。"
+      "群组共享可禁止保存为副本；阅读者会看到对应操作不可用的提示。",
+      "保存共享笔记为副本时，如果接收者还没有笔记本会自动创建，不再因空工作区失败。",
+      "同步冲突新增「上传本地版本」，不再只能采用云端版本。"
     ],
     "ja": [
-      "折りたたまれたタスクの下に新しいタスクを作成して Tab でインデントするか、空のタスクで Backspace を押すと、親タスクが自動的に展開されて新しいサブタスクやサブ段落がすぐに表示されるようになりました。展開したタスクで Enter を 2 回押すと、空の項目が子段落に統合されます。"
+      "グループ共有で個人コピーの保存を禁止できるようになり、閲覧者には理由が表示されます。",
+      "共有ノートのコピー保存時、閲覧者にノートブックが無ければ自動作成され、空のワークスペースで失敗しなくなりました。",
+      "同期の競合でローカル版をアップロードできるようになりました（クラウド版の適用だけではありません）。"
     ]
   }
 }
