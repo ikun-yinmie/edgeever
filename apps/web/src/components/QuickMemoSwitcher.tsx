@@ -1,12 +1,13 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { FileText, LoaderCircle } from "lucide-react";
+import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getNotebookDescendantIds, type MemoSummary, type Notebook } from "@edgeever/shared";
 import type { EdgeEverRepository } from "@/lib/repository";
 import { getMemoTitle } from "@/lib/app-helpers";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import {
   Command,
   CommandEmpty,
@@ -176,10 +177,7 @@ export const QuickMemoSwitcher = ({
                 <Button size="sm" variant="outline" onKeyDown={(event) => event.stopPropagation()} onClick={() => void memoQuery.refetch()}>{t("memoSearch.retry")}</Button>
               </div>
             ) : loading ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500" role="status">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-                {t("quickSwitcher.loading")}
-              </div>
+              <LoadingIndicator label={t("quickSwitcher.loading")} centered className="py-8" />
             ) : (
               <>
                 <CommandEmpty>{t("quickSwitcher.empty")}</CommandEmpty>

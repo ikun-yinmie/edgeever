@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { MessageSquareText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/utils";
 import { AdminSettingsSaveFooter } from "./AdminSettingsSaveFooter";
 import { useInstanceAdminSettings } from "./useInstanceAdminSettings";
@@ -26,7 +27,7 @@ export const MessagesSettingsCard = () => {
   if (isLoading || !draft) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-slate-500">{t("common.loading")}</CardContent>
+        <CardContent className="py-8"><LoadingIndicator label={t("common.loading")} centered /></CardContent>
       </Card>
     );
   }

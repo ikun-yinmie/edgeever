@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Clock3, Loader2 } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import {
   Dialog,
   DialogContent,
@@ -65,9 +66,7 @@ export const ExecutionHistoryDialog = ({
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto px-5 py-4">
           {historyQuery.isPending ? (
-            <div className="flex min-h-40 items-center justify-center text-slate-400">
-              <Loader2 className="h-5 w-5 animate-spin" aria-label={t("executionHistory.loading")} />
-            </div>
+            <LoadingIndicator label={t("executionHistory.loading")} centered className="min-h-40" />
           ) : historyQuery.isError ? (
             <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
               {historyQuery.error instanceof Error ? historyQuery.error.message : t("executionHistory.loadFailed")}

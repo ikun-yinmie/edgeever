@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { MemberNotesAccessMode } from "@edgeever/shared";
 import { ApiRequestError, api } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -109,7 +110,7 @@ export const MemberNotesAccessCard = () => {
   if (accessQuery.isLoading || usersQuery.isLoading || !accessQuery.data) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-slate-500">{t("common.loading")}</CardContent>
+        <CardContent className="py-8"><LoadingIndicator label={t("common.loading")} centered /></CardContent>
       </Card>
     );
   }

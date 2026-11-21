@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Pencil, Tags, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Input } from "@/components/ui/input";
 import { cn, formatDateTime } from "@/lib/utils";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
@@ -68,7 +69,7 @@ export const TagsPane = ({
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6 lg:py-6">
         <div className="mx-auto w-full max-w-3xl">
           {tagsQuery.isLoading ? (
-            <div className="px-2 py-8 text-center text-sm text-slate-500">{t("tagsDialog.loading")}</div>
+            <LoadingIndicator label={t("tagsDialog.loading")} centered className="px-2 py-8" />
           ) : tags.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">{t("tagsDialog.empty")}</div>
           ) : (

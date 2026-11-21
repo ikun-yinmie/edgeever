@@ -6,6 +6,7 @@ import type {
 } from "@edgeever/shared";
 import { parseCompanionMentionQuery } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { api, ApiRequestError } from "@/lib/api";
 import { companionLocale } from "@/lib/companion-locale";
 import { CompanionActionCard } from "./CompanionActionCard";
@@ -286,7 +287,7 @@ export function CompanionChat({
 
   return <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
     {error ? <p role="alert" className="text-sm text-rose-700">{error}</p> : null}
-    {loading ? <p role="status">{t("common.loading")}</p> : null}
+    {loading ? <LoadingIndicator label={t("common.loading")} /> : null}
     <div
       ref={scroller}
       className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"

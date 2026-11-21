@@ -4,6 +4,7 @@ import { CircleAlert, Check, ChevronDown, Loader2, TagPlus, X } from "lucide-rea
 import { useTranslation } from "react-i18next";
 import { normalizeTags, type TagSummary } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import {
   Dialog,
   DialogContent,
@@ -256,7 +257,7 @@ export const EditorTagPicker = ({ contentMarkdown, disabled, loadTags, title, va
 
           <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200">
             {tagsQuery.isLoading ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">{t("editor.tagPicker.loading")}</p>
+              <LoadingIndicator label={t("editor.tagPicker.loading")} centered className="px-4 py-8" />
             ) : visibleTags.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-slate-500">{t("editor.tagPicker.empty")}</p>
             ) : (

@@ -4,6 +4,7 @@ import { AlertTriangle, CloudDownload, CloudUpload, ExternalLink, LoaderCircle, 
 import { buildGitHubFeedbackUrl, type DesktopOutboxItem, type Notebook } from "@edgeever/shared";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
@@ -234,7 +235,7 @@ export const DesktopSyncIssuesDialog = ({
           </DialogHeader>
 
           {error ? <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p> : null}
-          {loading ? <p className="py-8 text-center text-sm text-slate-500">{t("common.loading")}</p> : null}
+          {loading ? <LoadingIndicator label={t("common.loading")} centered className="py-8" /> : null}
           {!loading && items.length === 0 && !globalIssue ? <p className="py-8 text-center text-sm text-slate-500">{t("notebookPane.syncDetails.empty")}</p> : null}
 
           <div className="space-y-3">

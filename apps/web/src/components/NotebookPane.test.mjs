@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("./NotebookPane.tsx", import.meta.url), "utf8");
 
+test("uses an animated loading indicator while notebook data is pending", () => {
+  expect(source).toContain('<LoadingIndicator label={t("notebookPane.loading")}');
+});
+
 test("keeps proactive AI out of primary navigation", () => {
   const primaryNav = source.split('aria-label={t("notebookPane.entries")}>')[1]?.split("</nav>")[0];
   expect(primaryNav).toContain('label={t("notebookPane.allMemos")}');

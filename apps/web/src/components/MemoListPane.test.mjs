@@ -73,6 +73,15 @@ describe("memo context menu", () => {
   });
 });
 
+describe("memo list loading feedback", () => {
+  test("shows a shared animated indicator for initial and next-page loading", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('<LoadingIndicator label={t("memoList.fetchingLatest")}');
+    expect(source).toContain('<LoadingIndicator\n                label={t("memoList.loadingMore")}');
+  });
+});
+
 describe("desktop memo list spacing", () => {
   test("reserves matching desktop scrollbar gutters on both sides", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");

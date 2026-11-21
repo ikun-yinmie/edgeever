@@ -4,6 +4,7 @@ import { KeyRound, RotateCcw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { RegistrationInvite as RegistrationInviteRecord } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -310,7 +311,7 @@ export const RegistrationInvitesCard = () => {
           </div>
 
           {invitesQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{t("common.loading")}</p>
+            <LoadingIndicator label={t("common.loading")} />
           ) : visibleInvites.length === 0 ? (
             <p className="text-sm text-slate-500">
               {tab === "active" ? t("adminConsole.invites.emptyActive") : t("adminConsole.invites.emptyRevoked")}

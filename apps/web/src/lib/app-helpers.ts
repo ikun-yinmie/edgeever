@@ -35,7 +35,7 @@ export type ShortcutBinding = {
   alt: boolean;
 };
 export type ShortcutSettings = Record<ShortcutAction, ShortcutBinding>;
-export type MobileBottomNavItem = "home" | "search" | "templates" | "settings";
+export type MobileBottomNavItem = "home" | "recent" | "search" | "templates" | "settings";
 export type MemoContextMenuState = { memo: MemoSummary; x: number; y: number };
 export type MemoDocumentAction =
   | "share"

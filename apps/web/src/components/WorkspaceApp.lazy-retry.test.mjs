@@ -37,6 +37,11 @@ describe("chunk reload retry", () => {
     expect(workspaceSource).toContain('from "@/lib/lazy-retry"');
   });
 
+  test("uses an accessible animated loading indicator for lazy workspace panes", () => {
+    expect(workspaceSource).toContain('from "@/components/ui/LoadingIndicator"');
+    expect(workspaceSource).toContain('<LoadingIndicator label={label} size="md" />');
+  });
+
   test("loads the public share page through the retry helper", () => {
     const appSource = readFileSync(new URL("../app/App.tsx", import.meta.url), "utf8");
 

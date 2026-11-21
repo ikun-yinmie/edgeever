@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { GroupShareSummary } from "@/lib/api";
 import { ApiRequestError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -152,7 +153,7 @@ export const GroupManagementCard = () => {
         </CardHeader>
         <CardContent className="grid gap-4 p-4 pt-0 lg:grid-cols-[16rem_1fr]">
           <div className="space-y-1.5">
-            {groupsQuery.isLoading ? <p className="text-sm text-slate-500">{t("common.loading")}</p> : null}
+            {groupsQuery.isLoading ? <LoadingIndicator label={t("common.loading")} className="py-2" /> : null}
             {!groupsQuery.isLoading && groups.length === 0 ? (
               <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500">
                 {t("groups.empty")}

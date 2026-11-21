@@ -57,6 +57,8 @@ describe("RecentMemosHome workspace wiring", () => {
     expect(recentHandler.length).toBeGreaterThan(0);
     expect(recentHandler).not.toContain("setOpenMemoTabs([])");
     expect(recentHandler).not.toContain("setSelectedMemoId(null)");
+    expect(recentHandler).toContain('setMobileBottomNavActive("recent")');
+    expect(workspaceSource).toContain('setMobileBottomNavActive("home");\n                        setActivePane("memos");');
     expect(allMemosHandler.length).toBeGreaterThan(0);
     expect(allMemosHandler).not.toContain("setOpenMemoTabs([])");
     expect(allMemosHandler).not.toContain("setSelectedMemoId(null)");

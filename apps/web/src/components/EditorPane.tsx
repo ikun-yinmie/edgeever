@@ -41,6 +41,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
 import { MemoEditorHeaderActions } from "@/components/MemoEditorHeaderActions";
 import { MemoEditorMetadataRow } from "@/components/MemoEditorMetadataRow";
@@ -4151,7 +4152,9 @@ const RichEditorPane = ({
       <div className="flex h-full min-w-0 flex-col bg-card">
         <EmptyEditorHeader />
         {selectionActionBar}
-        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-slate-500">{t("editor.loading")}</div>
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <LoadingIndicator label={t("editor.loading")} size="md" />
+        </div>
       </div>
     );
   }
@@ -5272,7 +5275,7 @@ const RichEditorPane = ({
         <ScrollToEdgeButtons
           scrollContainer={editorScrollContainer}
           contentKey={memo?.id}
-          className="absolute bottom-5 right-5 z-10"
+          className="absolute bottom-5 right-5 z-10 max-sm:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-sm:right-4"
         />
       )}
       {isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && (

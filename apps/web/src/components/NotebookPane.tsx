@@ -44,6 +44,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1145,7 +1146,7 @@ export const NotebookPane = ({
         ) : null}
 
         {isLoading ? (
-          <div className="mb-4 px-2 py-3 text-sm text-slate-500">{t("notebookPane.loading")}</div>
+          <LoadingIndicator label={t("notebookPane.loading")} className="mb-4 px-2 py-3" />
         ) : notebookSearchActive && visibleTree.length === 0 ? (
           <p className="mb-4 px-2 py-2 text-xs text-slate-400" data-notebook-search-empty>{t("notebookPane.searchEmpty")}</p>
         ) : (

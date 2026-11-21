@@ -9,6 +9,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 
 export const EditorNoteLinkPicker = ({
   query,
@@ -58,7 +59,7 @@ export const EditorNoteLinkPicker = ({
         </div>
         <CommandList>
           {isLoading ? (
-            <div className="p-6 text-center text-sm text-slate-500">{t("noteLinkPicker.loading")}</div>
+            <LoadingIndicator label={t("noteLinkPicker.loading")} centered className="p-6" />
           ) : (
             <>
               <CommandEmpty>{t("noteLinkPicker.empty")}</CommandEmpty>

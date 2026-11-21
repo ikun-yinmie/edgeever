@@ -20,6 +20,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import {
   Dialog,
   DialogContent,
@@ -338,10 +339,7 @@ export const AiPromptsPane = ({ onClose, onOpenExecutionCenter }: { onClose: () 
           ) : null}
 
           {promptsQuery.isLoading ? (
-            <p className="flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t("common.loading")}
-            </p>
+            <LoadingIndicator label={t("common.loading")} className="py-8" />
           ) : prompts.length ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {prompts.map((prompt) => (

@@ -20,6 +20,7 @@ import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoListPane, MemoSelectionActionBar } from "./MemoListPane";
 import { MemoTabsBar } from "./MemoTabsBar";
@@ -186,8 +187,8 @@ const ExecutionCenterPane = lazyWithChunkRetry("ExecutionCenterPane", () =>
 );
 
 const PaneLoadingFallback = ({ label = "Loading" }: { label?: string }) => (
-  <div className="flex h-full min-h-0 items-center justify-center bg-card text-sm font-medium text-slate-400" role="status">
-    {label}
+  <div className="flex h-full min-h-0 items-center justify-center bg-card">
+    <LoadingIndicator label={label} size="md" />
   </div>
 );
 
@@ -2792,7 +2793,7 @@ export const WorkspaceApp = ({
     setMemberNotesView(null);
     // The recent-notes home is a detour: keep the open tabs and the selected
     // note so coming back lands on the same workspace instead of an empty one.
-    setMobileBottomNavActive("home");
+    setMobileBottomNavActive("recent");
     clearMemoSelection();
     clearPendingCreatedMemo();
     setCreatedMemoEditId(null);
@@ -4096,6 +4097,7 @@ export const WorkspaceApp = ({
                       safeModeNotice={rendererRecoveryMode}
                       onClose={() => {
                         setRightView("editor");
+                        setMobileBottomNavActive("home");
                         setActivePane("memos");
                       }}
                       onCreateMemo={() => {
@@ -4400,6 +4402,7 @@ export const WorkspaceApp = ({
           isCreating={createMemoMutation.isPending}
           onCreateMemo={handleCreateMemo}
           onHome={handleMobileHome}
+          onOpenRecent={handleOpenRecentMemos}
           onOpenSettings={handleOpenSettings}
         />
       )}

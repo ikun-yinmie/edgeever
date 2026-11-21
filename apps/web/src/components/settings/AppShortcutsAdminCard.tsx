@@ -14,6 +14,7 @@ import { writeInstanceAppShortcutDefaults } from "@/lib/shortcut-settings";
 import { useInstanceAdminSettings } from "./useInstanceAdminSettings";
 import { AdminSettingsSaveFooter } from "./AdminSettingsSaveFooter";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { cn } from "@/lib/utils";
 import {
   SETTINGS_ITEM_ICON_CLASSNAME,
@@ -101,7 +102,7 @@ export const AppShortcutsAdminCard = () => {
       </div>
 
       {isLoading ? (
-        <div className="px-4 py-6 text-sm text-slate-500">{t("common.loading")}</div>
+        <LoadingIndicator label={t("common.loading")} centered className="px-4 py-6" />
       ) : (
         <>
           <div className="grid gap-2 p-4 sm:grid-cols-2">

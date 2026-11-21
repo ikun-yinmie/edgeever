@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import type { PluginManifest, PluginSettingField, PluginSettingValue } from "@edgeever/plugin-api";
 import type { EdgeEverPluginHost } from "@/lib/plugins/plugin-host";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -242,7 +243,7 @@ export const PluginSettingsSection = ({ host, manifest }: { host: EdgeEverPlugin
       <header className="border-b border-slate-200 pb-5">
         <h3 id={`${formId}-title`} className="text-base font-semibold text-slate-900">{t("plugins.settings.title")}</h3>
       </header>
-      {loading ? <p className="py-8 text-sm text-slate-500" role="status">{t("common.loading")}</p> : loadError ? (
+      {loading ? <LoadingIndicator label={t("common.loading")} className="py-8" /> : loadError ? (
         <div className="mt-5 grid justify-items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
           <p className="text-sm leading-6 text-rose-700" role="alert">{t("plugins.settings.loadFailed", { message: loadError })}</p>
           <Button size="sm" variant="outline" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("plugins.settings.retry")}</Button>

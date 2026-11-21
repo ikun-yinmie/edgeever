@@ -3,6 +3,7 @@ import { Check, Laptop, MonitorSmartphone, Pencil, Smartphone, Tablet, X } from 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -128,7 +129,7 @@ export const LoginDevicesCard = ({ authRequired, isLoggingOut, onLogout }: Login
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {sessionsQuery.isLoading ? <p className="text-sm text-slate-500">{t("loginDevices.loading")}</p> : null}
+          {sessionsQuery.isLoading ? <LoadingIndicator label={t("loginDevices.loading")} /> : null}
           {sessionsQuery.isError ? <p className="text-sm font-medium text-rose-600" role="alert">{t("loginDevices.loadFailed")}</p> : null}
           {sessionsQuery.data?.sessions.length === 0 ? <p className="text-sm text-slate-500">{t("loginDevices.empty")}</p> : null}
           {sessionsQuery.data?.sessions.length ? (

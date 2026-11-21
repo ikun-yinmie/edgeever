@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, ChevronDown, Loader2, RotateCcw, Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -66,9 +67,7 @@ export const AiTagSuggestionPromptCard = () => {
         <CollapsibleContent asChild>
           <CardContent className="grid gap-3 px-4 pb-4 pt-0">
             {settingsQuery.isLoading ? (
-              <p className="flex items-center gap-2 text-sm text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" />{t("common.loading")}
-              </p>
+              <LoadingIndicator label={t("common.loading")} />
             ) : (
               <>
                 <textarea

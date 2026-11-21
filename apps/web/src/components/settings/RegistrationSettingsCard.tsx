@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { UserPlus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,7 @@ export const RegistrationSettingsCard = () => {
   if (isLoading || !draft) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-slate-500">{t("common.loading")}</CardContent>
+        <CardContent className="py-8"><LoadingIndicator label={t("common.loading")} centered /></CardContent>
       </Card>
     );
   }

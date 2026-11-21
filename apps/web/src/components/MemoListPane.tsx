@@ -57,6 +57,7 @@ import {
   FolderTree,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DropdownMenu,
@@ -1580,7 +1581,7 @@ export const MemoListPane = ({
         className="relative min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-0 lg:pb-3 lg:[scrollbar-gutter:stable_both-edges]"
       >
         {isLoading || (isRefreshing && memos.length === 0) ? (
-          <div className="px-2 py-4 text-sm text-slate-500">{t("memoList.fetchingLatest")}</div>
+          <LoadingIndicator label={t("memoList.fetchingLatest")} className="px-2 py-4" />
         ) : isError && memos.length === 0 ? (
           <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 px-4 py-9 text-center">
             <div className="text-sm font-semibold text-amber-950">{t("memoList.fetchEmptyTitle")}</div>
@@ -1655,9 +1656,10 @@ export const MemoListPane = ({
               })}
             </div>
             {isLoadingMoreMemos && (
-              <div className="mt-4 border-t border-slate-100 px-4 py-3 text-center text-xs font-medium text-slate-500 lg:mt-0">
-                {t("memoList.loadingMore")}
-              </div>
+              <LoadingIndicator
+                label={t("memoList.loadingMore")}
+                className="mt-4 justify-center border-t border-slate-100 px-4 py-3 text-xs font-medium lg:mt-0"
+              />
             )}
           </div>
         )}

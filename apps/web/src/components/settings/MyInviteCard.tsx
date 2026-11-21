@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ticket } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { ApiRequestError, api } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
@@ -60,7 +61,7 @@ export const MyInviteCard = () => {
           ) : null}
 
           {inviteQuery.isLoading ? (
-            <p className="text-xs text-slate-500">{t("common.loading")}</p>
+            <LoadingIndicator label={t("common.loading")} size="sm" className="text-xs" />
           ) : invite ? (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">

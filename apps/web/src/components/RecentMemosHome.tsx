@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { MemoSummary } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EdgeEverRepository } from "@/lib/repository";
@@ -212,10 +213,7 @@ export const RecentMemosHome = ({
               </div>
             ) : null}
             {memosQuery.isPending ? (
-              <div className="flex items-center justify-center gap-2 py-20 text-sm text-slate-500" role="status">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-                {t("recentMemos.loading")}
-              </div>
+              <LoadingIndicator label={t("recentMemos.loading")} size="md" centered className="py-20" />
             ) : memosQuery.isError ? (
               <div className="flex flex-col items-center gap-3 py-20 text-sm text-slate-500" role="status">
                 <span>{t("recentMemos.loadFailed")}</span>

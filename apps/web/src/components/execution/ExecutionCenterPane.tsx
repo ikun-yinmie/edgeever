@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Clock3, Loader2, ScrollText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, ScrollText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { api } from "@/lib/api";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { ExecutionHistoryItemCard, type ExecutionHistoryItem } from "./ExecutionHistoryItemCard";
@@ -76,9 +77,7 @@ export const ExecutionCenterPane = ({
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:py-7">
         <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col">
           {historyQuery.isPending ? (
-            <div className="flex min-h-56 items-center justify-center text-slate-400">
-              <Loader2 className="h-5 w-5 animate-spin" aria-label={t("executionHistory.loading")} />
-            </div>
+            <LoadingIndicator label={t("executionHistory.loading")} size="md" centered className="min-h-56" />
           ) : historyQuery.isError ? (
             <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
               <p>{historyQuery.error instanceof Error ? historyQuery.error.message : t("executionHistory.loadFailed")}</p>

@@ -6,7 +6,6 @@ import {
   ChevronUp,
   Download,
   ExternalLink,
-  Loader2,
   Maximize2,
   Minimize2,
   RotateCcw,
@@ -17,6 +16,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { AttachmentFileIcon } from "@/components/attachments/AttachmentFileIcon";
 import { COMPACT_ATTACHMENT_WIDTH_CLASS } from "@/components/attachments/attachment-layout";
 import { ButtonTooltip } from "@/components/ui/button-tooltip";
@@ -139,10 +139,9 @@ const PdfDocument = ({ url, active, fitWidth, zoom, onError }: PdfDocumentProps)
 
   if (!document) {
     return (
-      <span className="flex min-h-72 items-center justify-center gap-2 text-sm text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin text-emerald-600" aria-hidden="true" />
-        {t("pdfViewer.loading")}
-      </span>
+      <div className="flex min-h-72 items-center justify-center">
+        <LoadingIndicator label={t("pdfViewer.loading")} size="md" />
+      </div>
     );
   }
 

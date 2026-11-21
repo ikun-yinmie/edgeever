@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import type { GroupShareSummary, SharedNotebookMemo } from "@/lib/api";
 import { ApiRequestError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { GroupSharePolicyDialog } from "@/components/settings/GroupSharePolicyDialog";
 import { ShareToGroupDialog } from "@/components/dialogs/ShareToGroupDialog";
 import { describeEditPolicy, groupSharedItems } from "@/lib/shared-with-me";
@@ -49,7 +50,7 @@ const SharedNotebookMemoList = ({
 }) => {
   const { t } = useTranslation();
   if (isLoading) {
-    return <p className="py-2 text-xs text-slate-500">{t("common.loading")}</p>;
+    return <LoadingIndicator label={t("common.loading")} className="py-2 text-xs" />;
   }
   if (memos.length === 0) {
     return <p className="py-2 text-xs text-slate-500">{t("sharedPane.notebookEmpty")}</p>;
@@ -227,7 +228,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
               <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupArticlesSection")}</h2>
                 {groupSharesQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">{t("common.loading")}</p>
+                  <LoadingIndicator label={t("common.loading")} />
                 ) : detailShares.length === 0 ? (
                   <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                     {t("sharedPane.emptyGroup")}
@@ -303,7 +304,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
               <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupMembersSection")}</h2>
                 {groupDetailMembersQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">{t("common.loading")}</p>
+                  <LoadingIndicator label={t("common.loading")} />
                 ) : (
                   <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
                     {detailMembers.map((member) => (
@@ -336,7 +337,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionSharedWithMe")}</h2>
               {sharedQuery.isLoading ? (
-                <p className="text-sm text-slate-500">{t("common.loading")}</p>
+                <LoadingIndicator label={t("common.loading")} />
               ) : !hasSharedContent ? (
                 <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                   {t("sharedPane.emptyShared")}

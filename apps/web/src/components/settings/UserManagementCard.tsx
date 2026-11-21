@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { InstanceUser } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -349,7 +350,7 @@ export const UserManagementCard = ({ demoMode, currentUserId = null, currentUser
           </div>
 
           {usersQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{t("users.loading")}</p>
+            <LoadingIndicator label={t("users.loading")} />
           ) : pageItems.length === 0 ? (
             <p className="text-sm text-slate-500">{t("users.empty")}</p>
           ) : (

@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { Bot, Clock3, History, RotateCcw, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn, formatDateTime } from "@/lib/utils";
 import { getMemoTitle } from "@/lib/app-helpers";
@@ -152,7 +153,7 @@ export const RevisionHistoryDialog = ({
                 {t("revisions.timeline")}
               </div>
               {revisionsQuery.isLoading ? (
-                <div className="px-2 py-8 text-center text-sm text-slate-500">{t("revisions.loading")}</div>
+                <LoadingIndicator label={t("revisions.loading")} centered className="px-2 py-8" />
               ) : revisions.length === 0 ? (
                 <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
                   {t("revisions.empty")}

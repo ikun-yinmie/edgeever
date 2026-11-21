@@ -3,6 +3,7 @@ import { Globe, Image, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Input } from "@/components/ui/input";
 import { refreshSiteBranding } from "@/lib/site-branding";
 import { cn } from "@/lib/utils";
@@ -45,7 +46,7 @@ export const SiteSettingsCard = () => {
   if (isLoading || !draft) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-slate-500">{t("common.loading")}</CardContent>
+        <CardContent className="py-8"><LoadingIndicator label={t("common.loading")} centered /></CardContent>
       </Card>
     );
   }
