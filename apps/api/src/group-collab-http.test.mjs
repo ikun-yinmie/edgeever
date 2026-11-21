@@ -117,7 +117,7 @@ const markdownCodeBlock = {
 
 const seedDoc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "intro" }] }, htmlCodeBlock, markdownCodeBlock] };
 
-const buildApp = (env, auth) => {
+const buildApp = (env, auth, overrides = {}) => {
   const app = new Hono();
   app.onError((error, context) => {
     console.error("[test-app-error]", error instanceof Error ? error.message : error);
@@ -173,6 +173,7 @@ const buildApp = (env, auth) => {
     restoreMemo: async () => { throw new Error("not used"); },
     restoreMemoRevision: async () => { throw new Error("not used"); },
     updateMemo: async () => { throw new Error("not used"); },
+    ...overrides,
   });
   registerGroupRoutes(app, {
     authenticateRequest: async (context) => context.get("auth") ?? null,
@@ -432,4 +433,205 @@ describe("realtime collaboration session handshake", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).canEdit).toBe(true);
   });
+});
+
+describe("shared note history and restore over HTTP", () => {
+  // Each case builds a fresh migrated SQLite database; give the suite room
+  // when the full repository test run is competing for CPU.
+  const slowTest = (name, fn) => test(name, fn, 30_000);
+
+  const setupShare = async ({ editMode = "group", displayPolicy = { html: "rendered", markdown: "rendered" } } = {}) => {
+    const env = createEnvironment();
+    env.seedUser("usr_author", "author");
+    env.seedUser("usr_peer", "peer");
+    env.seedUser("usr_outsider", "outsider");
+    env.seedNotebook(NB, "ws_usr_author");
+    env.seedMemo("memo_shared", "ws_usr_author", NB, seedDoc, "# intro");
+    const group = await createGroup(env.database, { name: "研发", description: null, createdBy: "usr_author" });
+    await env.database
+      .prepare(`INSERT INTO group_members (group_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)`)
+      .bind(group.id, "usr_peer", iso)
+      .run();
+    await createGroupShare(env.database, {
+      groupId: group.id,
+      targetType: "notebook",
+      targetId: NB,
+      sourceWorkspaceId: "ws_usr_author",
+      editMode,
+      editorUserIds: [],
+      displayPolicy,
+      note: null,
+      createdBy: "usr_author",
+    });
+    return env;
+  };
+
+  const authFor = (userId) => ({
+    kind: "user", actorType: "user", actorId: userId, username: userId, displayName: userId,
+    scopes: [], workspaceId: `ws_${userId}`, role: "member", accountType: "user",
+  });
+
+  const requestEnv = (env) => ({ storage: { db: env.database }, env: {} });
+
+  slowTest("a group editor restores in the author's workspace", async () => {
+    const env = await setupShare({ editMode: "group" });
+    const calls = [];
+    const app = buildApp(env, authFor("usr_peer"), {
+      restoreMemoRevision: async (...args) => {
+        calls.push(args);
+        return { id: "memo_shared", title: "Restored" };
+      },
+    });
+
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/revisions/rev_1/restore",
+      { method: "POST" },
+      requestEnv(env),
+    );
+
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toBe("ws_usr_author");
+    expect(calls[0][2]).toBe("memo_shared");
+    expect(calls[0][5]).toBe("user:usr_peer");
+    expect(calls[0][6]).toBeNull();
+  });
+
+  slowTest("a read-only member cannot restore a shared version", async () => {
+    const env = await setupShare({ editMode: "author" });
+    const calls = [];
+    const app = buildApp(env, authFor("usr_peer"), {
+      restoreMemoRevision: async (...args) => {
+        calls.push(args);
+        return { id: "memo_shared" };
+      },
+    });
+
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/revisions/rev_1/restore",
+      { method: "POST" },
+      requestEnv(env),
+    );
+
+    expect(response.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  slowTest("history hides blocks the share policy hides", async () => {
+    const env = await setupShare({
+      editMode: "group",
+      displayPolicy: { html: "hidden", markdown: "hidden" },
+    });
+    let contentFilter;
+    const app = buildApp(env, authFor("usr_peer"), {
+      listMemoRevisions: async (_db, _workspaceId, _memoId, _limit, filter) => {
+        contentFilter = filter;
+        return [];
+      },
+    });
+
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/revisions",
+      {},
+      requestEnv(env),
+    );
+
+    expect(response.status).toBe(200);
+    expect(typeof contentFilter).toBe("function");
+    const filtered = contentFilter(seedDoc);
+    const serialized = JSON.stringify(filtered);
+    expect(serialized).not.toContain("secret plan");
+    expect(serialized).not.toContain("alert");
+    expect(serialized).toContain("不公开");
+  });
+
+  slowTest("the owner reads history unfiltered", async () => {
+    const env = await setupShare({
+      editMode: "group",
+      displayPolicy: { html: "hidden", markdown: "hidden" },
+    });
+    let contentFilter = "not-called";
+    const app = buildApp(env, authFor("usr_author"), {
+      listMemoRevisions: async (_db, _workspaceId, _memoId, _limit, filter) => {
+        contentFilter = filter;
+        return [];
+      },
+    });
+
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/revisions",
+      {},
+      requestEnv(env),
+    );
+
+    expect(response.status).toBe(200);
+    expect(contentFilter).toBeUndefined();
+  });
+
+  slowTest("the collaboration session reports the verified actor type", async () => {
+    const env = await setupShare({ editMode: "group" });
+    const app = buildApp(env, authFor("usr_peer"));
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/collab-session",
+      {},
+      requestEnv(env),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.actorId).toBe("usr_peer");
+    expect(body.actorType).toBe("user");
+    expect(body.canEdit).toBe(true);
+  });
+});
+
+describe("shared restore response filtering", () => {
+  test("a restoring editor does not receive hidden blocks back", async () => {
+    const env = createEnvironment();
+    env.seedUser("usr_author", "author");
+    env.seedUser("usr_peer", "peer");
+    env.seedNotebook(NB, "ws_usr_author");
+    env.seedMemo("memo_shared", "ws_usr_author", NB, seedDoc, "# intro");
+    const group = await createGroup(env.database, { name: "研发", description: null, createdBy: "usr_author" });
+    await env.database
+      .prepare(`INSERT INTO group_members (group_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)`)
+      .bind(group.id, "usr_peer", iso)
+      .run();
+    await createGroupShare(env.database, {
+      groupId: group.id,
+      targetType: "notebook",
+      targetId: NB,
+      sourceWorkspaceId: "ws_usr_author",
+      editMode: "group",
+      editorUserIds: [],
+      displayPolicy: { html: "hidden", markdown: "hidden" },
+      note: null,
+      createdBy: "usr_author",
+    });
+    const app = buildApp(env, {
+      kind: "user", actorType: "user", actorId: "usr_peer", username: "peer", displayName: "peer",
+      scopes: [], workspaceId: "ws_usr_peer", role: "member", accountType: "user",
+    }, {
+      restoreMemoRevision: async () => ({
+        id: "memo_shared",
+        title: "Restored",
+        contentJson: seedDoc,
+        contentMarkdown: "# secret plan\n\n<script>alert(1)</script>",
+        contentText: "secret plan",
+      }),
+    });
+
+    const response = await app.request(
+      "/api/v1/memos/memo_shared/revisions/rev_1/restore",
+      { method: "POST" },
+      { storage: { db: env.database }, env: {} },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("secret plan");
+    expect(serialized).not.toContain("alert");
+    expect(serialized).toContain("不公开");
+  }, 30_000);
 });

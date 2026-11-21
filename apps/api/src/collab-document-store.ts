@@ -12,7 +12,7 @@
 // desktop outbox, LWW web path) leaves the hashes out of sync and the room
 // is re-seeded from the memo content instead of resurrecting a stale merge.
 
-import type { DatabaseAdapter } from "./storage-contract";
+import type { DatabaseAdapter, PreparedStatementAdapter } from "./storage-contract";
 
 /** SQLite hands back a Uint8Array; D1 hands back an ArrayBuffer. */
 const toStateBytes = (value: unknown): Uint8Array | null => {
@@ -34,6 +34,8 @@ export type CollabDocumentStore = {
   /** The state plus the content hash it was last materialized with. */
   loadWithHash: (memoId: string) => Promise<{ state: Uint8Array | null; contentHash: string | null }>;
   save: (memoId: string, state: Uint8Array) => Promise<void>;
+  /** Prepare the state/hash write for a transaction that also changes the memo. */
+  prepareSaveWithHash: (memoId: string, state: Uint8Array, contentHash: string) => PreparedStatementAdapter;
   /** Persist the state and declare it materialized at the given content hash. */
   saveWithHash: (memoId: string, state: Uint8Array, contentHash: string) => Promise<void>;
   /** Record a materialization without rewriting the state blob. */
@@ -49,6 +51,17 @@ export const createCollabDocumentStore = (database: DatabaseAdapter): CollabDocu
   ) {
     throw new Error("createCollabDocumentStore requires a database adapter with a prepare() method");
   }
+  const prepareSaveWithHash = (memoId: string, state: Uint8Array, contentHash: string) => database
+    .prepare(
+      `INSERT INTO memo_collab_documents (memo_id, state, content_hash, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(memo_id) DO UPDATE SET
+         state = excluded.state,
+         content_hash = excluded.content_hash,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(memoId, state, contentHash, new Date().toISOString());
+
   return {
     load: async (memoId: string) => {
       const row = await database
@@ -80,18 +93,9 @@ export const createCollabDocumentStore = (database: DatabaseAdapter): CollabDocu
         .run();
     },
 
-    saveWithHash: async (memoId: string, state: Uint8Array, contentHash: string) => {
-      await database
-        .prepare(
-          `INSERT INTO memo_collab_documents (memo_id, state, content_hash, updated_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(memo_id) DO UPDATE SET
-             state = excluded.state,
-             content_hash = excluded.content_hash,
-             updated_at = excluded.updated_at`,
-        )
-        .bind(memoId, state, contentHash, new Date().toISOString())
-        .run();
+    prepareSaveWithHash,
+    saveWithHash: async (memoId, state, contentHash) => {
+      await prepareSaveWithHash(memoId, state, contentHash).run();
     },
 
     setContentHash: async (memoId: string, contentHash: string) => {

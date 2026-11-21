@@ -7,7 +7,7 @@ import { isUnauthenticatedAccessEnabled } from "../apps/api/src/auth-state.ts";
 import { createCollabDocumentStore } from "../apps/api/src/collab-document-store.ts";
 import { createCollabMemoWriter } from "../apps/api/src/collab-memo-writer.ts";
 import { createCollabRoomRegistry } from "../apps/api/src/collab-realtime.ts";
-import { resolveCollabInitialState, yjsUpdateToTiptapJson } from "../apps/api/src/collab-seed.ts";
+import { resolveCollabInitialState, replaceCollabDocumentContent, yjsUpdateToTiptapJson } from "../apps/api/src/collab-seed.ts";
 import { fetchEdgeEverApp } from "../apps/api/src/index.ts";
 import { nodePublicFetch } from "../apps/api/src/node-public-network.ts";
 import { createSelfHostedStorageAdapter } from "../apps/api/src/self-hosted-storage-adapter.ts";
@@ -163,11 +163,11 @@ const loadCollabInitialState = async (memoId) => {
  * keeps seeing the merged content. The writer short-circuits on an unchanged
  * hash, so the frequent calls below are a hash read, not a write.
  */
-const materializeCollabState = async (memoId, state) => {
+const materializeCollabState = async (memoId, state, actorLabel = null) => {
   try {
     const contentJson = yjsUpdateToTiptapJson(state);
     if (!contentJson) return;
-    const result = await collabMemoWriter.materialize(memoId, contentJson);
+    const result = await collabMemoWriter.materialize(memoId, contentJson, { actorLabel });
     if (result.contentHash) await collabDocuments.setContentHash(memoId, result.contentHash);
   } catch (error) {
     console.error(
@@ -177,26 +177,37 @@ const materializeCollabState = async (memoId, state) => {
   }
 };
 
-// The room flushes on every quiet period (hundreds of ms); the heavier
-// memo write rides along at most once per interval and once more at shutdown.
-const COLLAB_MATERIALIZE_INTERVAL_MS = 2000;
-const collabMaterializedAt = new Map();
-
+// Every quiet-period flush is materialized, including the final tail; the
+// editor switch itself forces a history snapshot (see collab-memo-writer).
 const collabRooms = createCollabRoomRegistry({
   loadState: (memoId) => loadCollabInitialState(memoId),
-  persistState: async (memoId, state) => {
+  persistState: async (memoId, state, actorLabel) => {
     await collabDocuments.save(memoId, state);
-    const now = Date.now();
-    if (now - (collabMaterializedAt.get(memoId) ?? 0) >= COLLAB_MATERIALIZE_INTERVAL_MS) {
-      collabMaterializedAt.set(memoId, now);
-      await materializeCollabState(memoId, state);
-    }
+    await materializeCollabState(memoId, state, actorLabel);
   },
   onError: (error, context) => console.error(
     `[collab] ${context.phase} failed for ${context.memoId}`,
     error instanceof Error ? error.message : error,
   ),
 });
+
+/**
+ * Runtime port for revision restores: pause the room, swap the persisted and
+ * in-memory CRDT document with one that retains delete information, then
+ * resume. Cloudflare has no sockets and simply omits this port.
+ */
+env.collabRestore = {
+  begin: (memoId) => collabRooms.beginRestore(memoId),
+  prepare: async (memoId, content, liveState) => {
+    const state = liveState ?? await collabDocuments.load(memoId);
+    const nextState = replaceCollabDocumentContent(state, content.contentJson);
+    return {
+      statement: collabDocuments.prepareSaveWithHash(memoId, nextState, content.contentHash),
+      apply: () => collabRooms.applyRestoredState(memoId, nextState),
+    };
+  },
+  end: (memoId) => collabRooms.endRestore(memoId),
+};
 
 const collabStateBytes = (value) => {
   if (value instanceof Uint8Array) return value;
@@ -268,7 +279,15 @@ const authorizeCollabSocket = async (request, memoId) => {
     ok: true,
     canEdit: Boolean(body?.canEdit),
     displayName: typeof body?.displayName === "string" ? body.displayName : null,
+    // Verified server-side identity; never the name a client advertises.
+    actorLabel: collabActorLabel(body?.actorId, body?.actorType),
   };
+};
+
+/** History attribution needs the stable id so renames still resolve a name. */
+const collabActorLabel = (actorId, actorType) => {
+  if (typeof actorId !== "string" || !actorId.trim()) return null;
+  return actorType === "agent" ? `agent:${actorId.trim()}` : `user:${actorId.trim()}`;
 };
 
 const contentTypes = {
@@ -323,6 +342,7 @@ const server = Bun.serve({
       const connection = {
         id: ws.data.connectionId,
         canEdit: ws.data.canEdit,
+        actorLabel: ws.data.actorLabel,
         send: (message) => {
           try {
             ws.send(message);
@@ -417,6 +437,7 @@ const server = Bun.serve({
           memoId,
           canEdit: authorization.canEdit,
           displayName: authorization.displayName,
+          actorLabel: authorization.actorLabel,
           connectionId: `collab-${(collabConnectionSequence += 1)}`,
         },
       });

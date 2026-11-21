@@ -1,5 +1,8 @@
 import {
+  createExcerpt,
   DeleteMemosSchema,
+  docToMarkdown,
+  docToText,
   MemoCreateSchema,
   MergeMemosSchema,
   MEMO_REVISION_RETENTION_LIMIT,
@@ -9,6 +12,7 @@ import {
   type MemoEditSession,
   type MemoRevision,
   type MemoUpdateInput,
+  type TiptapDoc,
 } from "@edgeever/shared";
 import { zValidator } from "@hono/zod-validator";
 import type { Hono } from "hono";
@@ -28,6 +32,10 @@ import {
   parseShareDisplayPolicy,
   type ShareDisplayPolicy,
 } from "./share-display-policy";
+import type {
+  MemoRevisionContentFilter,
+  MemoRevisionRestoreCollab,
+} from "./memo-revision-service";
 import { getActorLabel, getAuditActor, getWorkspaceId, requireScopes } from "./request-auth";
 import type { DatabaseAdapter } from "./storage-contract";
 
@@ -79,6 +87,7 @@ type MemoRouteDependencies = {
     workspaceId: string,
     memoId: string,
     limit: number,
+    contentFilter?: MemoRevisionContentFilter,
   ) => Promise<MemoRevision[]>;
   listMemos: (database: DatabaseAdapter, input: ListMemosInput) => Promise<ListMemosResult>;
   mergeMemos: (
@@ -109,6 +118,7 @@ type MemoRouteDependencies = {
     revisionId: string,
     actor: AuditActor,
     actorLabel: string,
+    collabRestore?: MemoRevisionRestoreCollab | null,
   ) => Promise<MemoDetail>;
   updateMemo: (
     database: DatabaseAdapter,
@@ -147,6 +157,36 @@ const resolveMemoScope = async (
   if (!access) return { response: notFound(context, "Memo not found") };
   if (!access.canRead) return { response: notFound(context, "Memo not found") };
   return { access };
+};
+
+const resolveNonDefaultShareDisplayPolicy = async (
+  context: AppContext,
+  access: SharedAccess,
+): Promise<ShareDisplayPolicy | null> => {
+  if (access.isOwner || !access.shareId) return null;
+  const shareRow = await context.env.storage.db
+    .prepare(`SELECT display_policy_json FROM group_shares WHERE id = ?`)
+    .bind(access.shareId)
+    .first<{ display_policy_json: string | null }>();
+  const policy = parseShareDisplayPolicy(shareRow?.display_policy_json);
+  return isDefaultShareDisplayPolicy(policy) ? null : policy;
+};
+
+const filterMemoForShare = (
+  memo: MemoDetail,
+  policy: ShareDisplayPolicy,
+): MemoDetail => {
+  const contentJson = applyShareDisplayPolicyToDoc(memo.contentJson, policy) as MemoDetail["contentJson"];
+  if (contentJson === memo.contentJson) return memo;
+  const contentMarkdown = docToMarkdown(contentJson);
+  const contentText = docToText(contentJson);
+  return {
+    ...memo,
+    contentJson,
+    contentMarkdown,
+    contentText,
+    excerpt: createExcerpt(contentText),
+  };
 };
 
 export const registerMemoRoutes = (
@@ -208,16 +248,10 @@ export const registerMemoRoutes = (
     // document is filtered server-side, exactly like public link shares.
     // Owners and personal reads never pass through this branch.
     let displayPolicy: ShareDisplayPolicy | null = null;
-    if (!scope.access.isOwner && scope.access.shareId) {
-      const shareRow = await context.env.storage.db
-        .prepare(`SELECT display_policy_json FROM group_shares WHERE id = ?`)
-        .bind(scope.access.shareId)
-        .first<{ display_policy_json: string | null }>();
-      const policy = parseShareDisplayPolicy(shareRow?.display_policy_json);
-      if (!isDefaultShareDisplayPolicy(policy)) {
-        memo = { ...memo, contentJson: applyShareDisplayPolicyToDoc(memo.contentJson, policy) as typeof memo.contentJson };
-        displayPolicy = policy;
-      }
+    const policy = await resolveNonDefaultShareDisplayPolicy(context, scope.access);
+    if (policy) {
+      memo = { ...memo, contentJson: applyShareDisplayPolicyToDoc(memo.contentJson, policy) as typeof memo.contentJson };
+      displayPolicy = policy;
     }
 
     // Group-shared notes live in the author's workspace. Tell the client so it
@@ -318,6 +352,12 @@ export const registerMemoRoutes = (
       const scope = await resolveMemoScope(context, context.req.param("id"));
       if ("response" in scope) return scope.response;
 
+      // Old versions must not leak blocks the author hid from this audience.
+      const policy = await resolveNonDefaultShareDisplayPolicy(context, scope.access);
+      const contentFilter: MemoRevisionContentFilter | undefined = policy
+        ? (contentJson) => applyShareDisplayPolicyToDoc(contentJson, policy) as TiptapDoc
+        : undefined;
+
       const revisions = await dependencies.listMemoRevisions(
         context.env.storage.db,
         scope.access.workspaceId,
@@ -327,6 +367,7 @@ export const registerMemoRoutes = (
           1,
           MEMO_REVISION_RETENTION_LIMIT,
         ),
+        contentFilter,
       );
       return context.json({ revisions });
     } catch (error) {
@@ -339,14 +380,25 @@ export const registerMemoRoutes = (
     if (denied) return denied;
 
     try {
-      const memo = await dependencies.restoreMemoRevision(
+      const scope = await resolveMemoScope(context, context.req.param("id"));
+      if ("response" in scope) return scope.response;
+      if (!scope.access.canEdit) {
+        return apiError(context, "shared_read_only", "This note is shared with you for reading only.", 403);
+      }
+
+      let memo = await dependencies.restoreMemoRevision(
         context.env.storage.db,
-        getWorkspaceId(context),
+        scope.access.workspaceId,
         context.req.param("id"),
         context.req.param("revisionId"),
         getAuditActor(context),
         getActorLabel(context),
+        context.env.collabRestore ?? null,
       );
+      // The restored body is the raw note; a non-owner must not receive blocks
+      // the share policy hides just because they restored a version.
+      const policy = await resolveNonDefaultShareDisplayPolicy(context, scope.access);
+      if (policy) memo = filterMemoForShare(memo, policy);
       return context.json({ memo });
     } catch (error) {
       return handleAppError(context, error);
@@ -524,6 +576,7 @@ export const registerMemoRoutes = (
       groupId: scope.access.groupId,
       groupName: scope.access.groupName,
       actorId: auth?.actorId ?? null,
+      actorType: auth?.actorType ?? "user",
       displayName: auth?.displayName ?? auth?.username ?? null,
       accountType: auth?.accountType ?? "user",
     });

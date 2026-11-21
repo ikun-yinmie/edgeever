@@ -104,6 +104,31 @@ export const tiptapJsonToYjsUpdate = (
   return update;
 };
 
+export const replaceCollabDocumentContent = (
+  state: Uint8Array | null,
+  contentJson: unknown,
+  field: string = COLLAB_DOCUMENT_FIELD,
+): Uint8Array => {
+  const doc = new Y.Doc();
+  try {
+    if (state?.byteLength) Y.applyUpdate(doc, state);
+    const fragment = doc.getXmlFragment(field);
+    const content = isPlainObject(contentJson) && Array.isArray(contentJson.content)
+      ? contentJson.content as TiptapJsonNode[]
+      : [];
+    const children = content.map(nodeToYType)
+      .filter((child): child is Y.XmlElement | Y.XmlText => child !== null);
+    doc.transact(() => {
+      // Retain deletions so reconnecting clients cannot resurrect replaced nodes.
+      fragment.delete(0, fragment.length);
+      if (children.length > 0) fragment.insert(0, children);
+    });
+    return Y.encodeStateAsUpdate(doc);
+  } finally {
+    doc.destroy();
+  }
+};
+
 /**
  * Render a persisted Yjs update back into TipTap JSON for memo_contents.
  * Returns null for an unreadable state; callers must then skip the write

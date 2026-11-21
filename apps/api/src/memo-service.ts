@@ -1407,7 +1407,7 @@ export const updateMemoRecord = async (
   }
 
   const nextRevision = current.revision + 1;
-  const revisionStatements = (await shouldSnapshotMemoRevisionService(db, current, title, JSON.stringify(tags), contentHash, updatedAt))
+  const revisionStatements = (await shouldSnapshotMemoRevisionService(db, current, title, JSON.stringify(tags), contentHash, updatedAt, actorLabel))
     ? [
         createMemoRevisionStatementService(db, current, actorLabel, updatedAt),
         trimMemoRevisionsStatementService(db, id),

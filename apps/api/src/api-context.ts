@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { CloudflareStorageBindings } from "./cloudflare-storage-adapter";
+import type { MemoRevisionRestoreCollab } from "./memo-revision-service";
 import type { StorageAdapter } from "./storage-contract";
 
 export type Bindings = {
@@ -7,6 +8,8 @@ export type Bindings = {
   publicNetworkFetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** The only persistence dependency exposed to application code. */
   storage: StorageAdapter;
+  /** Runtime adapter that pauses/refreshes an open collaboration room on restore. */
+  collabRestore?: MemoRevisionRestoreCollab;
   EDGE_EVER_AUTH_USERNAME?: string;
   EDGE_EVER_RUNTIME?: string;
   EDGE_EVER_CONTAINER_IMAGE?: string;

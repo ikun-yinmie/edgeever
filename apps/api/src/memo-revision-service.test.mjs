@@ -185,4 +185,165 @@ describe("memo revision service", () => {
     expect(prepared.some(({ sql }) => sql.includes("DELETE FROM memo_revisions"))).toBe(true);
     expect(prepared.some(({ sql }) => sql.includes("UPDATE memo_contents"))).toBe(true);
   });
+
+  test("snapshots on an editor switch even inside the five-minute window", async () => {
+    const latest = {
+      ...revision,
+      revision: 3,
+      title: "Old title",
+      tags_json: '["old"]',
+      content_hash: "older-hash",
+      created_by: "user:alice",
+      created_at: "2026-08-29T00:59:00.000Z",
+    };
+    const database = { prepare: () => createStatement("SELECT latest", latest) };
+    const now = "2026-08-29T01:00:00.000Z";
+
+    await expect(shouldSnapshotMemoRevision(
+      database,
+      current,
+      current.title,
+      current.tags_json,
+      "next-hash",
+      now,
+      "user:alice",
+    )).resolves.toBe(false);
+
+    await expect(shouldSnapshotMemoRevision(
+      database,
+      current,
+      current.title,
+      current.tags_json,
+      "next-hash",
+      now,
+      "Owner",
+    )).resolves.toBe(true);
+
+    await expect(shouldSnapshotMemoRevision(
+      database,
+      current,
+      current.title,
+      current.tags_json,
+      "next-hash",
+      now,
+      "user:bob",
+    )).resolves.toBe(true);
+  });
+
+  test("pauses and refreshes an open collaboration room around a restore", async () => {
+    const database = {
+      prepare: (sql) => createStatement(sql, sql.includes("FROM memo_revisions mr") ? revision : null),
+      batch: async (statements) => statements.map(() => ({ success: true, meta: {}, results: [] })),
+    };
+    const restoredMemo = { id: "memo_1", revision: 4, title: "Previous" };
+    const order = [];
+    let applied = null;
+
+    await restoreMemoRevision(
+      database,
+      "workspace_1",
+      "memo_1",
+      "revision_1",
+      { actorType: "user", actorId: "user_1" },
+      "Owner",
+      {
+        getMemoDetailRow: async () => current,
+        getMemoDetail: async () => restoredMemo,
+      },
+      {
+        begin: async (memoId) => { order.push(["begin", memoId]); return null; },
+        prepare: async (memoId, content) => ({
+          statement: createStatement("INSERT INTO memo_collab_documents"),
+          apply: async () => {
+            order.push(["apply", memoId]);
+            applied = content;
+          },
+        }),
+        end: async (memoId) => order.push(["end", memoId]),
+      },
+    );
+
+    expect(order).toEqual([["begin", "memo_1"], ["apply", "memo_1"], ["end", "memo_1"]]);
+    expect(applied.contentJson.content[0].content[0].text).toBe("Previous body");
+    expect(typeof applied.contentHash).toBe("string");
+  });
+
+  test("does not apply a live restore when the atomic collaboration write fails", async () => {
+    const order = [];
+    const collabStatement = createStatement("INSERT INTO memo_collab_documents");
+    const database = {
+      prepare: (sql) => createStatement(sql, sql.includes("FROM memo_revisions mr") ? revision : null),
+      batch: async (statements) => {
+        expect(statements).toHaveLength(7);
+        expect(statements).toContain(collabStatement);
+        order.push("batch");
+        throw new Error("collaboration write failed");
+      },
+    };
+    await expect(restoreMemoRevision(
+      database, "workspace_1", "memo_1", "revision_1",
+      { actorType: "user", actorId: "user_1" }, "Owner",
+      { getMemoDetailRow: async () => current, getMemoDetail: async () => null },
+      {
+        begin: async () => { order.push("begin"); return null; },
+        prepare: async () => ({ statement: collabStatement, apply: async () => { order.push("apply"); } }),
+        end: async () => { order.push("end"); },
+      },
+    )).rejects.toThrow("collaboration write failed");
+    expect(order).toEqual(["begin", "batch", "end"]);
+  });
+
+  test("resumes the room when reading the current memo fails", async () => {
+    const order = [];
+    await expect(restoreMemoRevision(
+      { prepare: () => createStatement("SELECT"), batch: async () => [] },
+      "workspace_1",
+      "memo_1",
+      "revision_1",
+      { actorType: "user", actorId: "user_1" },
+      "Owner",
+      {
+        getMemoDetailRow: async () => { throw new Error("database offline"); },
+        getMemoDetail: async () => null,
+      },
+      {
+        begin: async () => { order.push("begin"); return null; },
+        prepare: async () => { throw new Error("Should not prepare a missing memo"); },
+        end: async () => order.push("end"),
+      },
+    )).rejects.toThrow("database offline");
+
+    expect(order).toEqual(["begin", "end"]);
+  });
+
+  test("filters archived versions before they leave the API", async () => {
+    const archived = {
+      ...revision,
+      content_json: JSON.stringify({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "secret plan" }] }],
+      }),
+      content_markdown: "secret plan",
+      content_text: "secret plan",
+    };
+    const database = { prepare: () => createStatement("SELECT revisions", null, [archived]) };
+
+    const result = await listMemoRevisions(
+      database,
+      "workspace_1",
+      "memo_1",
+      10,
+      async () => ({ id: "memo_1" }),
+      false,
+      () => ({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "hidden by policy" }] }],
+      }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].contentMarkdown).toBe("hidden by policy");
+    expect(result[0].contentText).toBe("hidden by policy");
+    expect(JSON.stringify(result[0])).not.toContain("secret plan");
+  });
 });

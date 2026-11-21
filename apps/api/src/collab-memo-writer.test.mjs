@@ -37,13 +37,19 @@ const seedDatabase = () => {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE memos (
-      id TEXT PRIMARY KEY, title TEXT, excerpt TEXT, tags_json TEXT,
+      id TEXT PRIMARY KEY, title TEXT, excerpt TEXT, tags_json TEXT, updated_by TEXT,
       is_deleted INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
     );
     CREATE TABLE memo_contents (
       memo_id TEXT PRIMARY KEY, content_json TEXT, content_markdown TEXT,
       content_text TEXT, content_hash TEXT, revision INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE memo_revisions (
+      id TEXT PRIMARY KEY, memo_id TEXT NOT NULL, revision INTEGER NOT NULL,
+      title TEXT, tags_json TEXT NOT NULL, content_json TEXT NOT NULL,
+      content_markdown TEXT NOT NULL, content_text TEXT NOT NULL,
+      content_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
     );
     CREATE TABLE memo_search_documents (
       memo_id TEXT PRIMARY KEY, title TEXT, content_text TEXT, tags TEXT
@@ -131,5 +137,55 @@ describe("collab memo writer", () => {
     expect(() => createCollabMemoWriter({})).toThrow(
       "createCollabMemoWriter requires a database adapter with a prepare() method",
     );
+  });
+
+  test("records the authenticated editor and snapshots the previous body", async () => {
+    const env = seedDatabase();
+    const writer = createCollabMemoWriter(env.database);
+
+    const result = await writer.materialize("m1", mergedDoc, { actorLabel: "user:alice" });
+    expect(result.materialized).toBe(true);
+
+    const revisions = env.sqlite.query(`SELECT * FROM memo_revisions ORDER BY created_at`).all();
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0].created_by).toBe("user:alice");
+    expect(revisions[0].content_markdown).toBe("intro");
+    expect(revisions[0].revision).toBe(1);
+
+    const memo = env.sqlite.query(`SELECT updated_by FROM memos WHERE id = 'm1'`).get();
+    expect(memo.updated_by).toBe("user:alice");
+  });
+
+  test("creates a restore point when a different editor takes over inside the coalescing window", async () => {
+    const env = seedDatabase();
+    const writer = createCollabMemoWriter(env.database);
+    const doc = (text) => ({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    });
+
+    await writer.materialize("m1", doc("alice one"), { actorLabel: "user:alice" });
+    await writer.materialize("m1", doc("alice two"), { actorLabel: "user:alice" });
+    expect(env.sqlite.query(`SELECT COUNT(*) AS count FROM memo_revisions`).get().count).toBe(1);
+
+    await writer.materialize("m1", doc("bob edit"), { actorLabel: "user:bob" });
+    const revisions = env.sqlite.query(`SELECT * FROM memo_revisions ORDER BY created_at, revision`).all();
+    expect(revisions).toHaveLength(2);
+    expect(revisions.map((revision) => revision.created_by)).toEqual(["user:alice", "user:bob"]);
+    // The new revision captures what was on screen just before Bob's edit.
+    expect(revisions[1].content_markdown).toContain("alice two");
+    const memo = env.sqlite.query(`SELECT updated_by FROM memos WHERE id = 'm1'`).get();
+    expect(memo.updated_by).toBe("user:bob");
+  });
+
+  test("never attributes an unauthenticated flush", async () => {
+    const env = seedDatabase();
+    const writer = createCollabMemoWriter(env.database);
+
+    await writer.materialize("m1", mergedDoc);
+    expect(env.sqlite.query(`SELECT COUNT(*) AS count FROM memo_revisions`).get().count).toBe(0);
+    expect(env.sqlite.query(`SELECT updated_by FROM memos WHERE id = 'm1'`).get().updated_by).toBeNull();
+    expect(env.sqlite.query(`SELECT content_markdown FROM memo_contents WHERE memo_id = 'm1'`).get().content_markdown)
+      .toContain("intro plus alice");
   });
 });

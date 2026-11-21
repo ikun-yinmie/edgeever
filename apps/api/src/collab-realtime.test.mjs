@@ -31,6 +31,7 @@ const connectClient = async (registry, memoId, options = {}) => {
   /** Frames the client would push up the socket. */
   const outbound = [];
   let connection;
+  let closedReason = null;
 
   const handleServerFrame = (message) => {
     const decoder = decoding.createDecoder(message);
@@ -54,8 +55,9 @@ const connectClient = async (registry, memoId, options = {}) => {
   connection = {
     id: options.id ?? `conn-${(connectionSequence += 1)}`,
     canEdit: options.canEdit ?? true,
+    actorLabel: options.actorLabel ?? null,
     send: handleServerFrame,
-    close: () => undefined,
+    close: (reason) => { closedReason = reason ?? null; },
   };
 
   // Local edits travel up as sync updates, exactly like y-websocket.
@@ -103,6 +105,7 @@ const connectClient = async (registry, memoId, options = {}) => {
       doc.destroy();
       await registry.close(memoId, connection);
     },
+    closeReason: () => closedReason,
   };
 
   // Flush whatever the initial handshake produced (sync step2 and presence).
@@ -273,5 +276,127 @@ describe("collab realtime rooms", () => {
 
     await registry.shutdown();
     await seeded.registry.shutdown();
+  });
+});
+
+describe("collab attribution, pause and restore", () => {
+  test("discards a failed live restore without persisting its stale room", async () => {
+    const persisted = new Map([["memo_failed_restore", createStoredState("old body")]]);
+    let writes = 0;
+    const { registry } = createRegistry({
+      loadState: async (memoId) => persisted.get(memoId) ?? null,
+      persistState: async (memoId, state) => { writes += 1; persisted.set(memoId, state); },
+    });
+    const client = await connectClient(registry, "memo_failed_restore");
+    settle([client]);
+    await registry.beginRestore("memo_failed_restore");
+    const writesBeforeApply = writes;
+    const restored = createStoredState("committed restore");
+    persisted.set("memo_failed_restore", restored);
+    client.room.applyRestoredState = () => { throw new Error("live apply failed"); };
+    await registry.applyRestoredState("memo_failed_restore", restored);
+    await registry.endRestore("memo_failed_restore");
+    expect(client.closeReason()).toBe("collab_restored");
+    expect(registry.roomCount()).toBe(0);
+    await client.room.flush();
+    expect(writes).toBe(writesBeforeApply);
+    const fresh = await connectClient(registry, "memo_failed_restore");
+    settle([fresh]);
+    expect(fresh.text()).toBe("committed restore");
+    await registry.shutdown();
+  });
+
+  test("waits for a restore before opening a new room", async () => {
+    const persisted = new Map();
+    const { registry } = createRegistry({ loadState: async (memoId) => persisted.get(memoId) ?? null });
+    await registry.beginRestore("memo_new_restore");
+    let opened = false;
+    const pending = registry.open("memo_new_restore").then((room) => { opened = true; return room; });
+    await Promise.resolve();
+    expect(opened).toBe(false);
+    persisted.set("memo_new_restore", createStoredState("restored"));
+    await registry.endRestore("memo_new_restore");
+    await pending;
+    expect(opened).toBe(true);
+    const fresh = await connectClient(registry, "memo_new_restore");
+    settle([fresh]);
+    expect(fresh.text()).toBe("restored");
+    await registry.shutdown();
+  });
+
+  test("persists the authenticated editor behind each flush", async () => {
+    const actors = [];
+    const { registry } = createRegistry({
+      persistState: async (_memoId, _state, actorLabel) => {
+        actors.push(actorLabel);
+      },
+    });
+    const alice = await connectClient(registry, "memo_actor", { displayName: "Alice", actorLabel: "user:alice" });
+    alice.type("alice edit");
+    settle([alice]);
+    await wait(30);
+    expect(actors.filter(Boolean).at(-1)).toBe("user:alice");
+
+    const bob = await connectClient(registry, "memo_actor", { displayName: "Bob", actorLabel: "user:bob" });
+    bob.type("bob edit");
+    settle([alice, bob]);
+    await wait(30);
+    expect(actors.filter(Boolean).at(-1)).toBe("user:bob");
+
+    await registry.shutdown();
+  });
+
+  test("drops edits sent during a restore and forces those clients to reconnect", async () => {
+    const initialDoc = new Y.Doc();
+    initialDoc.getText("body").insert(0, "old body");
+    const persisted = new Map([["memo_restore", Y.encodeStateAsUpdate(initialDoc)]]);
+    const { registry } = createRegistry({
+      loadState: async (memoId) => persisted.get(memoId) ?? null,
+      persistState: async (memoId, state) => {
+        persisted.set(memoId, state);
+      },
+    });
+
+    const alice = await connectClient(registry, "memo_restore", { displayName: "Alice", actorLabel: "user:alice" });
+    settle([alice]);
+    expect(alice.text()).toBe("old body");
+
+    const replacementDoc = new Y.Doc();
+    Y.applyUpdate(replacementDoc, persisted.get("memo_restore"));
+    const replacementText = replacementDoc.getText("body");
+    replacementText.delete(0, replacementText.length);
+    replacementText.insert(0, "restored body");
+    const replacement = Y.encodeStateAsUpdate(replacementDoc);
+
+    const intruder = await connectClient(registry, "memo_restore", { displayName: "Intruder", actorLabel: "user:mallory" });
+    settle([alice, intruder]);
+    await registry.beginRestore("memo_restore");
+    intruder.type(" sneaky");
+    intruder.pump();
+    persisted.set("memo_restore", replacement);
+    await registry.applyRestoredState("memo_restore", replacement);
+    await registry.endRestore("memo_restore");
+    settle([alice, intruder]);
+    await wait(30);
+
+    expect(intruder.closeReason()).toBe("collab_restored");
+    expect(alice.text()).toContain("restored body");
+
+    await registry.shutdown();
+    const persistedCheck = new Y.Doc();
+    Y.applyUpdate(persistedCheck, persisted.get("memo_restore"));
+    expect(persistedCheck.getText("body").toString()).toBe("restored body");
+
+    const restarted = createRegistry({
+      loadState: async (memoId) => persisted.get(memoId) ?? null,
+      persistState: async (memoId, state) => {
+        persisted.set(memoId, state);
+      },
+    });
+    const fresh = await connectClient(restarted.registry, "memo_restore", { displayName: "Fresh" });
+    settle([fresh]);
+    expect(fresh.text()).toBe("restored body");
+
+    await restarted.registry.shutdown();
   });
 });

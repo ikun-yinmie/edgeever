@@ -114,6 +114,8 @@ export const getMemoRevisionRow = async (
    WHERE mr.id = ? AND mr.memo_id = ? AND m.workspace_id = ?`,
 ).bind(revisionId, memoId, workspaceId).first<MemoRevisionRow>();
 
+export type MemoRevisionContentFilter = (contentJson: TiptapDoc) => TiptapDoc;
+
 export const listMemoRevisions = async (
   db: DatabaseAdapter,
   workspaceId: string,
@@ -121,6 +123,7 @@ export const listMemoRevisions = async (
   limit: number,
   getMemoDetail: MemoRevisionDependencies["getMemoDetail"],
   includeDeleted = true,
+  contentFilter?: MemoRevisionContentFilter,
 ): Promise<MemoRevision[]> => {
   const memo = await getMemoDetail(db, workspaceId, memoId, includeDeleted);
   if (!memo) throw new AppError("not_found", "Memo not found", 404);
@@ -143,7 +146,21 @@ export const listMemoRevisions = async (
      LIMIT ?`,
   ).bind(memoId, limit).all<MemoRevisionRow>();
 
-  return rows.results.map(mapMemoRevision);
+  const visibleRows = contentFilter
+    ? rows.results.map((row) => {
+        const original = parseDoc(row.content_json);
+        const filtered = contentFilter(original);
+        if (filtered === original) return row;
+        return {
+          ...row,
+          content_json: JSON.stringify(filtered),
+          content_markdown: docToMarkdown(filtered),
+          content_text: docToText(filtered),
+        };
+      })
+    : rows.results;
+
+  return visibleRows.map(mapMemoRevision);
 };
 
 export const createMemoRevisionStatement = (
@@ -204,6 +221,7 @@ export const shouldSnapshotMemoRevision = async (
   nextTagsJson: string,
   nextContentHash: string,
   now: string,
+  actorLabel?: string,
 ) => {
   const changed = (current.title ?? "") !== (nextTitle ?? "")
     || current.tags_json !== nextTagsJson
@@ -218,7 +236,27 @@ export const shouldSnapshotMemoRevision = async (
     && latest.content_hash === current.content_hash;
   if (alreadyCapturedCurrent) return false;
 
+  // A different editor must get its own restore point even inside the
+  // coalescing window; otherwise "who changed this" collapses into the
+  // previous editor's interval.
+  if (actorLabel && latest.created_by !== actorLabel) return true;
+
   return Date.parse(now) - Date.parse(latest.created_at) >= REVISION_SNAPSHOT_INTERVAL_MS;
+};
+
+/**
+ * Runtime-provided hook that keeps an open collaboration room consistent with
+ * a revision restore. The restore pauses intake, then swaps the same Yjs
+ * document (so deletions are retained) before any client can write back.
+ */
+export type MemoRevisionRestoreCollab = {
+  begin: (memoId: string) => Promise<Uint8Array | null>;
+  prepare: (
+    memoId: string,
+    content: { contentJson: TiptapDoc; contentHash: string },
+    liveState: Uint8Array | null,
+  ) => Promise<{ statement: PreparedStatementAdapter; apply: () => Promise<void> }>;
+  end: (memoId: string) => Promise<void>;
 };
 
 export const restoreMemoRevision = async (
@@ -229,45 +267,59 @@ export const restoreMemoRevision = async (
   actor: AuditActor,
   actorLabel: string,
   dependencies: Pick<MemoRevisionDependencies, "getMemoDetail" | "getMemoDetailRow">,
+  collab?: MemoRevisionRestoreCollab | null,
 ) => {
-  const current = await dependencies.getMemoDetailRow(db, workspaceId, memoId);
-  if (!current) throw new AppError("not_found", "Memo not found", 404);
+  // A room must stop accepting edits before the DB snapshot is read, or a
+  // concurrent CRDT flush would both change the "current" version and write
+  // the restored note back on its next materialization.
+  const liveState = await collab?.begin(memoId);
+  try {
+    const current = await dependencies.getMemoDetailRow(db, workspaceId, memoId);
+    if (!current) throw new AppError("not_found", "Memo not found", 404);
 
-  const revision = await getMemoRevisionRow(db, workspaceId, memoId, revisionId);
-  if (!revision) throw new AppError("not_found", "Memo revision not found", 404);
+    const revision = await getMemoRevisionRow(db, workspaceId, memoId, revisionId);
+    if (!revision) throw new AppError("not_found", "Memo revision not found", 404);
 
-  const tags = parseJsonArray(revision.tags_json);
-  const contentJson = parseDoc(revision.content_json);
-  const contentMarkdown = revision.content_markdown || docToMarkdown(contentJson);
-  const contentText = revision.content_text || docToText(contentJson);
-  const title = normalizeMemoTitle(revision.title);
-  const contentHash = await sha256(contentMarkdown + JSON.stringify(contentJson));
-  const nextRevision = current.revision + 1;
-  const now = isoNow();
+    const tags = parseJsonArray(revision.tags_json);
+    const contentJson = parseDoc(revision.content_json);
+    const contentMarkdown = revision.content_markdown || docToMarkdown(contentJson);
+    const contentText = revision.content_text || docToText(contentJson);
+    const title = normalizeMemoTitle(revision.title);
+    const contentHash = await sha256(contentMarkdown + JSON.stringify(contentJson));
+    const nextRevision = current.revision + 1;
+    const now = isoNow();
+    const collabRestore = await collab?.prepare(memoId, { contentJson, contentHash }, liveState ?? null);
 
-  await db.batch([
-    createMemoRevisionStatement(db, current, actorLabel, now),
-    trimMemoRevisionsStatement(db, memoId),
-    db.prepare(
-      `UPDATE memos
-       SET title = ?, excerpt = ?, tags_json = ?, updated_by = ?, updated_at = ?
-       WHERE id = ? AND workspace_id = ? AND is_deleted = 0`,
-    ).bind(title, createExcerpt(contentText), JSON.stringify(tags), actorLabel, now, memoId, workspaceId),
-    db.prepare(
-      `UPDATE memo_contents
-       SET content_json = ?, content_markdown = ?, content_text = ?, content_hash = ?,
-           revision = ?, updated_at = ?
-       WHERE memo_id = ?`,
-    ).bind(JSON.stringify(contentJson), contentMarkdown, contentText, contentHash, nextRevision, now, memoId),
-    upsertMemoSearchDocumentStatement(db, memoId, title, contentText, tags.join(" ")),
-    auditStatement(db, actor.actorType, actor.actorId, "memo.revision_restore", "memo", memoId, {
-      revisionId,
-      restoredRevision: revision.revision,
-      revision: nextRevision,
-    }),
-  ]);
+    await db.batch([
+      createMemoRevisionStatement(db, current, actorLabel, now),
+      trimMemoRevisionsStatement(db, memoId),
+      db.prepare(
+        `UPDATE memos
+         SET title = ?, excerpt = ?, tags_json = ?, updated_by = ?, updated_at = ?
+         WHERE id = ? AND workspace_id = ? AND is_deleted = 0`,
+      ).bind(title, createExcerpt(contentText), JSON.stringify(tags), actorLabel, now, memoId, workspaceId),
+      db.prepare(
+        `UPDATE memo_contents
+         SET content_json = ?, content_markdown = ?, content_text = ?, content_hash = ?,
+             revision = ?, updated_at = ?
+         WHERE memo_id = ?`,
+      ).bind(JSON.stringify(contentJson), contentMarkdown, contentText, contentHash, nextRevision, now, memoId),
+      upsertMemoSearchDocumentStatement(db, memoId, title, contentText, tags.join(" ")),
+      auditStatement(db, actor.actorType, actor.actorId, "memo.revision_restore", "memo", memoId, {
+        revisionId,
+        restoredRevision: revision.revision,
+        revision: nextRevision,
+      }),
+      ...(collabRestore ? [collabRestore.statement] : []),
+    ]);
 
-  const memo = await dependencies.getMemoDetail(db, workspaceId, memoId);
-  if (!memo) throw new AppError("not_found", "Memo not found after revision restore", 404);
-  return memo;
+    // The replacement already committed with the memo. Only refresh live peers.
+    await collabRestore?.apply();
+
+    const memo = await dependencies.getMemoDetail(db, workspaceId, memoId);
+    if (!memo) throw new AppError("not_found", "Memo not found after revision restore", 404);
+    return memo;
+  } finally {
+    await collab?.end(memoId);
+  }
 };
