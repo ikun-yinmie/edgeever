@@ -1,20 +1,20 @@
 {
-  "version": "1.104.0",
+  "version": "1.105.0",
   "changes": {
     "en-US": [
-      "Add per-account controls to pause or resume uploads, downloads, or all synchronization while retaining local edits and queued attachments. Pausing either direction suspends realtime collaboration until synchronization resumes.",
-      "Improve shared-note history: group editors can restore earlier versions, read-only members can only view history, and live collaboration stays consistent with restored content. History records identify the authenticated editor more accurately.",
-      "Widen the default notebook sidebar and improve the New Note button outline and tooltip. Paused synchronization is clearly indicated in the sidebar."
+      "Open recent notes directly from the mobile bottom navigation.",
+      "Show consistent animated loading indicators and status labels across notes, notebooks, search, and settings.",
+      "Keep the mobile scroll-to-bottom control clear of the edit button."
     ],
     "zh-CN": [
-      "新增按账号保存的同步控制，可分别暂停或恢复上传、下载及全部同步，保留本机编辑与待传附件；暂停任一方向时会暂停实时协作，恢复同步后重新连接。",
-      "完善共享笔记历史版本：群组编辑者可恢复历史版本，只读成员仅可查看；恢复结果同步到实时协作，历史记录更准确地标记实际编辑者。",
-      "加宽默认笔记本侧栏，增强新建笔记按钮边界与完整文字提示，并在侧栏明确显示同步暂停状态。"
+      "手机端底部导航新增“近期笔记”入口，方便快速返回最近使用的笔记。",
+      "统一笔记、笔记本、搜索、设置等页面的加载提示，提供清晰的加载动画和状态文字。",
+      "调整手机端滚动到底部按钮的位置，避免与编辑按钮重叠。"
     ],
     "ja": [
-      "アカウントごとにアップロード、ダウンロード、またはすべての同期を一時停止・再開できます。ローカル編集と送信待ち添付ファイルは保持され、いずれかの方向を停止するとリアルタイム共同編集も同期再開まで停止します。",
-      "共有ノートの履歴を改善しました。編集権限を持つグループメンバーは以前の版を復元でき、閲覧専用メンバーは履歴の閲覧のみ可能です。復元内容を共同編集に反映し、実際の編集者をより正確に記録します。",
-      "ノートブックサイドバーの初期幅を広げ、新規ノートボタンの輪郭とツールチップを改善しました。同期の一時停止状態もサイドバーに明示します。"
+      "モバイルの下部ナビゲーションから最近のノートを直接開けるようになりました。",
+      "ノート、ノートブック、検索、設定などの読み込み表示を統一しました。",
+      "モバイルの最下部へのスクロールボタンが編集ボタンと重ならないように調整しました。"
     ]
   }
 }
