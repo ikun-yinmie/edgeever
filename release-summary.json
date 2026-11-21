@@ -1,17 +1,20 @@
 {
-  "version": "1.103.31",
+  "version": "1.104.0",
   "changes": {
     "en-US": [
-      "Task lists keep their hierarchy while editing: Enter at the end of a task title creates a child task, Tab indents selected blocks into the task above, and folding a task no longer strands the caret in hidden content. IME input in task titles stays in the task being edited.",
-      "Invite codes are hidden and rejected while the instance does not require them, instead of letting members mint codes that can never gate a registration."
+      "Add per-account controls to pause or resume uploads, downloads, or all synchronization while retaining local edits and queued attachments. Pausing either direction suspends realtime collaboration until synchronization resumes.",
+      "Improve shared-note history: group editors can restore earlier versions, read-only members can only view history, and live collaboration stays consistent with restored content. History records identify the authenticated editor more accurately.",
+      "Widen the default notebook sidebar and improve the New Note button outline and tooltip. Paused synchronization is clearly indicated in the sidebar."
     ],
     "zh-CN": [
-      "待办列表编辑时层级不再被打乱：在任务标题末尾回车直接创建子任务，选中多段内容按 Tab 可缩进到上方任务里，折叠任务不会再把光标丢进隐藏内容；中文输入法在任务标题里输入也不会跳到别的任务。",
-      "站点未开启「注册需要邀请码」时，成员邀请卡片不再显示生成按钮，服务端也会拒绝生成，避免生成根本用不上的邀请码。"
+      "新增按账号保存的同步控制，可分别暂停或恢复上传、下载及全部同步，保留本机编辑与待传附件；暂停任一方向时会暂停实时协作，恢复同步后重新连接。",
+      "完善共享笔记历史版本：群组编辑者可恢复历史版本，只读成员仅可查看；恢复结果同步到实时协作，历史记录更准确地标记实际编辑者。",
+      "加宽默认笔记本侧栏，增强新建笔记按钮边界与完整文字提示，并在侧栏明确显示同步暂停状态。"
     ],
     "ja": [
-      "タスクリストの階層が編集で崩れにくくなりました。タスク行末で Enter を押すと子タスクが作られ、選択したブロックは Tab で上のタスクの子になり、折りたたんでもカーソルが隠れた内容に取り残されません。日本語入力中に別のタスクへ移動することもなくなりました。",
-      "サイトで「招待コード必須」がオフの間は、メンバーの招待カードに発行ボタンを表示せず、サーバー側でも発行を拒否するようにしました。"
+      "アカウントごとにアップロード、ダウンロード、またはすべての同期を一時停止・再開できます。ローカル編集と送信待ち添付ファイルは保持され、いずれかの方向を停止するとリアルタイム共同編集も同期再開まで停止します。",
+      "共有ノートの履歴を改善しました。編集権限を持つグループメンバーは以前の版を復元でき、閲覧専用メンバーは履歴の閲覧のみ可能です。復元内容を共同編集に反映し、実際の編集者をより正確に記録します。",
+      "ノートブックサイドバーの初期幅を広げ、新規ノートボタンの輪郭とツールチップを改善しました。同期の一時停止状態もサイドバーに明示します。"
     ]
   }
 }
