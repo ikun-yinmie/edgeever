@@ -179,6 +179,11 @@ import { EdgeEverTextBackgroundColor, EdgeEverTextColor, EdgeEverTextFontSize } 
 import { compressImageForUpload } from "@/lib/image-compression";
 import { LOCAL_DATABASE_INTERRUPTED_EVENT, localDb, selectNewestLocalDraft, type MemoUpdateSyncPayload } from "@/lib/local-db";
 import { persistEmergencyDraft, readEmergencyDraft, removeEmergencyDraft } from "@/lib/emergency-draft";
+import { useSyncPreferences } from "@/hooks/useSyncPreferences";
+import {
+  SYNC_PREFERENCES_CHANGED_EVENT,
+  getSyncPreferences,
+} from "@/lib/sync-preferences";
 import { getMemoUpdateQueueId, isMemoUpdateAlreadyApplied, queueMemoUpdate } from "@/lib/sync-queue";
 import {
   getMemoSaveConflictInfoFromQueueItem,
@@ -1281,12 +1286,14 @@ const RichEditorPane = ({
   // Eligibility only needs props and viewport state, so the Yjs document
   // exists on the very first render and the Collaboration extension can bind
   // to it when the editor instance is created below.
+  const syncPreferences = useSyncPreferences();
+  const syncPaused = syncPreferences.pausePull || syncPreferences.pausePush;
   const collabRealtimeEligible = shouldEnableCollabRealtime({
     isGroupShared: isGroupSharedNote,
     canEdit: Boolean(sharedAccess?.canEdit),
     isDeleted: Boolean(memo?.isDeleted),
     displayPolicy: sharedDisplayPolicy,
-    runtimeSupportsRealtime: Boolean(realtimeCapable) && !isMobileViewport,
+    runtimeSupportsRealtime: Boolean(realtimeCapable) && !isMobileViewport && !syncPaused,
   });
   const collabColorSeed = useMemo(
     () => `${getOrCreateClientDeviceId()}:${collabDisplayName}`,
@@ -2580,6 +2587,41 @@ const RichEditorPane = ({
       contentJson,
     });
   }, [getCurrentContentJson, tagsText, title]);
+
+  // Pausing sync tears down the realtime binding, which remounts the editor
+  // and would otherwise hydrate from a server snapshot that lags the CRDT.
+  // Capture the live document synchronously (localStorage) before that
+  // transition so no keystroke made in collaboration mode is dropped.
+  useEffect(() => {
+    const captureRealtimeDraft = () => {
+      if (!collabRealtimeBoundRef.current) return;
+      const currentMemo = memoRef.current;
+      const contentJson = getCurrentContentJson();
+      if (!currentMemo || currentMemo.isDeleted || !contentJson) return;
+      if (!getSyncPreferences().pausePull && !getSyncPreferences().pausePush) return;
+      persistEmergencyDraft({
+        memoId: currentMemo.id,
+        expectedRevision: currentMemo.revision,
+        title,
+        tagsText,
+        contentJson,
+        updatedAt: new Date().toISOString(),
+      });
+      void persistCurrentDraft();
+      markDirty();
+    };
+    const onPreferenceChanged = () => captureRealtimeDraft();
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key?.startsWith("edgeever.sync-preferences:")) return;
+      captureRealtimeDraft();
+    };
+    window.addEventListener(SYNC_PREFERENCES_CHANGED_EVENT, onPreferenceChanged);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(SYNC_PREFERENCES_CHANGED_EVENT, onPreferenceChanged);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [getCurrentContentJson, markDirty, persistCurrentDraft, tagsText, title]);
 
   useEffect(() => {
     const handleLocalDatabaseInterrupted = () => {
@@ -4068,7 +4110,7 @@ const RichEditorPane = ({
   // --- Yuque-style collaboration presence (shared notes only) ---
   // The heartbeat keeps running until the realtime session goes live, so the
   // peer badge never blinks during connect and reconnect windows.
-  const collabEnabled = isGroupSharedNote && Boolean(sharedAccess?.canEdit) && !memo?.isDeleted;
+  const collabEnabled = isGroupSharedNote && Boolean(sharedAccess?.canEdit) && !memo?.isDeleted && !syncPaused;
   const { peers: collabPeers } = useCollabPresence({
     memoId: collabEnabled && !collabRealtimeLive ? memo?.id ?? null : null,
     enabled: collabEnabled && !collabRealtimeLive,
@@ -5454,6 +5496,8 @@ const RichEditorPane = ({
           }
           memo={memo}
           repository={repository}
+          readOnly={effectiveReadOnly}
+          remoteRestore={collabRealtimeBound}
           onClose={() => setHistoryOpen(false)}
           onRestored={async (restoredMemo) => {
             await localDb.drafts.delete(restoredMemo.id);

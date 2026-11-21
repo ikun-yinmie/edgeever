@@ -42,6 +42,7 @@ const {
   syncLocalMirror,
 } = await import("./local-mirror.ts");
 const { api } = await import("./api.ts");
+const { setSyncPause } = await import("./sync-preferences.ts");
 const { getCachedLocalResourceBytes } = await import("./local-resource-cache.ts");
 
 afterEach(async () => {
@@ -673,6 +674,61 @@ describe("local mirror", () => {
       expect((await listLocalResources(scope)).resources[0]?.id).toBe(resource.id);
     } finally {
       globalThis.caches = previousCaches;
+    }
+  });
+});
+
+describe("local mirror pull pause", () => {
+  test("never contacts the server while pulling is paused", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-pull-paused");
+    const original = { syncBootstrap: api.syncBootstrap, syncChanges: api.syncChanges };
+    let calls = 0;
+    api.syncBootstrap = async () => { calls += 1; throw new Error("must not pull"); };
+    api.syncChanges = async () => { calls += 1; throw new Error("must not pull"); };
+    setSyncPause("pull", true, scope);
+
+    try {
+      expect(await syncLocalMirror(scope)).toEqual({ bootstrapped: false, changed: 0 });
+      expect(calls).toBe(0);
+    } finally {
+      api.syncBootstrap = original.syncBootstrap;
+      api.syncChanges = original.syncChanges;
+      setSyncPause("all", false, scope);
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("stops between bootstrap pages without committing a partial mirror", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-pull-paused-pages");
+    const original = api.syncBootstrap;
+    let calls = 0;
+    api.syncBootstrap = async () => {
+      calls += 1;
+      setSyncPause("pull", true, scope);
+      return {
+        notebooks: [],
+        memos: [],
+        snapshotCursor: 1,
+        syncIdentity: "paused-workspace",
+        totalCount: 0,
+        nextAfterId: "page-2",
+      };
+    };
+    setSyncPause("pull", false, scope);
+
+    try {
+      expect(await syncLocalMirror(scope)).toEqual({ bootstrapped: false, changed: 0 });
+      expect(calls).toBe(1);
+      expect((await listLocalMemos(scope, {})).totalCount).toBe(0);
+      expect(await localDb.syncMeta.get([scope, "cursor"])).toBeUndefined();
+    } finally {
+      api.syncBootstrap = original;
+      setSyncPause("all", false, scope);
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
     }
   });
 });

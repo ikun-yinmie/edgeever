@@ -38,12 +38,16 @@ export const RevisionHistoryDialog = ({
   currentMarkdown,
   onClose,
   onRestored,
+  readOnly = false,
+  remoteRestore = false,
 }: {
   memo: MemoDetail;
   repository: EdgeEverRepository;
   currentMarkdown: string;
   onClose: () => void;
   onRestored: (memo: MemoDetail) => Promise<void>;
+  readOnly?: boolean;
+  remoteRestore?: boolean;
 }) => {
   const { t } = useTranslation();
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
@@ -77,7 +81,7 @@ export const RevisionHistoryDialog = ({
   }, [diffRows]);
 
   const restoreMutation = useMutation({
-    mutationFn: (revisionId: string) => repository.restoreMemoRevision(memo.id, revisionId),
+    mutationFn: (revisionId: string) => repository.restoreMemoRevision(memo.id, revisionId, { remote: remoteRestore }),
     onSuccess: async (data) => {
       setRestoreRevisionConfirmationId(null);
       await onRestored(data.memo);
@@ -122,19 +126,24 @@ export const RevisionHistoryDialog = ({
                 </span>
               )}
             </div>
-            <Button
-              size="sm"
-              variant="solid"
-              disabled={!selectedRevision || memo.isDeleted || restoreMutation.isPending}
-              onClick={() => {
-                if (selectedRevision) {
-                  setRestoreRevisionConfirmationId(selectedRevision.id);
-                }
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              {t("revisions.restoreVersion")}
-            </Button>
+            <div className="flex items-center gap-3">
+              {readOnly && (
+                <span className="text-xs text-slate-500">{t("revisions.readOnlyRestore")}</span>
+              )}
+              <Button
+                size="sm"
+                variant="solid"
+                disabled={!selectedRevision || memo.isDeleted || restoreMutation.isPending || readOnly}
+                onClick={() => {
+                  if (selectedRevision) {
+                    setRestoreRevisionConfirmationId(selectedRevision.id);
+                  }
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                {t("revisions.restoreVersion")}
+              </Button>
+            </div>
           </div>
 
           <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-1">

@@ -127,6 +127,7 @@ import {
 } from "@/lib/local-mirror";
 import { getPersistentDataScopeOrigin } from "@/lib/app-page-path";
 import { createRepository } from "@/lib/repository";
+import { canPullFromServer, canPushToServer } from "@/lib/sync-preferences";
 import { notifyRepositoryMutation } from "@/lib/repository-events";
 import {
   refreshWorkspaceData,
@@ -143,6 +144,7 @@ import { closeOtherMemoTabs, remapMemoTabs, reorderMemoTabs, replaceActiveMemoTa
 import { useWorkspacePreferences } from "@/hooks/useWorkspacePreferences";
 import { useWorkspaceSelection } from "@/hooks/useWorkspaceSelection";
 import { useWorkspaceQueuedSync } from "@/hooks/useWorkspaceQueuedSync";
+import { useSyncPreferences } from "@/hooks/useSyncPreferences";
 import { useDesktopUpdateInstallGuard } from "@/hooks/useDesktopUpdateInstallGuard";
 import { EdgeEverPluginHost, type RegisteredPluginPanel } from "@/lib/plugins/plugin-host";
 import { loadResolvedPluginMarketplace } from "@/lib/plugins/plugin-marketplace";
@@ -635,6 +637,8 @@ export const WorkspaceApp = ({
     setNotebookSidebarWidth,
     shortcutSettings,
   } = useWorkspacePreferences();
+  const syncPreferences = useSyncPreferences(localDataScope);
+  const syncPaused = { pull: syncPreferences.pausePull, push: syncPreferences.pausePush };
   const [rightView, setRightView] = useState<"editor" | "settings" | "plugins" | "assets" | "tags" | "shared" | "templates" | "ai-prompts" | "execution-center" | "recent" | "tasks" | "evernote-migration">(() =>
     isInitialSettingsRoute
       ? "settings"
@@ -767,6 +771,11 @@ export const WorkspaceApp = ({
   const hasPendingLocalChanges = syncSummary.pending + syncSummary.syncing > 0;
 
   const refreshWorkspaceFromServer = useCallback(async (mode: WorkspaceRefreshMode) => {
+    const pullAllowed = canPullFromServer(localDataScope);
+    const pushAllowed = canPushToServer(localDataScope);
+    if (!pullAllowed && !pushAllowed) {
+      return { changed: 0, skipped: true };
+    }
     if (isBrowserOffline()) {
       setIsOnline(false);
       return { changed: 0, skipped: true };
@@ -779,16 +788,37 @@ export const WorkspaceApp = ({
       hasPendingLocalChanges,
       // Desktop sync already pushes the outbox and pulls remote changes in
       // one operation. The web repository keeps those phases separate.
-      pushLocalChanges: isDesktopRuntime ? async () => undefined : runQueuedSync,
+      pushLocalChanges: isDesktopRuntime
+        ? async () => undefined
+        : async () => {
+            if (!pushAllowed) return;
+            await runQueuedSync();
+          },
       pullRemoteChanges: isDesktopRuntime
         ? async () => {
             await runQueuedSync();
             return { changed: 0 };
           }
-        : repository.sync,
+        : pullAllowed
+          ? repository.sync
+          : async () => ({ bootstrapped: false, changed: 0 }),
       invalidateWorkspaceQueries,
     });
-  }, [hasPendingLocalChanges, invalidateWorkspaceQueries, repository, runQueuedSync]);
+  }, [hasPendingLocalChanges, invalidateWorkspaceQueries, localDataScope, repository, runQueuedSync]);
+
+  const previousSyncPauseRef = useRef({ pull: syncPreferences.pausePull, push: syncPreferences.pausePush });
+  useEffect(() => {
+    const previous = previousSyncPauseRef.current;
+    previousSyncPauseRef.current = {
+      pull: syncPreferences.pausePull,
+      push: syncPreferences.pausePush,
+    };
+    const pullResumed = previous.pull && !syncPreferences.pausePull;
+    const pushResumed = previous.push && !syncPreferences.pausePush;
+    if (pullResumed || pushResumed) {
+      void refreshWorkspaceFromServer("manual");
+    }
+  }, [refreshWorkspaceFromServer, syncPreferences.pausePull, syncPreferences.pausePush]);
 
   const refreshLatestMemos = useCallback(async () => {
     if (isBrowserOffline()) {
@@ -3764,6 +3794,7 @@ export const WorkspaceApp = ({
                   imageCompressionEnabled={imageCompressionEnabled}
                   onImageCompressionChange={setImageCompressionEnabled}
                   syncSummary={syncSummary}
+                  syncPaused={syncPaused}
                   isOnline={isOnline}
                   isSyncingQueuedChanges={isSyncingQueuedChanges}
                   onSyncQueuedChanges={() => void runQueuedSync()}
@@ -4001,6 +4032,7 @@ export const WorkspaceApp = ({
                     demoMode={demoMode}
                     isOwner={authRequired && (user?.role === "owner" || user?.role === "admin")}
                     user={user}
+                    dataScope={localDataScope}
                     refreshWorkspaceAfterImport={async () => {
                       await refreshWorkspaceFromServer("manual");
                     }}

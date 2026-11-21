@@ -5,6 +5,13 @@ const workspaceSource = readFileSync(new URL("./WorkspaceApp.tsx", import.meta.u
 const preferencesSource = readFileSync(new URL("../hooks/useWorkspacePreferences.ts", import.meta.url), "utf8");
 
 describe("notebook sidebar resize", () => {
+  test("keeps the CSS fallback wide enough for the default sidebar actions", () => {
+    const css = readFileSync(new URL("../styles/globals.css", import.meta.url), "utf8");
+
+    expect(css).toContain("--notebook-sidebar-width: 280px;");
+    expect(css).toContain("--notebook-sidebar-width: 3.5rem;");
+  });
+
   test("renders an accessible separator that drives the notebook column variable", () => {
     expect(workspaceSource).toContain('"--notebook-sidebar-width": `${notebookSidebarWidth}px`');
     expect(workspaceSource).toContain('role="separator"');

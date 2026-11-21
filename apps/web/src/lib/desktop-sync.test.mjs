@@ -22,8 +22,10 @@ const {
   shouldAttemptDesktopRecoveryPull,
   shouldPullDesktopChanges,
   syncOutboxItem,
+  syncDesktopData,
 } = await import("./desktop-sync.ts");
 const { ApiRequestError, api } = await import("./api.ts");
+const { setSyncPause } = await import("./sync-preferences.ts");
 
 describe("desktop staged resource sync", () => {
   test("rewrites placeholders in memo JSON and markdown", () => {
@@ -643,5 +645,20 @@ describe("shared snapshot sync diff", () => {
       [{ memoId: "memo_same", updatedAt: "2026-02-01T00:00:00.000Z" }],
       new Set(),
     )).toEqual({ refreshIds: [], prune: false });
+  });
+});
+
+describe("desktop sync pause", () => {
+  test("skips the whole cycle when both directions are paused", async () => {
+    const scope = "https://demo.edgeever.org|user-desktop-paused";
+    setSyncPause("all", true, scope);
+    try {
+      const result = await syncDesktopData(scope);
+      expect(result).toMatchObject({ attempted: 0, synced: 0, failed: 0, conflicted: 0 });
+      expect(result.memoIdMappings.size).toBe(0);
+      expect(result.syncedMemos.size).toBe(0);
+    } finally {
+      setSyncPause("all", false, scope);
+    }
   });
 });

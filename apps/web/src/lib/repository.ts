@@ -51,6 +51,13 @@ import { isBrowserOffline } from "@/lib/network-status";
 import { notifySyncQueueDeferred } from "@/lib/sync-events";
 import { isActiveLocalMemoUpdateStatus, shouldAcceptRemoteMemoDetail } from "@/lib/memo-detail-freshness";
 import { cacheLocalResourceBytes, getCachedLocalResourceBytes } from "@/lib/local-resource-cache";
+import {
+  SyncPausedError,
+  canPullFromServer,
+  canPushToServer,
+  requireSyncDirection,
+  setActiveSyncScope,
+} from "@/lib/sync-preferences";
 import { withRepositoryMutationEvents } from "@/lib/repository-events";
 
 export type EdgeEverRepository = {
@@ -91,7 +98,7 @@ export type EdgeEverRepository = {
   deleteMemo(memoId: string, permanent?: boolean): Promise<{ ok: true }>;
   restoreMemo(memoId: string): Promise<{ memo: MemoDetail; queued: true }>;
   listMemoRevisions(memoId: string): Promise<{ revisions: MemoRevision[] }>;
-  restoreMemoRevision(memoId: string, revisionId: string): Promise<{ memo: MemoDetail }>;
+  restoreMemoRevision(memoId: string, revisionId: string, options?: { remote?: boolean }): Promise<{ memo: MemoDetail }>;
   sync(): Promise<{ bootstrapped: boolean; changed: number }>;
 };
 
@@ -202,8 +209,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   return ({
   async listNotebooks() {
     const local = await listLocalNotebooks(scope);
-    if (local.notebooks.length > 0 || isOffline()) {
-      if (!isOffline()) void api.listNotebooks().then((remote) => Promise.all(remote.notebooks.map((notebook) => putLocalNotebook(scope, notebook)))).catch(() => {});
+    const pullAllowed = canPullFromServer(scope);
+    if (local.notebooks.length > 0 || isOffline() || !pullAllowed) {
+      if (!isOffline() && pullAllowed) void api.listNotebooks().then((remote) => Promise.all(remote.notebooks.map((notebook) => putLocalNotebook(scope, notebook)))).catch(() => {});
       return local;
     }
 
@@ -240,6 +248,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   },
 
   restoreNotebook: async (notebookId) => {
+    requireSyncDirection("push", scope);
     if (isOffline()) throw new Error("Notebook restore requires a connection");
     const result = await api.restoreNotebook(notebookId);
     await putLocalNotebook(scope, result.notebook);
@@ -248,7 +257,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
 
   async listTemplates() {
     const local = await listLocalTemplates(scope);
-    if (isOffline()) return local;
+    if (isOffline() || !canPullFromServer(scope)) return local;
     try {
       const remote = await api.listTemplates();
       return { templates: await reconcileLocalTemplates(scope, remote.templates) };
@@ -265,6 +274,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   updateTemplate: async (templateId, input) => {
     const template = await updateLocalTemplate(scope, templateId, input);
     if (!template) {
+      requireSyncDirection("push", scope);
       if (isOffline()) throw new Error("Template is not available in the local mirror");
       const result = await api.updateTemplate(templateId, input);
       await putLocalTemplate(scope, result.template);
@@ -283,6 +293,8 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   useTemplate: async (templateId, notebookId) => {
     const template = (await listLocalTemplates(scope)).templates.find((candidate) => candidate.id === templateId);
     if (!template) {
+      requireSyncDirection("pull", scope);
+      requireSyncDirection("push", scope);
       if (isOffline()) throw new Error("Template is not available offline");
       const result = await api.useTemplate(templateId, notebookId);
       await putLocalMemo(scope, result.memo);
@@ -308,7 +320,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return { memo };
   },
   uploadMemoResource: async (memoId, file) => {
-    if (isOffline()) {
+    if (isOffline() || !canPushToServer(scope)) {
       const resource = await createLocalResource(scope, memoId, file);
       await queueLocalAction(scope, "resource.create", resource.id, {
         resourceId: resource.id,
@@ -326,10 +338,13 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   },
   async readResource(resourceId) {
     const local = (await listLocalResources(scope)).resources.find((resource) => resource.id === resourceId);
-    if (isOffline()) {
-      if (!local?.url) throw new Error("The resource is not available offline.");
-      const cached = await getCachedLocalResourceBytes(local.url);
-      if (cached) return cached;
+    const pullPaused = !canPullFromServer(scope);
+    if (isOffline() || pullPaused) {
+      if (local?.url) {
+        const cached = await getCachedLocalResourceBytes(local.url);
+        if (cached) return cached;
+      }
+      if (pullPaused) throw new SyncPausedError("pull");
       throw new Error("The resource is not available offline.");
     }
     const url = local?.url ?? `/api/v1/resources/${encodeURIComponent(resourceId)}/blob`;
@@ -338,6 +353,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return blob;
   },
   async updateResource(resourceId, file, expectedContentHash) {
+    requireSyncDirection("push", scope);
     if (isOffline() || resourceId.startsWith("local_resource_")) {
       throw new Error("Attachments can only be updated after they are synced.");
     }
@@ -354,8 +370,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   },
   async listResources() {
     const local = await listLocalResources(scope);
-    if (local.resources.length > 0 || isOffline()) {
-      if (!isOffline()) void api.listResources().then((remote) => replaceLocalResources(scope, remote.resources)).catch(() => {});
+    const pullAllowed = canPullFromServer(scope);
+    if (local.resources.length > 0 || isOffline() || !pullAllowed) {
+      if (!isOffline() && pullAllowed) void api.listResources().then((remote) => replaceLocalResources(scope, remote.resources)).catch(() => {});
       return local;
     }
     const remote = await api.listResources();
@@ -363,6 +380,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return remote;
   },
   async renameResource(resourceId, filename) {
+    requireSyncDirection("push", scope);
     if (isOffline() || resourceId.startsWith("local_resource_")) {
       throw new Error("Attachments can only be renamed after they are synced.");
     }
@@ -371,6 +389,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return result;
   },
   async deleteResource(resourceId) {
+    requireSyncDirection("push", scope);
     if (isOffline() || resourceId.startsWith("local_resource_")) {
       throw new Error("Attachments can only be deleted after they are synced.");
     }
@@ -380,7 +399,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   },
   async listTags() {
     const local = await listLocalTags(scope);
-    if (local.tags.length > 0 || isOffline()) return local;
+    if (local.tags.length > 0 || isOffline() || !canPullFromServer(scope)) return local;
     return api.listTags();
   },
   renameTag: async (tag, name) => {
@@ -455,6 +474,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   mergeMemos: async (input) => {
     const memo = await mergeLocalMemos(scope, input);
     if (!memo) {
+      requireSyncDirection("push", scope);
       if (isOffline()) throw new Error("Memos are not available in the local mirror");
       return api.mergeMemos(input);
     }
@@ -464,6 +484,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
   },
 
   async listMemos(params) {
+    if (!canPullFromServer(scope)) {
+      return listLocalMemos(scope, params);
+    }
     if (await isLocalMirrorInitialized(scope) || await hasLocalMirrorData(scope)) {
       return listLocalMemos(scope, params);
     }
@@ -490,6 +513,16 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       memoId = mapping?.remoteId ?? memoId;
     }
     const localPromise = getLocalMemoWithoutBlocking(scope, memoId);
+
+    // While pulls are paused the mirrored copy is the only source; an
+    // unbuffered shared note must wait for the resume instead of silently
+    // pulling from the server.
+    if (!canPullFromServer(scope)) {
+      const local = await localPromise;
+      const usableLocal = local && (includeDeleted || !local.isDeleted) ? local : null;
+      if (usableLocal) return { memo: usableLocal };
+      throw new SyncPausedError("pull");
+    }
 
     const remotePromise = api.getMemo(memoId, { includeDeleted });
     const firstResult = await Promise.race([
@@ -628,7 +661,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
 
   async listMemoRevisions(memoId) {
     const local = await listLocalMemoRevisions(scope, memoId);
-    if (isOffline()) return local;
+    if (isOffline() || !canPullFromServer(scope)) return local;
 
     try {
       const remote = await api.listMemoRevisions(memoId);
@@ -639,9 +672,22 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       throw error;
     }
   },
-  async restoreMemoRevision(memoId, revisionId) {
+  async restoreMemoRevision(memoId, revisionId, options) {
+    if (options?.remote) {
+      requireSyncDirection("pull", scope);
+      requireSyncDirection("push", scope);
+      const { memo } = await api.restoreMemoRevision(memoId, revisionId);
+      if (await getLocalMemo(scope, memoId)) await putLocalMemo(scope, memo);
+      // A queued edit would otherwise overwrite the restored body on its next
+      // push. The confirmation already replaces local content.
+      await localDb.syncQueue.delete(getMemoUpdateQueueId(memoId));
+      await localDb.drafts.delete(memoId);
+      return { memo };
+    }
     const [memo, revision] = await Promise.all([getLocalMemo(scope, memoId), getLocalMemoRevision(scope, memoId, revisionId)]);
     if (!memo || !revision) {
+      if (!canPullFromServer(scope)) throw new SyncPausedError("pull");
+      requireSyncDirection("push", scope);
       if (isOffline()) throw new Error("Revision is not available offline");
       return api.restoreMemoRevision(memoId, revisionId);
     }
@@ -666,11 +712,14 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     return { memo: updated };
   },
 
-  sync: () => syncLocalMirror(scope),
+  sync: () => canPullFromServer(scope)
+    ? syncLocalMirror(scope)
+    : Promise.resolve({ bootstrapped: false, changed: 0 }),
   });
 };
 
 export const createRepository = (scope: string): EdgeEverRepository => {
+  setActiveSyncScope(scope);
   if (typeof window !== "undefined" && window.edgeeverDesktop?.isAvailable) {
     return withRepositoryMutationEvents(createDesktopRepository(), scope);
   }

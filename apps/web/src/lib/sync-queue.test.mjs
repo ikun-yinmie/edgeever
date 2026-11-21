@@ -8,6 +8,7 @@ const { localDb } = await import("./local-db.ts");
 const { ApiRequestError, api } = await import("./api.ts");
 const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources } = await import("./local-mirror.ts");
 const { discardWebConflicts, forceUploadWebConflicts, getLocalActionQueueId, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, shouldRetryMissingMemoBatch, syncQueuedChanges } = await import("./sync-queue.ts");
+const { setSyncPause } = await import("./sync-preferences.ts");
 
 afterEach(async () => {
   await localDb.transaction(
@@ -816,4 +817,78 @@ describe("web batch action recovery", () => {
       api.updateMemo = original.updateMemo;
     }
   }));
+});
+
+describe("web sync pause controls", () => {
+  test("does not touch the queue while uploads are paused", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-pause-entry");
+    const local = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, {
+      temporaryId: local.id,
+      notebookId: local.notebookId,
+      title: "",
+      contentMarkdown: "",
+      tags: [],
+    });
+    const original = api.createMemo;
+    let calls = 0;
+    api.createMemo = async () => {
+      calls += 1;
+      return { memo: local };
+    };
+    setSyncPause("push", true, scope);
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ attempted: 0, synced: 0, failed: 0 });
+      expect(calls).toBe(0);
+      expect((await localDb.syncQueue.get(getMemoCreateQueueId(local.id)))?.status).toBe("pending");
+    } finally {
+      api.createMemo = original;
+      setSyncPause("all", false, scope);
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("stops after the in-flight item when uploads are paused mid-run", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-pause-midrun");
+    const first = await createLocalMemo(scope, { notebookId: "inbox" });
+    const second = await createLocalMemo(scope, { notebookId: "inbox" });
+    for (const memo of [first, second]) {
+      await queueMemoCreate(scope, {
+        temporaryId: memo.id,
+        notebookId: memo.notebookId,
+        title: "",
+        contentMarkdown: "",
+        tags: [],
+        createdAt: memo.createdAt,
+        updatedAt: memo.updatedAt,
+      });
+    }
+    const original = api.createMemo;
+    let calls = 0;
+    api.createMemo = async () => {
+      calls += 1;
+      if (calls === 1) setSyncPause("push", true, scope);
+      return { memo: { ...first, id: `memo_remote_${calls}` } };
+    };
+    try {
+      const result = await syncQueuedChanges({ scope });
+      expect(calls).toBe(1);
+      expect(result).toMatchObject({ synced: 1, failed: 0, conflicted: 0 });
+      const remaining = await localDb.syncQueue.filter((item) => item.scope === scope).toArray();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.status).toBe("pending");
+
+      setSyncPause("push", false, scope);
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, failed: 0 });
+      expect(await localDb.syncQueue.filter((item) => item.scope === scope).count()).toBe(0);
+    } finally {
+      api.createMemo = original;
+      setSyncPause("all", false, scope);
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
 });

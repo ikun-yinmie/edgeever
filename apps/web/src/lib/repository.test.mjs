@@ -15,6 +15,7 @@ const {
   queueMemoCreate,
   syncQueuedChanges,
 } = await import("./sync-queue.ts");
+const { setSyncPause } = await import("./sync-preferences.ts");
 
 const installTestWindow = ({ hostname = "localhost" } = {}) => {
   const previousWindow = globalThis.window;
@@ -541,6 +542,63 @@ describe("web repository offline boundaries", () => {
       api.listTemplates = original.listTemplates;
       api.listResources = original.listResources;
       api.listNotebooks = original.listNotebooks;
+      restoreWindow();
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+});
+
+describe("web repository sync pause", () => {
+  test("reads only the local mirror while pulling is paused", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const restoreWindow = installTestWindow();
+    const scope = "https://demo.edgeever.org|user-pull-paused";
+    const memo = await createLocalMemo(scope, { notebookId: "nb-1", contentMarkdown: "local only" });
+    const original = { getMemo: api.getMemo, listNotebooks: api.listNotebooks };
+    let remoteCalls = 0;
+    api.getMemo = async () => {
+      remoteCalls += 1;
+      throw new Error("Remote memo must not be requested while pulling is paused");
+    };
+    api.listNotebooks = async () => {
+      remoteCalls += 1;
+      throw new Error("Remote notebooks must not be requested while pulling is paused");
+    };
+    setSyncPause("pull", true, scope);
+
+    try {
+      const repository = createWebRepository(scope);
+      expect((await repository.getMemo(memo.id)).memo.contentMarkdown).toContain("local only");
+      expect((await repository.listNotebooks()).notebooks).toEqual([]);
+      expect(remoteCalls).toBe(0);
+    } finally {
+      api.getMemo = original.getMemo;
+      api.listNotebooks = original.listNotebooks;
+      setSyncPause("all", false, scope);
+      restoreWindow();
+      if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
+    }
+  });
+
+  test("refuses to open an uncached note while pulling is paused", async () => {
+    const previousOnline = globalThis.navigator?.onLine;
+    if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: true });
+    const restoreWindow = installTestWindow();
+    const scope = "https://demo.edgeever.org|user-pull-paused-missing";
+    const original = api.getMemo;
+    api.getMemo = async () => {
+      throw new Error("Remote memo must not be requested while pulling is paused");
+    };
+    setSyncPause("pull", true, scope);
+
+    try {
+      await expect(createWebRepository(scope).getMemo("memo-not-mirrored")).rejects.toMatchObject({
+        code: "sync_paused",
+      });
+    } finally {
+      api.getMemo = original;
+      setSyncPause("all", false, scope);
       restoreWindow();
       if (globalThis.navigator) Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: previousOnline });
     }

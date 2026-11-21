@@ -24,6 +24,7 @@ import { api, type SyncChangesResponse } from "@/lib/api";
 import { localDb, selectNewestLocalDraft, type LocalDraft, type LocalMemo, type LocalNotebook, type LocalResource, type LocalRevision } from "@/lib/local-db";
 import { cacheLocalResourceBytes, localResourceUrl, removeCachedLocalResourceBytes } from "@/lib/local-resource-cache";
 import { isBrowserOffline } from "@/lib/network-status";
+import { canPullFromServer } from "@/lib/sync-preferences";
 import { parseTagsText } from "@/lib/utils";
 import { createClientUuid } from "@/lib/client-id";
 
@@ -199,7 +200,7 @@ const applyChanges = async (scope: string, changes: SyncChangesResponse["changes
   });
 };
 
-const bootstrapScope = async (scope: string) => {
+const bootstrapScope = async (scope: string): Promise<number | null> => {
   let afterId: string | null = null;
   let firstPage = true;
   let snapshotCursor = 0;
@@ -208,6 +209,9 @@ const bootstrapScope = async (scope: string) => {
   const memos: MemoDetail[] = [];
 
   do {
+    // Stopping between pages leaves the mirror untouched; the next pull after
+    // resume starts from a fresh snapshot instead of a half-applied one.
+    if (!canPullFromServer(scope)) return null;
     const page = await api.syncBootstrap({ afterId, limit: BOOTSTRAP_PAGE_SIZE });
     if (firstPage) {
       snapshotCursor = page.snapshotCursor;
@@ -228,7 +232,7 @@ const bootstrapScope = async (scope: string) => {
 };
 
 const performSyncLocalMirror = async (scope: string) => {
-  if (isBrowserOffline()) {
+  if (isBrowserOffline() || !canPullFromServer(scope)) {
     return { bootstrapped: false, changed: 0 };
   }
 
@@ -238,8 +242,10 @@ const performSyncLocalMirror = async (scope: string) => {
   let changed = 0;
 
   if (cursor === null || !storedIdentity) {
-    changed = await bootstrapScope(scope);
-    return { bootstrapped: true, changed };
+    const bootstrapped = await bootstrapScope(scope);
+    return bootstrapped === null
+      ? { bootstrapped: false, changed: 0 }
+      : { bootstrapped: true, changed: bootstrapped };
   }
 
   let currentCursor = cursor;
@@ -254,8 +260,10 @@ const performSyncLocalMirror = async (scope: string) => {
     // browser cursor is ahead of the server and an incremental request looks
     // empty even though the IndexedDB mirror is stale. Rebuild from the
     // authoritative snapshot just as we do for a changed sync identity.
-    changed = await bootstrapScope(scope);
-    return { bootstrapped: true, changed };
+    const bootstrapped = await bootstrapScope(scope);
+    return bootstrapped === null
+      ? { bootstrapped: false, changed: 0 }
+      : { bootstrapped: true, changed: bootstrapped };
   }
 
   while (response.changes.length > 0) {
@@ -263,7 +271,7 @@ const performSyncLocalMirror = async (scope: string) => {
     changed += response.changes.length;
     currentCursor = response.cursor;
     await setMeta(scope, SYNC_CURSOR_KEY, String(currentCursor));
-    if (!response.hasMore) break;
+    if (!response.hasMore || !canPullFromServer(scope)) break;
     response = await api.syncChanges({ cursor: currentCursor, limit: CHANGE_PAGE_SIZE });
   }
 

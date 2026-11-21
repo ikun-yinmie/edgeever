@@ -18,6 +18,7 @@ test("keeps the desktop create-note control a soft pill split button without car
   expect(createControl).toContain('aria-label={t("notebookPane.newMemo")}');
   expect(createControl).toContain('aria-label={t("diagram.createType")}');
   expect(createControl).toContain('t("diagram.moreTypes")}');
+  expect(createControl).toContain("rounded-full border border-emerald-300/80 bg-emerald-100");
   expect(createControl).toContain("hover:bg-emerald-200/60");
   expect(createControl).not.toContain("bg-white/25");
   expect(source).not.toContain("rounded-2xl border border-slate-200/90");
@@ -27,6 +28,16 @@ test("keeps the desktop create-note control a soft pill split button without car
   expect(css).not.toContain("@container (max-width: 11.749rem)");
   expect(source).not.toContain('focus-visible:ring-inset focus-visible:ring-emerald-500');
   expect(source).not.toContain('title={t("notebookPane.newMemo")}');
+});
+
+test("shows the full desktop create-note label with the shared tooltip", () => {
+  const createButton = source.split("edgeever-create-memo-split ")[1]?.split("<DropdownMenu>")[0] ?? "";
+
+  expect(createButton).toContain('<TooltipProvider delayDuration={0} skipDelayDuration={0}>');
+  expect(createButton).toContain("<TooltipTrigger asChild>");
+  expect(createButton).toContain('aria-label={t("notebookPane.newMemo")}');
+  expect(createButton).toContain('<TooltipContent side="bottom">{t("notebookPane.newMemo")}</TooltipContent>');
+  expect(createButton).not.toContain("title=");
 });
 
 test("splits search from create and exposes it in the collapsed rail", () => {
@@ -57,6 +68,11 @@ test("keeps the desktop sync status bar and sidebar chrome compact without shrin
   expect(source).not.toContain('className="mb-3 space-y-1"');
   expect(source).not.toContain("mb-2 hidden h-8 w-full");
   expect(source).not.toContain('className="mb-2 space-y-1"');
+});
+
+test("disables discarding conflicts whenever either sync direction is paused", () => {
+  const discardButton = source.split("onClick={onDiscardConflicts}")[0]?.split("<button").at(-1);
+  expect(discardButton).toContain("disabled={!isOnline || isSyncing || pullPaused || pushPaused}");
 });
 
 test("lists diagram note types in the create menu without beta badges", () => {

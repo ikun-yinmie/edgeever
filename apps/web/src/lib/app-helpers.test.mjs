@@ -105,6 +105,7 @@ describe("notebook sidebar width preference", () => {
 
   test("falls back to the default when nothing is stored or the value is malformed", () => {
     installLocalStorage();
+    expect(DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX).toBe(280);
     expect(readNotebookSidebarWidthPreference()).toBe(DEFAULT_NOTEBOOK_SIDEBAR_WIDTH_PX);
 
     window.localStorage.setItem(NOTEBOOK_SIDEBAR_WIDTH_STORAGE_KEY, "not-a-number");

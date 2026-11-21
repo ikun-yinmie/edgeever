@@ -26,6 +26,7 @@ import {
   CloudOff,
   CloudUpload,
   AlertTriangle,
+  PauseCircle,
   RefreshCw,
   CircleUserRound,
   Download,
@@ -340,7 +341,17 @@ const CreateMemoTypeItems = ({ onCreateMemo }: { onCreateMemo: (kind?: DiagramKi
   );
 };
 
-const getSyncStatusLabel = (summary: SyncQueueSummary, isOnline: boolean, isSyncing: boolean, t: ReturnType<typeof useTranslation>["t"]) => {
+const getSyncStatusLabel = (
+  summary: SyncQueueSummary,
+  isOnline: boolean,
+  isSyncing: boolean,
+  t: ReturnType<typeof useTranslation>["t"],
+  paused?: { pull: boolean; push: boolean },
+) => {
+  if (paused?.pull && paused?.push) return t("syncControl.statusAll");
+  if (paused?.pull) return t("syncControl.statusPull");
+  if (paused?.push) return t("syncControl.statusPush");
+
   if (!isOnline) {
     return summary.total > 0 ? t("notebookPane.sync.offlineWithPending", { count: summary.total }) : t("notebookPane.sync.offline");
   }
@@ -372,6 +383,7 @@ const SyncStatusBar = ({
   onDiscardConflicts,
   onUploadLocalConflicts,
   notebooks,
+  syncPaused,
 }: {
   summary: SyncQueueSummary;
   isOnline: boolean;
@@ -380,13 +392,19 @@ const SyncStatusBar = ({
   onDiscardConflicts: () => void;
   onUploadLocalConflicts: () => void;
   notebooks: Notebook[];
+  syncPaused?: { pull: boolean; push: boolean };
 }) => {
   const { t } = useTranslation();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [uploadConfirmOpen, setUploadConfirmOpen] = useState(false);
   const hasQueuedWork = summary.total > 0;
-  const label = getSyncStatusLabel(summary, isOnline, isSyncing, t);
-  const statusClassName = !isOnline
+  const isPaused = Boolean(syncPaused?.pull || syncPaused?.push);
+  const pushPaused = Boolean(syncPaused?.push);
+  const pullPaused = Boolean(syncPaused?.pull);
+  const label = getSyncStatusLabel(summary, isOnline, isSyncing, t, syncPaused);
+  const statusClassName = isPaused
+    ? "bg-amber-50 text-amber-800"
+    : !isOnline
     ? "bg-slate-100 text-slate-600"
     : summary.conflict > 0
       ? "bg-amber-50 text-amber-800"
@@ -408,6 +426,8 @@ const SyncStatusBar = ({
       >
         {!isOnline ? (
           <CloudOff className="h-4 w-4" />
+        ) : isPaused ? (
+          <PauseCircle className="h-4 w-4" />
         ) : summary.conflict > 0 ? (
           <AlertTriangle className="h-4 w-4" />
         ) : hasQueuedWork || isSyncing ? (
@@ -432,7 +452,7 @@ const SyncStatusBar = ({
                   className="flex h-6 w-6 items-center justify-center rounded-md text-amber-800 transition-colors hover:bg-card/70 disabled:opacity-50"
                   type="button"
                   aria-label={t("notebookPane.sync.uploadConflicts")}
-                  disabled={!isOnline || isSyncing}
+                  disabled={!isOnline || isSyncing || pushPaused}
                   onClick={() => setUploadConfirmOpen(true)}
                 >
                   <CloudUpload className="h-3.5 w-3.5" />
@@ -444,7 +464,7 @@ const SyncStatusBar = ({
           <button
             className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-800 transition-colors hover:bg-card/70 disabled:opacity-50"
             type="button"
-            disabled={!isOnline || isSyncing}
+            disabled={!isOnline || isSyncing || pullPaused || pushPaused}
             onClick={onDiscardConflicts}
           >
             {t("notebookPane.sync.discardConflicts")}
@@ -459,7 +479,7 @@ const SyncStatusBar = ({
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-card/70 disabled:opacity-50 transition-colors"
                 type="button"
                 aria-label={t("notebookPane.syncNow")}
-                disabled={!isOnline || isSyncing}
+                disabled={!isOnline || isSyncing || (pushPaused && pullPaused)}
                 onClick={onSyncNow}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
@@ -530,6 +550,7 @@ export const NotebookPane = ({
   canCreateMemo,
   isCreatingMemo,
   syncSummary,
+  syncPaused,
   isOnline,
   isSyncingQueuedChanges,
   onSyncQueuedChanges,
@@ -582,6 +603,7 @@ export const NotebookPane = ({
   canCreateMemo: boolean;
   isCreatingMemo: boolean;
   syncSummary: SyncQueueSummary;
+  syncPaused?: { pull: boolean; push: boolean };
   isOnline: boolean;
   isSyncingQueuedChanges: boolean;
   onSyncQueuedChanges: () => void;
@@ -927,23 +949,31 @@ export const NotebookPane = ({
             onDiscardConflicts={onDiscardConflicts}
             onUploadLocalConflicts={onUploadLocalConflicts}
             notebooks={notebooks}
+            syncPaused={syncPaused}
           />
         </div>
       )}
 
       <div className="hidden shrink-0 px-3 pb-2 pt-2 lg:block">
         <div className="edgeever-create-memo-split flex h-10 items-center gap-2">
-          <div className="flex h-full min-w-0 flex-[3] items-center rounded-full bg-emerald-100 text-emerald-700">
-            <button
-              className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-l-full pl-3 pr-0.5 text-left text-sm font-medium transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
-              type="button"
-              aria-label={t("notebookPane.newMemo")}
-              onClick={() => onCreateMemo()}
-              disabled={!canCreateMemo || isCreatingMemo}
-            >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{t("notebookPane.newMemo")}</span>
-            </button>
+          <div className="flex h-full min-w-0 flex-[3] items-center rounded-full border border-emerald-300/80 bg-emerald-100 text-emerald-700">
+            <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-l-full pl-3 pr-0.5 text-left text-sm font-medium transition-colors duration-150 hover:bg-emerald-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    aria-label={t("notebookPane.newMemo")}
+                    onClick={() => onCreateMemo()}
+                    disabled={!canCreateMemo || isCreatingMemo}
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{t("notebookPane.newMemo")}</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("notebookPane.newMemo")}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <DropdownMenu>
               <TooltipProvider delayDuration={0} skipDelayDuration={0}>
                 <Tooltip>

@@ -30,6 +30,12 @@ import {
 import { getMemoSaveConflictInfo, parseMemoSaveConflictDetails } from "@/lib/memo-save-conflict";
 import { getCachedLocalResourceBytes, removeCachedLocalResourceBytes } from "@/lib/local-resource-cache";
 import { isBrowserOffline } from "@/lib/network-status";
+import {
+  canPullFromServer,
+  canPushToServer,
+  isSyncPausedError,
+  requireSyncDirection,
+} from "@/lib/sync-preferences";
 import { parseTagsText } from "@/lib/utils";
 import { createClientUuid } from "@/lib/client-id";
 
@@ -372,6 +378,7 @@ export const observeRetryableSyncErrors = (scope: string, onChange: (count: numb
 };
 
 export const discardWebConflicts = async (scope: string) => {
+  requireSyncDirection("pull", scope);
   const conflicts: SyncQueueItem[] = [];
   for (const item of await localDb.syncQueue.where("status").equals("conflict").toArray()) {
     if (item.scope === scope) {
@@ -406,6 +413,7 @@ export const discardWebConflicts = async (scope: string) => {
  * with the authoritative cloud memo so the editor can rehydrate cleanly.
  */
 export const discardWebMemoConflict = async (scope: string, memoId: string) => {
+  requireSyncDirection("pull", scope);
   const remote = await api.getMemo(memoId, { includeDeleted: true });
   const { putLocalMemo } = await import("@/lib/local-mirror");
   await putLocalMemo(scope, remote.memo);
@@ -439,6 +447,7 @@ export const discardWebMemoConflict = async (scope: string, memoId: string) => {
  * the server stay queued because there is nothing to overwrite there.
  */
 export const forceUploadWebConflicts = async (scope: string) => {
+  requireSyncDirection("push", scope);
   const conflicts: SyncQueueItem[] = [];
   for (const item of await localDb.syncQueue.where("status").equals("conflict").toArray()) {
     if (item.kind !== "memo.update") continue;
@@ -587,6 +596,9 @@ const runQueuedChanges = async (options: {
   if (isBrowserOffline()) {
     return result;
   }
+  if (!canPushToServer(options.scope)) {
+    return result;
+  }
 
   const now = new Date();
   const allQueued = await localDb.syncQueue.toArray();
@@ -628,10 +640,17 @@ const runQueuedChanges = async (options: {
       continue;
     }
 
+    // Uploading an offline attachment ends by reading and patching the remote
+    // memo, so it belongs to both directions.
+    if (ready.kind === "resource.create" && !canPullFromServer(options.scope)) {
+      continue;
+    }
+
     items.push(ready);
   }
 
   for (let index = 0; index < items.length; index += 1) {
+    if (!canPushToServer(options.scope)) break;
     const candidate = items[index];
     const item = await claimQueueItem(candidate.id);
     if (!item) {
@@ -676,6 +695,17 @@ const runQueuedChanges = async (options: {
         result.synced += 1;
       }
     } catch (error) {
+      if (isSyncPausedError(error)) {
+        // Pausing mid-run must hand the claimed item back untouched instead of
+        // recording a failure that a resume would have avoided.
+        result.attempted = Math.max(0, result.attempted - 1);
+        await updateClaimedQueueItem(item, {
+          status: "pending",
+          claimId: null,
+          updatedAt: new Date().toISOString(),
+        });
+        break;
+      }
       const conflictInfo = getMemoSaveConflictInfo(error);
       // The memo was deleted (or permanently removed) elsewhere; saving it can
       // never succeed, so surface a resolvable conflict instead of retrying.

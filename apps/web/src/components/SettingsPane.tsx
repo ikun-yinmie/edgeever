@@ -38,6 +38,7 @@ import { McpConfigCard } from "./settings/McpConfigCard";
 import { PreferenceCard } from "./settings/PreferenceCard";
 import { ShortcutSettingsItem } from "./settings/ShortcutSettingsItem";
 import { PasswordCard } from "./settings/PasswordCard";
+import { SyncControlCard } from "./settings/SyncControlCard";
 import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { ObjectStorageCard } from "./settings/ObjectStorageCard";
 import { EditorShortcutSettingsCard } from "./settings/EditorShortcutSettingsCard";
@@ -65,6 +66,7 @@ interface SettingsPaneProps {
   user: AuthUser | null;
   refreshWorkspaceAfterImport: () => Promise<void>;
   onOpenExecutionCenter: () => void;
+  dataScope?: string;
 }
 
 // Slate and brand color variables already switch values with the root theme.
@@ -103,6 +105,7 @@ export const SettingsPane = ({
   user,
   refreshWorkspaceAfterImport,
   onOpenExecutionCenter,
+  dataScope,
 }: SettingsPaneProps) => {
   const { t } = useTranslation();
   const navigateAdmin = useNavigate();
@@ -197,6 +200,7 @@ export const SettingsPane = ({
       case "general":
         return (
           <SettingsGroup>
+            <SyncControlCard scope={dataScope} />
             <PreferenceCard
               imageCompressionEnabled={imageCompressionEnabled}
               onImageCompressionChange={onImageCompressionChange}

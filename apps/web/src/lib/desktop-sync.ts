@@ -18,6 +18,12 @@ import {
 import { api, ApiRequestError } from "@/lib/api";
 import { isDesktopResourceRuntime, mapMarkdownResourceUrls, mapTiptapResourceUrls, toApiResourceUrl } from "@/lib/desktop-resources";
 import { notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifyNotebookIdRemapped, notifySyncQueueChanged } from "@/lib/sync-events";
+import {
+  canPullFromServer,
+  canPushToServer,
+  getActiveSyncScope,
+  requireSyncDirection,
+} from "@/lib/sync-preferences";
 
 type StagedResourceRewrite = { memoId: string; placeholder: string; url: string };
 
@@ -91,8 +97,9 @@ const remapStagedResourceMemoIds = async (memoIdMappings: ReadonlyMap<string, st
   await window.edgeeverDesktop?.remapStagedResourceMemoIds?.([...memoIdMappings]);
 };
 
-const syncStagedResources = async (memoIdMappings: Map<string, string>) => {
+const syncStagedResources = async (memoIdMappings: Map<string, string>, scope?: string) => {
   if (!isDesktopResourceRuntime() || (typeof navigator !== "undefined" && !navigator.onLine)) return { attempted: 0, synced: 0, failed: 0, rewrites: [] as StagedResourceRewrite[], stagedIds: [] as string[] };
+  if (!canPushToServer(scope)) return { attempted: 0, synced: 0, failed: 0, rewrites: [] as StagedResourceRewrite[], stagedIds: [] as string[] };
   const staged = await window.edgeeverDesktop!.listStagedResources();
   const pending = await request("sync.outbox.list", { limit: 200 });
   const pendingPayloads = pending.items.map((item) => item.payload);
@@ -101,6 +108,8 @@ const syncStagedResources = async (memoIdMappings: Map<string, string>) => {
   const rewrites: StagedResourceRewrite[] = [];
   const stagedIds: string[] = [];
   for (const item of staged) {
+    // Re-read on every item so pausing mid-upload stops before the next file.
+    if (!canPushToServer(scope)) break;
     // An image can finish staging before the editor's debounced local save
     // has queued the memo update that references it. Uploading and deleting
     // the staged file in that gap leaves the memo with an unrecoverable
@@ -126,7 +135,7 @@ const syncStagedResources = async (memoIdMappings: Map<string, string>) => {
     }
   }
   try {
-    await patchCreatedMemoResources(rewrites);
+    if (canPullFromServer(scope)) await patchCreatedMemoResources(rewrites);
   } catch {
     // Keep the staged files and rewritten outbox payloads recoverable. A later
     // sync can retry the remote patch without losing the local attachment.
@@ -576,7 +585,7 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
   throw new Error(`Unsupported desktop sync operation: ${item.kind}`);
 };
 
-const syncOutbox = async (stagedRewrites: StagedResourceRewrite[], onlyKinds?: Set<string>) => {
+const syncOutbox = async (stagedRewrites: StagedResourceRewrite[], onlyKinds?: Set<string>, scope?: string) => {
   let synced = 0;
   let failed = 0;
   let conflicted = 0;
@@ -584,6 +593,7 @@ const syncOutbox = async (stagedRewrites: StagedResourceRewrite[], onlyKinds?: S
   const memoIdMappings = new Map<string, string>();
   const syncedMemos = new Map<string, DesktopRpcResponses["memo.get"]["memo"]>();
   for (const item of response.items) {
+    if (!canPushToServer(scope)) break;
     if (onlyKinds && !onlyKinds.has(item.kind)) continue;
     try {
       const claim = await request("sync.outbox.claim", { id: item.id, version: item.version });
@@ -717,13 +727,16 @@ export const orderDesktopSyncChanges = <T extends {
   return [...orderedUpserts, ...leftoverUpserts, ...notebookDeletes, ...rest];
 };
 
-const bootstrapDesktopMirror = async (reset: boolean) => {
+const bootstrapDesktopMirror = async (reset: boolean, scope?: string) => {
   await request("sync.bootstrap.prepare", reset ? { reset: true } : {});
   let afterId: string | null = null;
   let firstPage = true;
   let snapshotCursor = 0;
   let syncIdentity = "";
   do {
+    // A bootstrap abandoned mid-way never sets the cursor; page upserts are
+    // idempotent, so the next pull safely restarts from the first page.
+    if (!canPullFromServer(scope)) return;
     const page = await api.syncBootstrap({ afterId, limit: 200 });
     if (firstPage) {
       snapshotCursor = page.snapshotCursor;
@@ -736,26 +749,27 @@ const bootstrapDesktopMirror = async (reset: boolean) => {
   await request("sync.cursor.set", { cursor: snapshotCursor, syncIdentity });
 };
 
-const pullRemoteChanges = async () => {
+const pullRemoteChanges = async (scope?: string) => {
+  if (!canPullFromServer(scope)) return;
   const status = await request("sync.status", {});
   if (!status.syncIdentity) {
-    await bootstrapDesktopMirror(false);
+    await bootstrapDesktopMirror(false, scope);
     return;
   }
 
   let cursor = status.cursor;
   let response: SyncChangesResponse = await api.syncChanges({ cursor, limit: 200 });
   if (hasDesktopSyncStateReset({ cursor: status.cursor, syncIdentity: status.syncIdentity }, response)) {
-    await bootstrapDesktopMirror(true);
+    await bootstrapDesktopMirror(true, scope);
     return;
   }
   while (response.changes.length > 0) {
     await request("sync.apply", { changes: orderDesktopSyncChanges(response.changes) });
     cursor = response.cursor;
-    if (!response.hasMore) break;
+    if (!response.hasMore || !canPullFromServer(scope)) break;
     response = await api.syncChanges({ cursor, limit: 200 });
     if (hasDesktopSyncStateReset({ cursor, syncIdentity: status.syncIdentity }, response)) {
-      await bootstrapDesktopMirror(true);
+      await bootstrapDesktopMirror(true, scope);
       return;
     }
   }
@@ -802,7 +816,8 @@ export const diffSharedSnapshots = (
  * carry the already-filtered document the API served (never the raw note),
  * and anything that lost access is pruned on every online sync.
  */
-const pullSharedSnapshots = async () => {
+const pullSharedSnapshots = async (scope?: string) => {
+  if (!canPullFromServer(scope)) return;
   const shared = await api.getSharedWithMe();
   const memos = shared.memos ?? [];
   const mirrored = await request("shared.snapshot.list", {});
@@ -848,10 +863,11 @@ const pullSharedSnapshots = async () => {
   }
 };
 
-export const syncSharedSnapshots = async () => {
+export const syncSharedSnapshots = async (scope?: string) => {
   try {
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
-    await pullSharedSnapshots();
+    if (!canPullFromServer(scope ?? getActiveSyncScope() ?? undefined)) return;
+    await pullSharedSnapshots(scope ?? getActiveSyncScope() ?? undefined);
   } catch (error) {
     // Snapshots are advisory: never break the main sync over them.
     console.error("[desktop-sync] Shared snapshot pull failed", error);
@@ -882,62 +898,101 @@ export const mergeSyncedMemos = <T>(target: Map<string, T>, source: ReadonlyMap<
 
 let activeSync: Promise<DesktopSyncResult> | null = null;
 
-export const syncDesktopData = () => {
+const emptyOutboxSync = () => ({
+  attempted: 0,
+  synced: 0,
+  failed: 0,
+  conflicted: 0,
+  memoIdMappings: new Map<string, string>(),
+  syncedMemos: new Map<string, DesktopRpcResponses["memo.get"]["memo"]>(),
+});
+
+const emptyStagedSync = () => ({
+  attempted: 0,
+  synced: 0,
+  failed: 0,
+  rewrites: [] as StagedResourceRewrite[],
+  stagedIds: [] as string[],
+});
+
+export const syncDesktopData = (scope?: string) => {
   if (activeSync) return activeSync;
+  const syncScope = scope ?? getActiveSyncScope() ?? undefined;
   activeSync = (async () => {
     const memoIdMappings = new Map<string, string>();
     const syncedMemos = new Map<string, DesktopRpcResponses["memo.get"]["memo"]>();
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const pushAllowed = canPushToServer(syncScope);
+    const pullAllowed = canPullFromServer(syncScope);
+    if (
+      (!pushAllowed && !pullAllowed)
+      || (typeof navigator !== "undefined" && !navigator.onLine)
+    ) {
       return { attempted: 0, synced: 0, failed: 0, conflicted: 0, memoIdMappings, syncedMemos };
     }
     let phase: DesktopSyncPhase = "sync_creates";
     try {
-      const creates = await syncOutbox([], new Set(["memo.create"]));
-      mergeMemoIdMappings(memoIdMappings, creates.memoIdMappings);
-      mergeSyncedMemos(syncedMemos, creates.syncedMemos);
-      phase = "remap_created_resources";
-      await remapStagedResourceMemoIds(creates.memoIdMappings);
-      phase = "sync_staged_resources";
-      const stagedResources = await syncStagedResources(creates.memoIdMappings);
-      phase = "sync_outbox";
-      const outbox = await syncOutbox(stagedResources.rewrites);
-      mergeMemoIdMappings(memoIdMappings, outbox.memoIdMappings);
-      mergeSyncedMemos(syncedMemos, outbox.syncedMemos);
-      if (stagedResources.failed === 0 && outbox.failed === 0 && outbox.conflicted === 0 && creates.conflicted === 0) {
-        const stillReferenced = await stagedIdsReferencedByLocalMemos(stagedResources.rewrites);
-        if (stillReferenced.size > 0) {
-          try {
-            await patchCreatedMemoResources(stagedResources.rewrites.filter((rewrite) => {
-              const stagedId = rewrite.placeholder.slice("edgeever-staged://".length);
-              return stillReferenced.has(stagedId);
-            }));
-          } catch {
-            // Keep the staged files so a later save can finish rewriting the note.
+      let creates = emptyOutboxSync();
+      let stagedResources = emptyStagedSync();
+      let outbox = emptyOutboxSync();
+      if (pushAllowed) {
+        creates = await syncOutbox([], new Set(["memo.create"]), syncScope);
+        mergeMemoIdMappings(memoIdMappings, creates.memoIdMappings);
+        mergeSyncedMemos(syncedMemos, creates.syncedMemos);
+        phase = "remap_created_resources";
+        await remapStagedResourceMemoIds(creates.memoIdMappings);
+        phase = "sync_staged_resources";
+        stagedResources = await syncStagedResources(creates.memoIdMappings, syncScope);
+        phase = "sync_outbox";
+        outbox = await syncOutbox(stagedResources.rewrites, undefined, syncScope);
+        mergeMemoIdMappings(memoIdMappings, outbox.memoIdMappings);
+        mergeSyncedMemos(syncedMemos, outbox.syncedMemos);
+        if (stagedResources.failed === 0 && outbox.failed === 0 && outbox.conflicted === 0 && creates.conflicted === 0) {
+          const stillReferenced = await stagedIdsReferencedByLocalMemos(stagedResources.rewrites);
+          if (stillReferenced.size > 0 && pullAllowed) {
+            try {
+              await patchCreatedMemoResources(stagedResources.rewrites.filter((rewrite) => {
+                const stagedId = rewrite.placeholder.slice("edgeever-staged://".length);
+                return stillReferenced.has(stagedId);
+              }));
+            } catch {
+              // Keep the staged files so a later save can finish rewriting the note.
+            }
+          }
+          const remainingReferenced = stillReferenced.size > 0 && pullAllowed
+            ? await stagedIdsReferencedByLocalMemos(stagedResources.rewrites)
+            : stillReferenced;
+          // Pulling is part of the verification; keep staged files when paused.
+          if (pullAllowed) {
+            await removeSyncedStagedResources(
+              stagedResources.stagedIds.filter((stagedId) => !remainingReferenced.has(stagedId)),
+            );
           }
         }
-        const remainingReferenced = stillReferenced.size > 0
-          ? await stagedIdsReferencedByLocalMemos(stagedResources.rewrites)
-          : stillReferenced;
-        await removeSyncedStagedResources(
-          stagedResources.stagedIds.filter((stagedId) => !remainingReferenced.has(stagedId)),
-        );
       }
       phase = "read_status";
       const remaining = await request("sync.status", {});
+      const online = typeof navigator === "undefined" || navigator.onLine;
       // A durable failed or conflicted outbox item must not freeze unrelated
       // remote changes. The payload remains recoverable while pulls continue.
-      if (shouldPullDesktopChanges(remaining, typeof navigator === "undefined" || navigator.onLine)) {
+      // When uploads are paused, pending items are expected and only an
+      // in-flight claim blocks the pull.
+      const canPullNow = pushAllowed
+        ? shouldPullDesktopChanges(remaining, online)
+        : online && remaining.syncing === 0;
+      if (pullAllowed && canPullNow) {
         phase = "pull_remote_changes";
-        await pullRemoteChanges();
+        await pullRemoteChanges(syncScope);
         // Shared notes live outside the mirrored workspace, so the cursor
         // pull above never sees them. Mirror them separately (advisory: a
         // failed shared pull must never break the main sync).
         phase = "pull_shared_snapshots";
-        await syncSharedSnapshots();
+        await syncSharedSnapshots(syncScope);
       }
-      // Catch resources staged while the network sync itself was running.
-      phase = "finalize_resource_remap";
-      await remapStagedResourceMemoIds(creates.memoIdMappings);
+      if (pushAllowed) {
+        // Catch resources staged while the network sync itself was running.
+        phase = "finalize_resource_remap";
+        await remapStagedResourceMemoIds(creates.memoIdMappings);
+      }
       lastGlobalSyncIssue = null;
       return {
         attempted: creates.attempted + outbox.attempted + stagedResources.attempted,
@@ -956,8 +1011,11 @@ export const syncDesktopData = () => {
       try {
         const online = typeof navigator === "undefined" || navigator.onLine;
         const remaining = await request("sync.status", {});
-        if (shouldAttemptDesktopRecoveryPull(phase, remaining, online)) {
-          await pullRemoteChanges();
+        const canRecoverPull = pushAllowed
+          ? shouldAttemptDesktopRecoveryPull(phase, remaining, online)
+          : online && remaining.syncing === 0;
+        if (pullAllowed && canRecoverPull) {
+          await pullRemoteChanges(syncScope);
         }
       } catch (pullError) {
         if (phase !== "pull_remote_changes") {
@@ -1092,14 +1150,16 @@ const isUploadAllMemoKind = (item: DesktopOutboxItem) =>
  * server. The sidecar reset keeps every note that still has a queued change,
  * so pending local edits survive and sync afterwards as usual.
  */
-export const pullEverythingFromServer = (): Promise<void> => {
+export const pullEverythingFromServer = (scope?: string): Promise<void> => {
+  const syncScope = scope ?? getActiveSyncScope() ?? undefined;
+  requireSyncDirection("pull", syncScope);
   if (activeMaintenance) return activeMaintenance as Promise<void>;
   const run = async () => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       throw new Error("The server is unreachable");
     }
-    await bootstrapDesktopMirror(true);
-    await syncSharedSnapshots();
+    await bootstrapDesktopMirror(true, syncScope);
+    await syncSharedSnapshots(syncScope);
     notifySyncQueueChanged();
   };
   activeMaintenance = run().finally(() => { activeMaintenance = null; });
@@ -1113,7 +1173,9 @@ export const pullEverythingFromServer = (): Promise<void> => {
  * Notes with queued changes and notes that only exist locally are left to
  * the regular queue.
  */
-export const uploadEverythingToServer = (onProgress?: (progress: DesktopMaintenanceProgress) => void): Promise<DesktopUploadAllResult> => {
+export const uploadEverythingToServer = (onProgress?: (progress: DesktopMaintenanceProgress) => void, scope?: string): Promise<DesktopUploadAllResult> => {
+  const syncScope = scope ?? getActiveSyncScope() ?? undefined;
+  requireSyncDirection("push", syncScope);
   if (activeMaintenance) return activeMaintenance as Promise<DesktopUploadAllResult>;
   const run = async (): Promise<DesktopUploadAllResult> => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -1126,6 +1188,7 @@ export const uploadEverythingToServer = (onProgress?: (progress: DesktopMaintena
     const ids = (await listLocalMemoIds()).filter((memoId) => !queuedMemoIds.has(memoId));
     const result: DesktopUploadAllResult = { total: ids.length, uploaded: 0, skipped: 0, failed: 0, failedMemoIds: [] };
     for (const [index, memoId] of ids.entries()) {
+      if (!canPushToServer(syncScope)) break;
       try {
         const local = (await request("memo.get", { memoId, includeDeleted: true })).memo;
         if (local.isDeleted) {
@@ -1204,6 +1267,7 @@ export const createDesktopSyncDiagnosticText = (items: DesktopOutboxItem[], glob
 }, null, 2);
 
 export const discardDesktopConflicts = async () => {
+  requireSyncDirection("pull", getActiveSyncScope() ?? undefined);
   const response = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
   const conflicts = response.items.filter((item) => item.status === "conflict");
   let discarded = 0;
@@ -1233,6 +1297,7 @@ export const discardDesktopConflicts = async () => {
  * overwrite flag tells the server this replacement is intentional.
  */
 const pushDesktopConflictToCloud = async (item: DesktopOutboxItem) => {
+  requireSyncDirection("push", getActiveSyncScope() ?? undefined);
   const payload = normalizeDesktopMemoPayload(item.payload);
   const memoId = String(payload.memoId ?? item.entityId);
   const session = (await api.createMemoEditSession(memoId)).editSession;
@@ -1254,6 +1319,7 @@ const pushDesktopConflictToCloud = async (item: DesktopOutboxItem) => {
 };
 
 export const forceUploadDesktopSyncIssue = async (item: DesktopOutboxItem) => {
+  requireSyncDirection("push", getActiveSyncScope() ?? undefined);
   if (item.kind !== "memo.update") {
     throw new Error("Only note edits can be uploaded from a sync conflict.");
   }
@@ -1263,6 +1329,7 @@ export const forceUploadDesktopSyncIssue = async (item: DesktopOutboxItem) => {
 };
 
 export const forceUploadDesktopConflicts = async () => {
+  requireSyncDirection("push", getActiveSyncScope() ?? undefined);
   const response = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
   const conflicts = response.items.filter((item) => item.status === "conflict" && item.kind === "memo.update");
   let uploaded = 0;
@@ -1283,6 +1350,7 @@ export const forceUploadDesktopConflicts = async () => {
  * store with the authoritative cloud memo.
  */
 export const discardDesktopMemoConflict = async (memoId: string) => {
+  requireSyncDirection("pull", getActiveSyncScope() ?? undefined);
   const remote = await api.getMemo(memoId, { includeDeleted: true });
   await request("sync.apply", {
     changes: [{ entityType: "memo", operation: "upsert", entityId: remote.memo.id, memo: remote.memo, notebook: null }],

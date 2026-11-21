@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject,
 import type { QueryClient } from "@tanstack/react-query";
 import type { MemoDetail, MemoTemplate, Notebook, Resource } from "@edgeever/shared";
 import { isBrowserOffline } from "@/lib/network-status";
+import { canPullFromServer, canPushToServer } from "@/lib/sync-preferences";
 import { emptySyncQueueSummary, observeRetryableSyncErrors, type SyncQueueSummary } from "@/lib/sync-queue";
 import { MEMO_ID_REMAPPED_EVENT, notifyMemoIdRemapped, notifyMemoSyncAcknowledged, notifyNotebookIdRemapped } from "@/lib/sync-events";
 import { observeLocalMemoIdMappings, putLocalMemo, replaceLocalMemoId } from "@/lib/local-mirror";
@@ -93,11 +94,17 @@ export const useWorkspaceQueuedSync = ({
     try {
       if (window.edgeeverDesktop?.isAvailable) {
         const { getDesktopSyncSummary, syncDesktopData } = await import("@/lib/desktop-sync");
-        const result = await syncDesktopData();
+        // Desktop sync applies the pull/push pause switches internally, so a
+        // paused upload still lets the pull path run.
+        const result = await syncDesktopData(localDataScope);
         applyMemoIdMappings(result.memoIdMappings);
         window.dispatchEvent(new CustomEvent("edgeever:sync-completed", { detail: result }));
         setSyncSummary(await getDesktopSyncSummary());
         await invalidateSyncQueries();
+        return;
+      }
+
+      if (!canPushToServer(localDataScope)) {
         return;
       }
 
@@ -173,7 +180,7 @@ export const useWorkspaceQueuedSync = ({
   }, [applyMemoIdMappings, invalidateSyncQueries, localDataScope, queryClient, setOnline]);
 
   const discardConflictsNow = useCallback(async () => {
-    if (!isOnline) return;
+    if (!isOnline || !canPullFromServer(localDataScope) || !canPushToServer(localDataScope)) return;
     setIsSyncingQueuedChanges(true);
     try {
       if (window.edgeeverDesktop?.isAvailable) {
@@ -194,7 +201,7 @@ export const useWorkspaceQueuedSync = ({
   }, [isOnline, localDataScope, queryClient]);
 
   const uploadLocalConflictsNow = useCallback(async () => {
-    if (!isOnline) return;
+    if (!isOnline || !canPushToServer(localDataScope)) return;
     setIsSyncingQueuedChanges(true);
     try {
       if (window.edgeeverDesktop?.isAvailable) {

@@ -438,7 +438,7 @@ html[data-edgeever-extension-theme] kbd {
 }
 
 .edgeever-workspace-grid {
-  --notebook-sidebar-width: clamp(180px, 17vw, 260px);
+  --notebook-sidebar-width: 280px;
 }
 
 .edgeever-workspace-grid--sidebar-collapsed {

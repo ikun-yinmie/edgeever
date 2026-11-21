@@ -9,7 +9,7 @@ import type {
 import { docToMarkdown, docToText, type MemoDetail } from "@edgeever/shared";
 import type { EdgeEverRepository } from "@/lib/repository";
 import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
-import { createStagedResourceListItem, mapMarkdownResourceUrls, mapTiptapResourceUrls, toApiResourceUrl, toDesktopResourceUrl } from "@/lib/desktop-resources";
+import { createStagedResourceListItem, mapMarkdownResourceUrls, mapTiptapResourceUrls, stageDesktopResource, toApiResourceUrl, toDesktopResourceUrl } from "@/lib/desktop-resources";
 import {
   contentReferencesStagedResourceUrl,
   repairMemoStagedResourceUrls,
@@ -17,7 +17,16 @@ import {
 } from "@/lib/staged-resource-repair";
 import type { ResourceListItem, ResourceStorageSummary } from "@edgeever/shared";
 import type { ShareDisplayPolicySummary, SharedMemoAccess } from "@edgeever/client";
-import { notifySyncQueueDeferred } from "@/lib/sync-events";
+import { notifyMemoSyncAcknowledged, notifySyncQueueDeferred } from "@/lib/sync-events";
+import {
+  SyncPausedError,
+  canPullFromServer,
+  canPushToServer,
+  getActiveSyncScope,
+  requireSyncDirection,
+} from "@/lib/sync-preferences";
+
+const syncScope = () => getActiveSyncScope() ?? undefined;
 
 const resolveResourceUrls = <T extends { resources: Array<{ url: string }> }>(result: T): T => {
   const baseUrl = getConfiguredDesktopApiBaseUrl();
@@ -124,6 +133,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     const local = await request("template.list", {});
     const refresh = async () => {
       if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (!canPullFromServer(syncScope())) return;
       try {
         const remote = await api.listTemplates();
         await Promise.all(remote.templates.map((template) => request("template.cache", { template })));
@@ -135,7 +145,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
       void refresh();
       return local;
     }
-    if (typeof navigator !== "undefined" && !navigator.onLine) return local;
+    if ((typeof navigator !== "undefined" && !navigator.onLine) || !canPullFromServer(syncScope())) return local;
     try {
       const remote = await api.listTemplates();
       await Promise.all(remote.templates.map((template) => request("template.cache", { template })));
@@ -163,16 +173,42 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     return createDesktopRepository().createMemo({ notebookId, title: template.title ?? "", contentMarkdown: template.contentMarkdown, tags: template.tags });
   },
   uploadMemoResource: async (memoId, file) => {
+    if (!canPushToServer(syncScope())) {
+      const staged = await stageDesktopResource(memoId, file);
+      if (!staged) throw new SyncPausedError("push");
+      const now = new Date().toISOString();
+      return {
+        resource: {
+          id: `staged_${staged.id}`,
+          memoId,
+          originalMemoId: null,
+          kind: file.type.startsWith("image/") ? "image" : "attachment",
+          mimeType: file.type || null,
+          filename: file.name || null,
+          byteSize: file.size,
+          sha256: null,
+          width: null,
+          height: null,
+          createdAt: now,
+          updatedAt: now,
+          url: `edgeever-staged://${staged.id}`,
+        },
+      };
+    }
     const result = await api.uploadMemoResource(memoId, file);
     await request("resource.cache", { resource: result.resource });
     return { resource: { ...result.resource, url: toDesktopResourceUrl(result.resource.url) } };
   },
 
-  readResource: async (resourceId) => (
-    await api.getResourceResponse(`/api/v1/resources/${encodeURIComponent(resourceId)}/blob`, { cache: "no-store" })
-  ).blob(),
+  readResource: async (resourceId) => {
+    if (!canPullFromServer(syncScope())) throw new SyncPausedError("pull");
+    return (
+      await api.getResourceResponse(`/api/v1/resources/${encodeURIComponent(resourceId)}/blob`, { cache: "no-store" })
+    ).blob();
+  },
 
   updateResource: async (resourceId, file, expectedContentHash) => {
+    requireSyncDirection("push", syncScope());
     const result = await api.updateResourceContent(resourceId, file, expectedContentHash);
     await request("resource.delete", { resourceId });
     await request("resource.cache", { resource: result.resource });
@@ -185,6 +221,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     const localResult = () => mergeStagedResources(resolveResourceUrls(local));
     const refresh = async () => {
       if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (!canPullFromServer(syncScope())) return;
       try {
         const remote = await api.listResources();
         await Promise.all(remote.resources.map((resource) => request("resource.cache", { resource })));
@@ -196,7 +233,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
       void refresh();
       return localResult();
     }
-    if (typeof navigator !== "undefined" && !navigator.onLine) return localResult();
+    if ((typeof navigator !== "undefined" && !navigator.onLine) || !canPullFromServer(syncScope())) return localResult();
     try {
       const remote = await api.listResources();
       await Promise.all(remote.resources.map((resource) => request("resource.cache", { resource })));
@@ -209,11 +246,13 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     }
   },
   renameResource: async (resourceId, filename) => {
+    requireSyncDirection("push", syncScope());
     const result = await api.renameResource(resourceId, filename);
     await request("resource.cache", { resource: result.resource });
     return { resource: { ...result.resource, url: toDesktopResourceUrl(result.resource.url) } };
   },
   deleteResource: async (resourceId) => {
+    requireSyncDirection("push", syncScope());
     const result = await api.deleteResource(resourceId);
     await request("resource.delete", { resourceId });
     return result;
@@ -286,6 +325,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
       // API so the shared reader can still open them. The group share display
       // policy rides along so realtime collaboration can stay out of filtered
       // views (it would otherwise leak the raw shared document).
+      if (!canPullFromServer(syncScope())) throw new SyncPausedError("pull");
       const remote = await api.getMemo(memoId, { includeDeleted }).catch(() => { throw localError; });
       return {
         memo: await repairDisplayedMemo(remote.memo),
@@ -363,6 +403,7 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
   listMemoRevisions: async (memoId) => {
     const local = await request("memo.revisions", { memoId, limit: 100 });
     if (typeof navigator !== "undefined" && !navigator.onLine) return local;
+    if (!canPullFromServer(syncScope())) return local;
     try {
       const remote = await api.listMemoRevisions(memoId);
       await Promise.all(remote.revisions.map((revision) => request("memo.revision.cache", { revision })));
@@ -372,7 +413,27 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
       throw error;
     }
   },
-  restoreMemoRevision: async (memoId, revisionId) => {
+  restoreMemoRevision: async (memoId, revisionId, options) => {
+    if (options?.remote) {
+      requireSyncDirection("pull", syncScope());
+      requireSyncDirection("push", syncScope());
+      const remote = await api.restoreMemoRevision(memoId, revisionId);
+      const pending = await request("sync.outbox.list", { limit: 200, includeConflicts: true });
+      for (const item of pending.items) {
+        const payloadMemoId = typeof item.payload?.memoId === "string" ? item.payload.memoId : item.entityId;
+        if (payloadMemoId !== memoId) continue;
+        try {
+          await request("sync.outbox.discard", { id: item.id });
+        } catch {
+          // A claimed item cannot be discarded; the push path will surface it.
+        }
+      }
+      await request("sync.apply", {
+        changes: [{ entityType: "memo", operation: "upsert", entityId: memoId, memo: remote.memo, notebook: null }],
+      });
+      notifyMemoSyncAcknowledged(remote.memo);
+      return { memo: toDisplayMemo(remote.memo) };
+    }
     const result = await request("memo.restoreRevision", { memoId, revisionId });
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));
     return { memo: toDisplayMemo(result.memo) };
