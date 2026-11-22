@@ -25,6 +25,13 @@ describe("image copy actions", () => {
     expect(editorSource).toContain("resourceMenuLabels.copy");
     expect(editorSource).toContain("handleResourceCopyImage(target)");
     expect(editorSource).toContain("alignContextMenuToPoint(el, imageContextMenu.point)");
-    expect(editorSource).toContain("onPointerDownOutside");
+    // ProseMirror re-focuses the editor after a right click on an image, so the
+    // menu must ignore focus-out or it disappears before it can be used.
+    expect(editorSource).toContain("onFocusOutside={(event) => event.preventDefault()}");
+  });
+
+  test("keeps the open image menu anchored and dismisses it with the page", () => {
+    expect(editorSource).toContain('event.target.closest("[data-image-actions-menu]")');
+    expect(editorSource).toContain('window.addEventListener("scroll", hideMenu, true)');
   });
 });

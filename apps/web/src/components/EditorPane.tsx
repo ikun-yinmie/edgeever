@@ -2140,6 +2140,24 @@ const RichEditorPane = ({
   }, [hideResourceMenu, resourceMenuTarget]);
 
   useEffect(() => {
+    if (!imageContextMenu) return;
+    // Native context menus leave with the page; scrolling inside the menu's
+    // own scrollable body must not count as leaving.
+    const hideMenu = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest("[data-image-actions-menu]")) {
+        return;
+      }
+      setImageContextMenu(null);
+    };
+    window.addEventListener("resize", hideMenu);
+    window.addEventListener("scroll", hideMenu, true);
+    return () => {
+      window.removeEventListener("resize", hideMenu);
+      window.removeEventListener("scroll", hideMenu, true);
+    };
+  }, [imageContextMenu]);
+
+  useEffect(() => {
     setNoteLinkHintPosition(null);
     setImageContextMenu(null);
     resetResourceActions();
@@ -5335,11 +5353,10 @@ const RichEditorPane = ({
               className="w-52 max-h-[min(26rem,70vh)] overflow-y-auto bg-card border border-slate-200 rounded-md py-1 shadow-md duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none"
               data-image-actions-menu
               onCloseAutoFocus={(event) => event.preventDefault()}
-              onPointerDownOutside={(event) => {
-                if ((event as unknown as { button?: number }).button === 2) {
-                  event.preventDefault();
-                }
-              }}
+              // ProseMirror refocuses the editor after a right click on a leaf
+              // node (selectClickedLeaf), which would otherwise dismiss this
+              // menu immediately; keep it open until a real click closes it.
+              onFocusOutside={(event) => event.preventDefault()}
             >
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
