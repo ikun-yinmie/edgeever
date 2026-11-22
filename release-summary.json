@@ -1,14 +1,14 @@
 {
-  "version": "1.105.1",
+  "version": "1.105.2",
   "changes": {
     "en-US": [
-      "Image right-click menus stay open instead of flashing away"
+      "Opening a note from the search dialog or a plugin no longer closes the other open note tabs."
     ],
     "zh-CN": [
-      "右击图片的菜单不再一闪而过，菜单项可以正常点击"
+      "从搜索弹窗或插件打开笔记时保留其余已打开的页签，不再整栏清空。"
     ],
     "ja": [
-      "画像を右クリックした際のメニューが一瞬で消えなくなり、項目を選択しやすくなりました"
+      "検索ダイアログやプラグインからノートを開いても、開いている他のノートタブを閉じなくなりました。"
     ]
   }
 }
