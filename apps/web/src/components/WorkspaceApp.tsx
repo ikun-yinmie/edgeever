@@ -2874,7 +2874,8 @@ export const WorkspaceApp = ({
     setSelectedTag(null);
     setSelectedNotebookId(memo.notebookId);
     setMemberNotesView(null);
-    setOpenMemoTabs([]);
+    // Opening a note from the quick switcher or the search dialog must keep
+    // the open tabs; the picked note joins the strip via the auto-open effect.
     setSearch("");
     setMemoFilterMode("all");
     setRightView("editor");
@@ -2892,7 +2893,8 @@ export const WorkspaceApp = ({
     setSelectedTag(null);
     if (notebookId) setSelectedNotebookId(notebookId);
     setMemberNotesView(null);
-    setOpenMemoTabs([]);
+    // Opening a note from a plugin must keep the open tabs; the note joins
+    // the strip via the auto-open effect.
     setSearch("");
     setMemoFilterMode("all");
     setRightView("editor");

@@ -26,6 +26,19 @@ describe("workspace memo tabs", () => {
     expect(source).toContain("setOpenMemoTabs((current) => current.filter((id) => !deletedMemoIds.has(id)));");
   });
 
+  test("opening a note from the search dialog or a plugin keeps the open tabs", () => {
+    const switcherBlock = source.slice(
+      source.indexOf("const handleOpenQuickSwitcherMemo = useCallback("),
+      source.indexOf("const handleOpenPluginNote = useCallback(")
+    );
+    const pluginBlock = source.slice(
+      source.indexOf("const handleOpenPluginNote = useCallback("),
+      source.indexOf("const handleRevealSelectedMemoNotebook = useCallback(")
+    );
+    expect(switcherBlock).not.toContain("setOpenMemoTabs");
+    expect(pluginBlock).not.toContain("setOpenMemoTabs");
+  });
+
   test("renders the tab bar only for the desktop editor view", () => {
     expect(source).toContain("const showMemoTabsBar = Boolean(");
     expect(source).toContain(
