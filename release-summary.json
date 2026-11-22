@@ -1,20 +1,14 @@
 {
-  "version": "1.105.0",
+  "version": "1.105.1",
   "changes": {
     "en-US": [
-      "Open recent notes directly from the mobile bottom navigation.",
-      "Show consistent animated loading indicators and status labels across notes, notebooks, search, and settings.",
-      "Keep the mobile scroll-to-bottom control clear of the edit button."
+      "Image right-click menus stay open instead of flashing away"
     ],
     "zh-CN": [
-      "手机端底部导航新增“近期笔记”入口，方便快速返回最近使用的笔记。",
-      "统一笔记、笔记本、搜索、设置等页面的加载提示，提供清晰的加载动画和状态文字。",
-      "调整手机端滚动到底部按钮的位置，避免与编辑按钮重叠。"
+      "右击图片的菜单不再一闪而过，菜单项可以正常点击"
     ],
     "ja": [
-      "モバイルの下部ナビゲーションから最近のノートを直接開けるようになりました。",
-      "ノート、ノートブック、検索、設定などの読み込み表示を統一しました。",
-      "モバイルの最下部へのスクロールボタンが編集ボタンと重ならないように調整しました。"
+      "画像を右クリックした際のメニューが一瞬で消えなくなり、項目を選択しやすくなりました"
     ]
   }
 }
