@@ -1,23 +1,14 @@
 {
-  "version": "1.105.3",
+  "version": "1.105.4",
   "changes": {
     "en-US": [
-      "Mobile users can open joined groups and their own link/group shares from the notebook picker, read shared notes in the editor, and return to the same group and expanded notebook.",
-      "Recent notes gain a refresh button that syncs from the server into the local mirror while keeping cached notes and the date filter when a refresh fails.",
-      "Shared content that fails to load now shows an error with retry instead of looking like an empty notebook.",
-      "Phones whose browser sends a desktop user agent now get the desktop layout viewport."
+      "After signing in or out on mobile, the workspace opens on the home page instead of restoring the previous settings page."
     ],
     "zh-CN": [
-      "手机端笔记本选择器可直接进入群组与「我的分享」，打开共享文章后返回（含浏览器返回）会回到原群组与展开的笔记本。",
-      "近期笔记新增刷新按钮，手动从服务器同步到本地镜像；刷新失败时保留已缓存笔记与日期筛选。",
-      "共享内容加载失败时显示错误与重试入口，不再被误认为空笔记本。",
-      "浏览器上报桌面 UA 的手机将按桌面布局渲染页面。"
+      "手机端登录或退出后回到首页，不再停留在上一次的设置页。"
     ],
     "ja": [
-      "モバイルのノートブック選択からグループと自分の共有を開き、共有ノートを読んだ後に元のグループと展開状態へ戻れるようになりました。",
-      "最近のノートに更新ボタンを追加し、サーバーからローカルへ同期します。失敗時はキャッシュと日付フィルターを保持します。",
-      "共有コンテンツの読み込みに失敗したとき、空のノートブックではなく再試行付きのエラーを表示します。",
-      "デスクトップ UA を送るスマートフォンではデスクトップ用レイアウトで表示されます。"
+      "モバイルでログインまたはログアウトした後、以前の設定ページではなくホームが開くようになりました。"
     ]
   }
 }
