@@ -10,6 +10,7 @@ import { withEnvironmentTitlePrefix } from "./lib/environment-title";
 import { initializeTheme, ThemeProvider } from "./components/ThemeProvider";
 import { DesktopRendererErrorBoundary } from "./components/DesktopRendererErrorBoundary";
 import { reportDesktopRendererReadyAfterPaint } from "./lib/desktop-renderer-ready";
+import { initializeWebViewport } from "./lib/web-viewport";
 import "./styles/globals.css";
 
 const PWA_UPDATE_CHECK_INTERVAL_MS = 10 * 60 * 1_000;
@@ -136,6 +137,7 @@ const mountApp = () => {
 };
 
 const bootstrap = async () => {
+  initializeWebViewport({ desktopRuntime: isDesktopRenderer });
   await bootstrapI18n();
   if (import.meta.env.DEV) {
     const reloading = await clearDevelopmentPwaState();
