@@ -185,6 +185,7 @@ const getSessionWithTimeout = async (): Promise<AuthSession> => {
 
 const AuthenticatedWorkspace = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const desktopBridge = window.edgeeverDesktop;
   const [desktopScopeReady, setDesktopScopeReady] = useState(() => !desktopBridge?.isAvailable);
@@ -247,6 +248,7 @@ const AuthenticatedWorkspace = () => {
     onSuccess: (session) => {
       queryClient.clear();
       queryClient.setQueryData(["auth", "session"], session);
+      navigate("/", { replace: true });
     },
   });
 
@@ -261,6 +263,7 @@ const AuthenticatedWorkspace = () => {
         demoMode: sessionQuery.data?.demoMode ?? false,
         user: null,
       });
+      navigate("/", { replace: true });
     },
   });
 
