@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
@@ -18,7 +18,7 @@ import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { EdgeEverRepository } from "@/lib/repository";
-import { getCalendarGridDayKeys, getDayKeyFromDate, getMemoDayKey, groupMemosByDay } from "@/lib/recent-memos";
+import { RECENT_MEMOS_HOME_QUERY_KEY, getCalendarGridDayKeys, getDayKeyFromDate, getMemoDayKey, groupMemosByDay } from "@/lib/recent-memos";
 
 const RECENT_MEMOS_PAGE_SIZE = 50;
 const RECENT_MEMOS_AUTOLOAD_LIMIT = 2000;
@@ -29,6 +29,8 @@ type RecentMemosHomeProps = {
   onOpenMemo: (memo: MemoSummary) => void;
   onCreateMemo: () => void;
   onClose: () => void;
+  /** Refresh both the local mirror and the recent-notes query when provided. */
+  onRefresh?: () => Promise<unknown>;
   safeModeNotice?: boolean;
 };
 
@@ -37,6 +39,7 @@ export const RecentMemosHome = ({
   onOpenMemo,
   onCreateMemo,
   onClose,
+  onRefresh,
   safeModeNotice = false,
 }: RecentMemosHomeProps) => {
   const { t, i18n } = useTranslation();
@@ -50,7 +53,7 @@ export const RecentMemosHome = ({
   const showSafeModeNotice = safeModeNotice && !safeModeNoticeDismissed;
 
   const memosQuery = useInfiniteQuery({
-    queryKey: ["recent-memos-home"],
+    queryKey: RECENT_MEMOS_HOME_QUERY_KEY,
     queryFn: ({ pageParam }) => repository.listMemos({
       notebookId: null,
       trash: false,
@@ -67,6 +70,11 @@ export const RecentMemosHome = ({
         : loadedCount;
     },
   });
+
+  const refreshMutation = useMutation({
+    mutationFn: () => onRefresh ? onRefresh() : memosQuery.refetch({ throwOnError: true }),
+  });
+  const refreshing = refreshMutation.isPending || memosQuery.isFetching;
 
   const memos = useMemo(() => {
     const seen = new Set<string>();
@@ -96,7 +104,7 @@ export const RecentMemosHome = ({
   const shouldAutoloadOlderMemos = Boolean(
     selectedDayStart !== null
     && memosQuery.hasNextPage
-    && !memosQuery.isFetchingNextPage
+    && !refreshing
     && oldestLoadedMemo
     && new Date(oldestLoadedMemo.updatedAt).getTime() >= selectedDayStart
     && memos.length < RECENT_MEMOS_AUTOLOAD_LIMIT
@@ -185,7 +193,18 @@ export const RecentMemosHome = ({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-lg font-semibold tracking-normal text-slate-950">{t("recentMemos.title")}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-normal text-slate-950">{t("recentMemos.title")}</h1>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={t("recentMemos.refresh")}
+          aria-busy={refreshing}
+          disabled={refreshing}
+          onClick={() => refreshMutation.mutate()}
+        >
+          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+          {refreshing ? t("recentMemos.refreshing") : t("common.refresh")}
+        </Button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -212,12 +231,17 @@ export const RecentMemosHome = ({
                 </Button>
               </div>
             ) : null}
+            {(refreshMutation.isError || memosQuery.isRefetchError) && (
+              <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+                {t("recentMemos.refreshFailed")}
+              </p>
+            )}
             {memosQuery.isPending ? (
               <LoadingIndicator label={t("recentMemos.loading")} size="md" centered className="py-20" />
-            ) : memosQuery.isError ? (
+            ) : memosQuery.isError && !memosQuery.data ? (
               <div className="flex flex-col items-center gap-3 py-20 text-sm text-slate-500" role="status">
                 <span>{t("recentMemos.loadFailed")}</span>
-                <Button size="sm" variant="outline" onClick={() => void memosQuery.refetch()}>
+                <Button size="sm" variant="outline" disabled={refreshing} onClick={() => refreshMutation.mutate()}>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                   {t("recentMemos.retry")}
                 </Button>
@@ -287,7 +311,7 @@ export const RecentMemosHome = ({
                     <Button
                       size="sm"
                       variant="ghost"
-                      disabled={memosQuery.isFetchingNextPage}
+                      disabled={refreshing}
                       onClick={() => void memosQuery.fetchNextPage()}
                     >
                       {memosQuery.isFetchingNextPage ? (

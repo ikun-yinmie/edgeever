@@ -1,3 +1,5 @@
+export const RECENT_MEMOS_HOME_QUERY_KEY = ["recent-memos-home"] as const;
+
 export type RecentMemoLike = {
   id: string;
   updatedAt: string;

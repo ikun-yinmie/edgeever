@@ -4,6 +4,47 @@ import { readFileSync } from "node:fs";
 const chromeSource = readFileSync(new URL("./WorkspaceMobileChrome.tsx", import.meta.url), "utf8");
 const workspaceSource = readFileSync(new URL("./WorkspaceApp.tsx", import.meta.url), "utf8");
 
+const sharedSource = readFileSync(new URL("./SharedWithMePane.tsx", import.meta.url), "utf8");
+
+const sharedMemoHandler = workspaceSource.split("const handleOpenSharedMemo = (memoId: string) => {")[1]?.split("const handleBackToMemoList")[0] ?? "";
+
+describe("mobile groups and outgoing shares", () => {
+  test("exposes group pages and both outgoing-share scopes in the notebook picker", () => {
+    expect(chromeSource).toContain("data-mobile-groups");
+    expect(chromeSource).toContain("data-mobile-my-shares");
+    expect(chromeSource).toContain("handleOpenShared({ groupId: group.id })");
+    expect(chromeSource).toContain('handleOpenShared("link")');
+    expect(chromeSource).toContain('handleOpenShared("group")');
+    expect(chromeSource).toContain("onOpenShared?: (target?: SharedPaneTarget) => void;");
+    expect(workspaceSource).toContain("onOpenShared={handleOpenShared}");
+  });
+
+  test("opens shared notes in the editor instead of the personal list and protects the external selection", () => {
+    expect(sharedMemoHandler).toContain("externalSelectionRef.current = memoId;");
+    expect(sharedMemoHandler).toContain('setActivePane("editor")');
+    expect(sharedMemoHandler).not.toContain('setActivePane("memos")');
+    expect(sharedMemoHandler).toContain("sharedMemoReturnRef.current =");
+    expect(workspaceSource).toContain("onOpenMemo={handleOpenSharedMemo}");
+    expect(workspaceSource).toContain("onBackToList={handleBackToMemoList}");
+  });
+
+  test("restores the source shared page and expanded notebook on back", () => {
+    expect(workspaceSource).toContain("sharedReturn?.memoId === selectedMemoId");
+    expect(workspaceSource).toContain("initialExpandedNotebookId={sharedExpandedNotebookId}");
+    expect(workspaceSource).toContain('key={sharedGroupId ? `group:${sharedGroupId}` : `scope:${sharedScope}`}');
+    expect(sharedSource).toContain("useState<string | null>(initialExpandedNotebookId)");
+    expect(sharedSource).toContain("onExpandedNotebookChange?.(nextId)");
+    expect(workspaceSource).toContain('if (rightView === "shared") {');
+  });
+
+  test("shows query failures instead of reporting an empty shared notebook", () => {
+    expect(sharedSource).toContain("isError={notebookMemosQuery.isError}");
+    expect(sharedSource).toContain("<SharedContentLoadError onRetry={onRetry} />");
+    expect(chromeSource).toContain('t("sharedPane.loadFailed")');
+    expect(chromeSource).not.toContain("title={");
+  });
+});
+
 describe("mobile recent-notes navigation", () => {
   test("shows a direct recent-notes destination in the mobile main navigation", () => {
     expect(chromeSource).toContain("grid-cols-4");

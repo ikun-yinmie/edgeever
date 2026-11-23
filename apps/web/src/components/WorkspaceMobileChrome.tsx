@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Boxes, ChevronDown, ChevronRight, Clock, FileText, Home, Network, Plus, Search, UserRound, Users, Workflow, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Boxes, ChevronDown, ChevronRight, Clock, FileText, Home, Link2, Network, Plus, Search, Share2, UserRound, Users, Workflow, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { api } from "@/lib/api";
+import type { SharedPaneTarget } from "@/lib/shared-with-me";
 import { Button } from "@/components/ui/button";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Drawer,
@@ -115,12 +120,26 @@ export const MobileNotebookPicker = ({
   selectedNotebookId: string | null;
   onClose: () => void;
   onCreateNotebook?: (parentId?: string | null) => void;
-  onOpenShared?: () => void;
+  onOpenShared?: (target?: SharedPaneTarget) => void;
   onSelectAll: () => void;
   onSelect: (notebookId: string) => void;
 }) => {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement | null>(null);
+  const sharedQuery = useQuery({
+    queryKey: ["shared-with-me"],
+    queryFn: api.getSharedWithMe,
+    enabled: Boolean(onOpenShared),
+    staleTime: 60_000,
+  });
+  const linkSharesQuery = useQuery({
+    queryKey: ["memo-link-shares"],
+    queryFn: api.listMemoLinkShares,
+    enabled: Boolean(onOpenShared),
+    staleTime: 60_000,
+  });
+  const sharedGroups = sharedQuery.data?.groups ?? [];
+  const linkShareCount = linkSharesQuery.data?.shares.filter((share) => !share.memoDeleted).length;
   const [notebookSearch, setNotebookSearch] = useState("");
   const tree = useMemo(() => buildNotebookTree(notebooks), [notebooks]);
   const filteredTree = useMemo(() => filterNotebookTree(tree, notebookSearch), [notebookSearch, tree]);
@@ -179,7 +198,13 @@ export const MobileNotebookPicker = ({
     setExpandedNotebookIds(allNotebookBranchesExpanded ? new Set() : new Set(expandableNotebookIds));
   };
 
+  const handleOpenShared = (target?: SharedPaneTarget) => {
+    onClose();
+    onOpenShared?.(target);
+  };
+
   return (
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
     <Drawer open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DrawerContent className="inset-x-0 max-h-[82dvh] overflow-hidden border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] lg:hidden">
         <header className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
@@ -187,9 +212,14 @@ export const MobileNotebookPicker = ({
             <DrawerTitle className="text-base">{t("mobileNotebookPicker.title")}</DrawerTitle>
             <DrawerDescription className="truncate">{t("mobileNotebookPicker.current", { name: selectedNotebookName })}</DrawerDescription>
           </DrawerHeader>
-          <Button size="icon" variant="ghost" title={t("common.close")} aria-label={t("common.close")} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" aria-label={t("common.close")} onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("common.close")}</TooltipContent>
+          </Tooltip>
         </header>
         <div className="border-b border-slate-100 px-4 py-2">
           <div className="flex h-9 items-center gap-2 rounded-md bg-slate-100 px-3 text-sm text-slate-500">
@@ -208,16 +238,20 @@ export const MobileNotebookPicker = ({
               }}
             />
             {notebookSearch && (
-              <button
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-card hover:text-slate-700"
-                type="button"
-                title={t("mobileNotebookPicker.clearSearch")}
-                aria-label={t("mobileNotebookPicker.clearSearch")}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setNotebookSearch("")}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-card hover:text-slate-700"
+                    type="button"
+                    aria-label={t("mobileNotebookPicker.clearSearch")}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => setNotebookSearch("")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{t("mobileNotebookPicker.clearSearch")}</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -240,11 +274,72 @@ export const MobileNotebookPicker = ({
               className="mb-1 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
               type="button"
               aria-label={t("sharedPane.title")}
-              onClick={onOpenShared}
+              onClick={() => handleOpenShared()}
             >
               <Users className="h-4 w-4 shrink-0 text-slate-500" />
               <span className="min-w-0 flex-1 truncate text-base">{t("sharedPane.title")}</span>
             </button>
+          ) : null}
+          {onOpenShared ? (
+            <>
+              <section className="mb-2" aria-label={t("sharedPane.sidebarSection")} data-mobile-groups>
+                <h2 className="flex h-8 items-center gap-2 px-3 text-xs font-semibold text-slate-500">
+                  <Users className="h-3.5 w-3.5" />
+                  {t("sharedPane.sidebarSection")}
+                </h2>
+                {sharedQuery.isLoading ? (
+                  <LoadingIndicator label={t("common.loading")} className="px-3 py-2 text-xs" />
+                ) : sharedQuery.isError ? (
+                  <div className="px-3 py-2 text-xs text-slate-500" role="status">
+                    <p>{t("sharedPane.loadFailed")}</p>
+                    <Button size="sm" variant="ghost" disabled={sharedQuery.isFetching} onClick={() => void sharedQuery.refetch()}>
+                      {t("common.refresh")}
+                    </Button>
+                  </div>
+                ) : sharedGroups.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">{t("sharedPane.noGroups")}</p>
+                ) : sharedGroups.map((group) => (
+                  <button
+                    key={group.id}
+                    className="flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+                    type="button"
+                    data-mobile-group-id={group.id}
+                    aria-label={group.name}
+                    onClick={() => handleOpenShared({ groupId: group.id })}
+                  >
+                    <Users className="h-4 w-4 shrink-0 text-slate-500" />
+                    <span className="min-w-0 flex-1 truncate text-base">{group.name}</span>
+                    <span className="text-xs tabular-nums text-slate-400">{group.shareCount}</span>
+                  </button>
+                ))}
+              </section>
+              <section className="mb-2" aria-label={t("sharedPane.mySharesSection")} data-mobile-my-shares>
+                <h2 className="flex h-8 items-center gap-2 px-3 text-xs font-semibold text-slate-500">
+                  <Share2 className="h-3.5 w-3.5" />
+                  {t("sharedPane.mySharesSection")}
+                </h2>
+                <button
+                  className="flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+                  type="button"
+                  aria-label={t("sharedPane.mySharesLinkLabel")}
+                  onClick={() => handleOpenShared("link")}
+                >
+                  <Link2 className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="min-w-0 flex-1 truncate text-base">{t("sharedPane.mySharesLinkLabel")}</span>
+                  {linkShareCount !== undefined ? <span className="text-xs tabular-nums text-slate-400">{linkShareCount}</span> : null}
+                </button>
+                <button
+                  className="flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-slate-800 transition hover:bg-slate-50"
+                  type="button"
+                  aria-label={t("sharedPane.mySharesGroupLabel")}
+                  onClick={() => handleOpenShared("group")}
+                >
+                  <Users className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="min-w-0 flex-1 truncate text-base">{t("sharedPane.mySharesGroupLabel")}</span>
+                  {sharedQuery.data ? <span className="text-xs tabular-nums text-slate-400">{sharedQuery.data.sharedByMe.length}</span> : null}
+                </button>
+              </section>
+            </>
           ) : null}
           {onCreateNotebook ? (
             <button
@@ -308,6 +403,7 @@ export const MobileNotebookPicker = ({
         </div>
       </DrawerContent>
     </Drawer>
+    </TooltipProvider>
   );
 };
 

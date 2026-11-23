@@ -5,6 +5,15 @@ const source = readFileSync(new URL("./RecentMemosHome.tsx", import.meta.url), "
 const workspaceSource = readFileSync(new URL("./WorkspaceApp.tsx", import.meta.url), "utf8");
 
 describe("RecentMemosHome timeline", () => {
+  test("offers a refresh button that refreshes the mirror and guards concurrent page loads", () => {
+    expect(source).toContain('aria-label={t("recentMemos.refresh")}');
+    expect(source).toContain("onRefresh ? onRefresh() : memosQuery.refetch({ throwOnError: true })");
+    expect(source).toContain("disabled={refreshing}");
+    expect(source).toContain("refreshMutation.isPending || memosQuery.isFetching");
+    expect(source).toContain('t("recentMemos.refreshFailed")');
+    expect(source).toContain("memosQuery.isError && !memosQuery.data");
+    expect(workspaceSource).toContain("queryClient.invalidateQueries({ queryKey: RECENT_MEMOS_HOME_QUERY_KEY })");
+  });
   test("loads recent notes by update time and groups them by local day", () => {
     expect(source).toContain('sort: "updated-desc"');
     expect(source).toContain("groupMemosByDay(visibleMemos)");

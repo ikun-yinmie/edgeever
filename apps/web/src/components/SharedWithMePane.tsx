@@ -37,20 +37,39 @@ interface SharedWithMePaneProps {
   onOpenMemo: (memoId: string) => void;
   scope?: SharedPaneScope;
   groupId?: string | null;
+  initialExpandedNotebookId?: string | null;
+  onExpandedNotebookChange?: (notebookId: string | null) => void;
 }
+
+const SharedContentLoadError = ({ onRetry }: { onRetry: () => void }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-2 py-2 text-sm text-slate-500" role="alert">
+      <span>{t("sharedPane.loadFailed")}</span>
+      <Button size="sm" variant="ghost" onClick={onRetry}>{t("common.refresh")}</Button>
+    </div>
+  );
+};
 
 const SharedNotebookMemoList = ({
   isLoading,
+  isError,
   memos,
   onOpenMemo,
+  onRetry,
 }: {
   isLoading: boolean;
+  isError: boolean;
   memos: SharedNotebookMemo[];
   onOpenMemo: (memoId: string) => void;
+  onRetry: () => void;
 }) => {
   const { t } = useTranslation();
   if (isLoading) {
     return <LoadingIndicator label={t("common.loading")} className="py-2 text-xs" />;
+  }
+  if (isError) {
+    return <SharedContentLoadError onRetry={onRetry} />;
   }
   if (memos.length === 0) {
     return <p className="py-2 text-xs text-slate-500">{t("sharedPane.notebookEmpty")}</p>;
@@ -76,7 +95,14 @@ const SharedNotebookMemoList = ({
   );
 };
 
-export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId = null }: SharedWithMePaneProps) => {
+export const SharedWithMePane = ({
+  onClose,
+  onOpenMemo,
+  scope = "all",
+  groupId = null,
+  initialExpandedNotebookId = null,
+  onExpandedNotebookChange,
+}: SharedWithMePaneProps) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const sharedQuery = useQuery({ queryKey: SHARED_WITH_ME_QUERY_KEY, queryFn: api.getSharedWithMe });
@@ -84,7 +110,12 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
   const linkSharesQuery = useQuery({ queryKey: MEMO_LINK_SHARES_QUERY_KEY, queryFn: api.listMemoLinkShares, staleTime: 60_000 });
   const shareServersQuery = useShareServerConfig();
   const defaultShareServerUrl = resolveDefaultShareServerUrl(shareServersQuery.data);
-  const [expandedNotebookId, setExpandedNotebookId] = useState<string | null>(null);
+  const [expandedNotebookId, setExpandedNotebookId] = useState<string | null>(initialExpandedNotebookId);
+  const toggleNotebook = (notebookId: string) => {
+    const nextId = expandedNotebookId === notebookId ? null : notebookId;
+    setExpandedNotebookId(nextId);
+    onExpandedNotebookChange?.(nextId);
+  };
   const [shareOpen, setShareOpen] = useState(false);
   const [policyTarget, setPolicyTarget] = useState<{ share: GroupShareSummary; groupId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +196,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
     (linkShare) => !linkShare.memoDeleted && scope !== "group",
   );
   const hasVisibleMyShares = visibleGroupShares.length > 0 || visibleLinkShares.length > 0;
+  const mySharesLoading = (scope !== "link" && sharedQuery.isLoading) || (scope !== "group" && linkSharesQuery.isLoading);
+  const mySharesError = (scope !== "link" && sharedQuery.isError) || (scope !== "group" && linkSharesQuery.isError);
   const detailGroup = groupId
     ? (sharedQuery.data?.groups.find((entry) => entry.id === groupId) ?? null)
     : null;
@@ -229,6 +262,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                 <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupArticlesSection")}</h2>
                 {groupSharesQuery.isLoading ? (
                   <LoadingIndicator label={t("common.loading")} />
+                ) : groupSharesQuery.isError ? (
+                  <SharedContentLoadError onRetry={() => void groupSharesQuery.refetch()} />
                 ) : detailShares.length === 0 ? (
                   <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                     {t("sharedPane.emptyGroup")}
@@ -243,7 +278,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                           <li key={`detail-nb-${share.id}`}>
                             <button
                               className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-slate-50"
-                              onClick={() => setExpandedNotebookId(expanded ? null : share.targetId)}
+                              onClick={() => toggleNotebook(share.targetId)}
                               type="button"
                             >
                               <BookOpen className="h-4 w-4 shrink-0 text-emerald-600" />
@@ -267,6 +302,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                               <div className="bg-slate-50/70 px-3.5 pb-3">
                                 <SharedNotebookMemoList
                                   isLoading={notebookMemosQuery.isLoading}
+                                  isError={notebookMemosQuery.isError}
+                                  onRetry={() => void notebookMemosQuery.refetch()}
                                   memos={notebookMemosQuery.data?.memos ?? []}
                                   onOpenMemo={onOpenMemo}
                                 />
@@ -305,6 +342,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                 <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.groupMembersSection")}</h2>
                 {groupDetailMembersQuery.isLoading ? (
                   <LoadingIndicator label={t("common.loading")} />
+                ) : groupDetailMembersQuery.isError ? (
+                  <SharedContentLoadError onRetry={() => void groupDetailMembersQuery.refetch()} />
                 ) : (
                   <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-card shadow-sm">
                     {detailMembers.map((member) => (
@@ -338,6 +377,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
               <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionSharedWithMe")}</h2>
               {sharedQuery.isLoading ? (
                 <LoadingIndicator label={t("common.loading")} />
+              ) : sharedQuery.isError ? (
+                <SharedContentLoadError onRetry={() => void sharedQuery.refetch()} />
               ) : !hasSharedContent ? (
                 <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                   {t("sharedPane.emptyShared")}
@@ -368,7 +409,7 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                           <li key={`nb-${notebook.id}`}>
                             <button
                               className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-slate-50"
-                              onClick={() => setExpandedNotebookId(expanded ? null : notebook.id)}
+                              onClick={() => toggleNotebook(notebook.id)}
                               type="button"
                             >
                               <BookOpen className="h-4 w-4 shrink-0 text-emerald-600" />
@@ -396,6 +437,8 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
                               <div className="bg-slate-50/70 px-3.5 pb-3">
                                 <SharedNotebookMemoList
                                   isLoading={notebookMemosQuery.isLoading}
+                                  isError={notebookMemosQuery.isError}
+                                  onRetry={() => void notebookMemosQuery.refetch()}
                                   memos={notebookMemosQuery.data?.memos ?? []}
                                   onOpenMemo={onOpenMemo}
                                 />
@@ -439,7 +482,14 @@ export const SharedWithMePane = ({ onClose, onOpenMemo, scope = "all", groupId =
           {groupId ? null : (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-slate-700">{t("sharedPane.sectionMyShares")}</h2>
-              {!hasVisibleMyShares ? (
+              {mySharesLoading ? (
+                <LoadingIndicator label={t("common.loading")} />
+              ) : mySharesError ? (
+                <SharedContentLoadError onRetry={() => {
+                  if (scope !== "link") void sharedQuery.refetch();
+                  if (scope !== "group") void linkSharesQuery.refetch();
+                }} />
+              ) : !hasVisibleMyShares ? (
                 <p className="rounded-lg border border-slate-200 bg-card px-3.5 py-3 text-sm text-slate-500">
                   {scope === "link" ? t("sharedPane.emptyMyLinkShares") : t("sharedPane.emptyMyShares")}
                 </p>

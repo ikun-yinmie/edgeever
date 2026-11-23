@@ -56,6 +56,7 @@ import {
   type MobileEditorReturnPreview,
 } from "@/lib/mobile-editor";
 import { cn } from "@/lib/utils";
+import { RECENT_MEMOS_HOME_QUERY_KEY } from "@/lib/recent-memos";
 import type { MemoTask } from "@/lib/memo-tasks";
 import { isBrowserOffline, isBrowserOnline } from "@/lib/network-status";
 import { createDefaultDiagramDocument, diagramFallbackMarkdown, getNotebookDescendantIds, markdownToDoc, parseDiagramDocument, serializeDiagramDocument, type DiagramKind, type Notebook, type AuthUser, type MemberNotesMember, type MemoSummary, type MemoDetail, type MemoTemplate as SavedMemoTemplate } from "@edgeever/shared";
@@ -672,6 +673,8 @@ export const WorkspaceApp = ({
   }, [memberNotesView, memoView, rightView, selectedNotebookId, selectedTag, setSelectedMemoId]);
   const [sharedScope, setSharedScope] = useState<SharedPaneScope>("all");
   const [sharedGroupId, setSharedGroupId] = useState<string | null>(null);
+  const [sharedExpandedNotebookId, setSharedExpandedNotebookId] = useState<string | null>(null);
+  const sharedMemoReturnRef = useRef<{ memoId: string; target: SharedPaneTarget } | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [mobileNotebookPickerOpen, setMobileNotebookPickerOpen] = useState(false);
   const [mobileBottomNavActive, setMobileBottomNavActive] = useState<MobileBottomNavItem>(() =>
@@ -760,6 +763,7 @@ export const WorkspaceApp = ({
   const invalidateWorkspaceQueries = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["memos"] }),
+      queryClient.invalidateQueries({ queryKey: RECENT_MEMOS_HOME_QUERY_KEY }),
       queryClient.invalidateQueries({ queryKey: ["memo"] }),
       queryClient.invalidateQueries({ queryKey: ["notebooks"] }),
       queryClient.invalidateQueries({ queryKey: ["tags"] }),
@@ -3034,13 +3038,18 @@ export const WorkspaceApp = ({
   // the right pane only exists next to the editor, so opening it has to promote
   // that pane the same way the assets and tags views do.
   const handleOpenShared = (target?: SharedPaneTarget) => {
-    if (!isDesktopViewport()) {
-      clearHiddenMobileSearch();
-      skipNextHomeRouteSyncRef.current = route.pathname !== "/";
-      navigateWorkspaceHome();
-      setActivePane("editor");
-    }
-    clearMemoSelection?.();
+    clearHiddenMobileSearch();
+    skipNextHomeRouteSyncRef.current = route.pathname !== "/";
+    navigateWorkspaceHome();
+    setMemoView("notebook");
+    setMemberNotesView(null);
+    setMobileNotebookPickerOpen(false);
+    setActivePane("editor");
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    sharedMemoReturnRef.current = null;
+    setSharedExpandedNotebookId(null);
     if (target && typeof target === "object" && typeof target.groupId === "string") {
       setSharedGroupId(target.groupId);
       setSharedScope("all");
@@ -3050,6 +3059,46 @@ export const WorkspaceApp = ({
     }
     setRightView("shared");
   };
+
+  const handleOpenSharedMemo = (memoId: string) => {
+    clearMemoSelection();
+    clearPendingCreatedMemo();
+    setCreatedMemoEditId(null);
+    setMemberNotesView(null);
+    setMemoView("notebook");
+    externalSelectionRef.current = memoId;
+    sharedMemoReturnRef.current = {
+      memoId,
+      target: sharedGroupId ? { groupId: sharedGroupId } : sharedScope,
+    };
+    setSelectedMemoId(memoId);
+    setRightView("editor");
+    setActivePane("editor");
+  };
+
+  const handleBackToMemoList = useCallback(() => {
+    applyMobileEditorReturnPreview(selectedMemoId);
+    clearPendingCreatedMemo();
+    const sharedReturn = sharedMemoReturnRef.current;
+    sharedMemoReturnRef.current = null;
+    if (sharedReturn?.memoId === selectedMemoId) {
+      externalSelectionRef.current = null;
+      setSelectedMemoId(null);
+      setCreatedMemoEditId(null);
+      setSharedGroupId(typeof sharedReturn.target === "object" ? sharedReturn.target.groupId : null);
+      setSharedScope(typeof sharedReturn.target === "object" ? "all" : sharedReturn.target);
+      setRightView("shared");
+      setActivePane("editor");
+      return;
+    }
+    setActivePane("memos");
+  }, [applyMobileEditorReturnPreview, clearPendingCreatedMemo, selectedMemoId, setSelectedMemoId]);
+
+  useEffect(() => {
+    if (rightView !== "editor" || activePane !== "editor" || sharedMemoReturnRef.current?.memoId !== selectedMemoId) {
+      sharedMemoReturnRef.current = null;
+    }
+  }, [activePane, rightView, selectedMemoId]);
 
   const handleCloseShared = () => {
     setRightView("editor");
@@ -3291,6 +3340,11 @@ export const WorkspaceApp = ({
       return true;
     }
 
+    if (rightView === "shared") {
+      handleCloseShared();
+      return true;
+    }
+
     if (rightView === "assets") {
       handleCloseAssets();
       return true;
@@ -3302,8 +3356,7 @@ export const WorkspaceApp = ({
     }
 
     if (visibleActivePane === "editor" || visibleActivePane === "notebooks") {
-      clearPendingCreatedMemo();
-      setActivePane("memos");
+      handleBackToMemoList();
       return true;
     }
 
@@ -3321,7 +3374,9 @@ export const WorkspaceApp = ({
     deleteNotebookMutation.isPending,
     emptyTrashConfirmationOpen,
     emptyTrashMutation.isPending,
+    handleBackToMemoList,
     handleCloseAssets,
+    handleCloseShared,
     handleCloseSettings,
     handleCloseExecutionCenter,
     handleCloseTemplates,
@@ -3343,6 +3398,12 @@ export const WorkspaceApp = ({
   ]);
 
   useBrowserBackLayer(workspaceBackTargetActive, handleWorkspaceBackRequest);
+  // On mobile a shared note sits above its source group page in browser history.
+  // Keep a separate layer so Back can leave the note, then leave the group.
+  useBrowserBackLayer(
+    !isDesktop && rightView === "editor" && visibleActivePane === "editor" && sharedMemoReturnRef.current?.memoId === selectedMemoId,
+    handleBackToMemoList,
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -4066,15 +4127,13 @@ export const WorkspaceApp = ({
                     <AiPromptsPane key={localDataScope} onClose={handleCloseAiPrompts} onOpenExecutionCenter={handleOpenExecutionCenter} />
                   ) : rightView === "shared" ? (
                     <SharedWithMePane
+                      key={sharedGroupId ? `group:${sharedGroupId}` : `scope:${sharedScope}`}
                       onClose={handleCloseShared}
                       groupId={sharedGroupId}
                       scope={sharedScope}
-                      onOpenMemo={(memoId) => {
-                        externalSelectionRef.current = memoId;
-                        setSelectedMemoId(memoId);
-                        setActivePane("memos");
-                        setRightView("editor");
-                      }}
+                      initialExpandedNotebookId={sharedExpandedNotebookId}
+                      onExpandedNotebookChange={setSharedExpandedNotebookId}
+                      onOpenMemo={handleOpenSharedMemo}
                     />
                   ) : rightView === "execution-center" ? (
                     <ExecutionCenterPane currentDeviceId={scheduledTaskDeviceId} onClose={handleCloseExecutionCenter} />
@@ -4097,6 +4156,12 @@ export const WorkspaceApp = ({
                     <RecentMemosHome
                       repository={repository}
                       safeModeNotice={rendererRecoveryMode}
+                      onRefresh={async () => {
+                        const result = await refreshWorkspaceFromServer("manual");
+                        if (result.skipped) {
+                          await queryClient.invalidateQueries({ queryKey: RECENT_MEMOS_HOME_QUERY_KEY });
+                        }
+                      }}
                       onClose={() => {
                         setRightView("editor");
                         setMobileBottomNavActive("home");
@@ -4150,10 +4215,7 @@ export const WorkspaceApp = ({
                             || isSharedAccessReadOnly(memoAccess)
                           }
                           desktopFocusMode={desktopFocusModeActive}
-                          onBackToList={() => {
-                            clearPendingCreatedMemo();
-                            setActivePane("memos");
-                          }}
+                          onBackToList={handleBackToMemoList}
                           onDeleted={async (memoId) => {
                             deleteMemoMutation.mutate({ memoId, permanent: false });
                           }}
@@ -4232,11 +4294,7 @@ export const WorkspaceApp = ({
                     }}
                     imageCompressionEnabled={imageCompressionEnabled}
                     selectionActionBar={memoSelectionActionBar}
-                    onBackToList={() => {
-                      applyMobileEditorReturnPreview(selectedMemo?.id ?? selectedMemoId);
-                      clearPendingCreatedMemo();
-                      setActivePane("memos");
-                    }}
+                    onBackToList={handleBackToMemoList}
                     onSaved={async (memo) => {
                       await putLocalMemo(localDataScope, memo);
                       cacheMemoDetail(queryClient, memo, memoView);
@@ -4418,10 +4476,7 @@ export const WorkspaceApp = ({
             setMobileNotebookPickerOpen(false);
             handleCreateNotebook(parentId);
           }}
-          onOpenShared={() => {
-            setMobileNotebookPickerOpen(false);
-            handleOpenShared();
-          }}
+          onOpenShared={handleOpenShared}
           onSelectAll={handleSelectAllMemos}
           onSelect={handleSelectNotebook}
         />
