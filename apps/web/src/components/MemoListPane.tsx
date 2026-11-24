@@ -1578,7 +1578,7 @@ export const MemoListPane = ({
 
       <div
         ref={setListScrollNode}
-        className="relative min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-0 lg:pb-3 lg:[scrollbar-gutter:stable_both-edges]"
+        className="relative min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-0 lg:pb-10 lg:[scrollbar-gutter:stable_both-edges]"
       >
         {isLoading || (isRefreshing && memos.length === 0) ? (
           <LoadingIndicator label={t("memoList.fetchingLatest")} className="px-2 py-4" />
@@ -1664,6 +1664,13 @@ export const MemoListPane = ({
           </div>
         )}
       </div>
+      {/* Fades the last row instead of letting the window edge cut it. On
+          mobile the list already reserves space above the bottom nav. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-8 bg-gradient-to-t from-card/85 to-transparent lg:block"
+        data-list-bottom-fade
+      />
 
       {/* Keep the virtual trigger in the document viewport so fixed coordinates
           are not offset by the memo pane's backdrop-filter containing block. */}

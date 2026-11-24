@@ -1,9 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+/** The workspace lands on the recent-notes home; the list only exists behind it. */
+const openMemoList = async (page: Page) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "全部笔记", exact: true }).click();
+  await expect(page.locator("article").first()).toBeVisible();
+};
 
 test("anchors a memo's more-actions menu to its visible trigger", async ({ page }) => {
-  await page.goto("/");
+  await openMemoList(page);
 
-  const memoCard = page.locator('[data-memo-id="memo_demo_overview"]');
+  const memoCard = page.locator("article").first();
   const trigger = memoCard.locator("[data-memo-actions-trigger]");
   await memoCard.hover();
   await trigger.click();
@@ -21,7 +28,7 @@ test("anchors a memo's more-actions menu to its visible trigger", async ({ page 
 });
 
 test("positions a right-click menu against the click point", async ({ page }) => {
-  await page.goto("/");
+  await openMemoList(page);
 
   const cards = page.locator("article");
   await expect(cards.first()).toBeVisible();

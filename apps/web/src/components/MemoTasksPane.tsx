@@ -70,11 +70,19 @@ export const MemoTasksPane = ({ repository, scope, notebooks, onClose, onNavigat
     <div className="flex h-full min-h-0 flex-col bg-card">
       <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-6"><Button variant="ghost" size="icon" aria-label={t("memoTasks.close")} onClick={onClose}><ArrowLeft className="h-4 w-4" /></Button><ListChecks className="h-5 w-5 text-emerald-700" /><h1 className="font-semibold">{t("memoTasks.title")}</h1><span className="flex-1" /><Button variant="ghost" size="icon" disabled={query.isFetching} aria-label={t("memoTasks.refresh")} onClick={() => void query.refetch()}><RefreshCw className={cn("h-4 w-4", query.isFetching && "animate-spin")} /></Button></header>
       <div className="flex min-h-0 flex-1">
-        <section className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-7">
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+        <section className="min-w-0 flex-1 overflow-y-auto px-4 py-6 pb-12 sm:px-7">
           <p className="mb-1 text-sm text-slate-600 dark:text-slate-300">{t("memoTasks.description")}</p><p className="mb-5 max-w-3xl text-xs leading-relaxed text-slate-500">{t("memoTasks.rule")}</p>
           <select className="mb-4 max-w-full rounded-md border bg-card px-3 py-2 text-xs" aria-label={t("memoTasks.allNotebooks")} value={notebookId} onChange={event => setNotebookId(event.target.value)}><option value="">{t("memoTasks.allNotebooks")}</option>{notebooks.map(notebook => <option key={notebook.id} value={notebook.id}>{notebook.name}</option>)}</select>
           {query.isPending ? <LoadingIndicator label={t("memoTasks.loading")} size="md" className="py-12" /> : query.isError ? <div role="alert" className="py-12 text-sm text-rose-700"><p>{t("memoTasks.loadFailed")}</p><Button variant="outline" className="mt-3" onClick={() => void query.refetch()}>{t("memoTasks.refresh")}</Button></div> : <MemoTasksView tasks={tasks} memoTitles={memoTitles} onMark={changeMark} onNavigate={navigate} onSelect={task => setSelectedId(task.id)} selectedId={selected?.id} />}
         </section>
+        {/* Fades the last row instead of letting the window edge cut it. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-8 bg-gradient-to-t from-card/85 to-transparent md:block"
+          data-list-bottom-fade
+        />
+        </div>
         <aside className="hidden w-80 shrink-0 flex-col border-l bg-slate-50/50 xl:flex dark:bg-slate-950/30">
           <header className="border-b px-5 py-5"><p className="mb-3 text-xs text-slate-500">{t("memoTasks.preview")}</p><h2 className="flex items-start gap-2 text-sm font-semibold"><FileText className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />{selectedMemo?.title || t("memoTasks.selectPreview")}</h2></header>
           <div className="min-h-0 flex-1 overflow-y-auto p-5">{selected && previewRoot ? <><h3 className="mb-3 text-sm font-semibold">{selected.heading}</h3>{preview(previewRoot)}</> : <p className="text-xs text-slate-500">{t("memoTasks.selectPreview")}</p>}</div>

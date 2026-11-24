@@ -182,7 +182,7 @@ export const RecentMemosHome = ({
     "flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70";
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-card">
       <header className="flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center gap-2 border-b border-slate-200 px-4 pb-3 pt-[env(safe-area-inset-top)] lg:h-16 lg:pb-0 lg:pt-0">
         <Button
           className="lg:hidden"
@@ -208,7 +208,7 @@ export const RecentMemosHome = ({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-5xl items-start gap-10 px-6 py-6">
+        <div className="mx-auto flex w-full max-w-5xl items-start gap-10 px-6 py-6 lg:pb-10">
           <div className="min-w-0 flex-1">
             {showSafeModeNotice ? (
               <div
@@ -324,9 +324,15 @@ export const RecentMemosHome = ({
               </div>
             )}
           </div>
+        {/* Fades the last row instead of letting the window edge cut it. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-8 bg-gradient-to-t from-card/85 to-transparent md:block"
+          data-list-bottom-fade
+        />
 
-          <aside className="sticky top-0 hidden w-80 shrink-0 md:block" data-recent-memos-calendar>
-            <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+        <aside className="sticky top-0 hidden w-80 shrink-0 md:block" data-recent-memos-calendar>
+          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
               <div className="rounded-lg border border-slate-200 bg-card p-3 shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <Tooltip>
