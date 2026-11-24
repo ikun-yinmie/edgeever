@@ -70,6 +70,19 @@ export const useWorkspaceRoute = () => {
     if (route.pathname !== "/" || route.search) navigate("/", options);
   }, [navigate, route.pathname, route.search]);
 
+  // Keeps the open note in the address bar. A reload then restores the same
+  // note (mobile web has no window restoration of its own) instead of dropping
+  // the user on the recent-notes home.
+  const navigateOpenMemo = useCallback((memoId: string, options?: NavigateOptions) => {
+    const params = new URLSearchParams(route.pathname === "/" ? route.search : "");
+    params.delete("view");
+    params.set(WORKSPACE_OPEN_MEMO_PARAM, memoId);
+    const search = `?${params.toString()}`;
+
+    if (route.pathname === "/" && route.search === search) return;
+    navigate({ pathname: "/", search }, options);
+  }, [navigate, route.pathname, route.search]);
+
   const navigateTrash = useCallback(() => {
     if (!route.isTrash) navigate(`/${WORKSPACE_TRASH_SEARCH}`);
   }, [navigate, route.isTrash]);
@@ -97,6 +110,7 @@ export const useWorkspaceRoute = () => {
   return {
     route,
     navigateHome,
+    navigateOpenMemo,
     navigateSettings,
     navigatePlugins,
     navigateTemplates,

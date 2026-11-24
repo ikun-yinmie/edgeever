@@ -138,6 +138,7 @@ import {
   type WorkspaceRefreshMode,
 } from "@/lib/workspace-refresh";
 import { useWorkspaceSyncLifecycle } from "@/hooks/useWorkspaceSyncLifecycle";
+import { useWorkspaceLiveSync } from "@/hooks/useWorkspaceLiveSync";
 import { paneEnterMotion } from "@/lib/motion";
 import { WorkspaceMotionProvider } from "./WorkspaceMotionProvider";
 import { buildOpenMemoWindowUrl, useWorkspaceRoute } from "@/hooks/useWorkspaceRoute";
@@ -226,6 +227,7 @@ export const WorkspaceApp = ({
   const {
     route,
     navigateHome: navigateWorkspaceHome,
+    navigateOpenMemo: navigateWorkspaceOpenMemo,
     navigateTrash: navigateWorkspaceTrash,
     navigateSettings: navigateWorkspaceSettings,
     navigatePlugins: navigateWorkspacePlugins,
@@ -245,6 +247,7 @@ export const WorkspaceApp = ({
   const isInitialAiPromptsRoute = route.isAiPrompts;
   const isInitialExecutionCenterRoute = route.isExecutionCenter;
   const isInitialMobileEditorReturn = Boolean(route.mobileEditorReturnMemoId);
+  const isInitialOpenMemoRoute = Boolean(route.openMemoId) && !route.isTrash;
   const isTrashRoute = route.isTrash;
   const [rendererRecoveryMode, setRendererRecoveryMode] = useState(() =>
     Boolean(window.edgeeverDesktop?.recoveredAfterAbnormalExit) || isRendererRecoveryRequired()
@@ -260,9 +263,9 @@ export const WorkspaceApp = ({
 
     return user?.id ? readWebWorkspaceRestoreState(user.id) : null;
   });
-  const [activePane, setActivePane] = useState<Pane>(() => ((isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute || isInitialMobileEditorReturn) ? "editor" : "memos"));
+  const [activePane, setActivePane] = useState<Pane>(() => ((isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute || isInitialMobileEditorReturn || isInitialOpenMemoRoute) ? "editor" : "memos"));
   const [memoView, setMemoView] = useState<MemoView>(() => (
-    isInitialMobileEditorReturn ? "notebook" : isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
+    isInitialMobileEditorReturn || isInitialOpenMemoRoute ? "notebook" : isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
   ));
   const [memberNotesView, setMemberNotesView] = useState<MemberNotesMember | null>(null);
   const memberNotesActive = memberNotesView !== null;
@@ -283,14 +286,16 @@ export const WorkspaceApp = ({
     setSelectionMoveTargetNotebookId,
   } = useWorkspaceSelection(isInitialMobileEditorReturn
     ? { ...workspaceRestore, selectedMemoId: route.mobileEditorReturnMemoId }
-    : workspaceRestore);
+    : isInitialOpenMemoRoute
+      ? { ...workspaceRestore, selectedMemoId: route.openMemoId }
+      : workspaceRestore);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [notebookRevealRequest, setNotebookRevealRequest] = useState<{ notebookId: string; token: number } | null>(null);
   const notebookRevealTokenRef = useRef(0);
   const autoSelectedDemoNotebookRef = useRef(false);
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
-  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(route.mobileEditorReturnMemoId ?? workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(route.mobileEditorReturnMemoId ?? route.openMemoId ?? workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
   const consumedOpenMemoParamRef = useRef<string | null>(null);
   // Group-shared memos live in the author's workspace, so they never appear in
   // the personal list. The selection-normalising effect below would otherwise
@@ -656,6 +661,7 @@ export const WorkspaceApp = ({
               ? "execution-center"
               : !isTrashRoute
                 && !isInitialMobileEditorReturn
+                && !isInitialOpenMemoRoute
                 && (!workspaceRestore || rendererRecoveryMode)
                 ? "recent"
                 : "editor"
@@ -1275,6 +1281,15 @@ export const WorkspaceApp = ({
     setOnline: setIsOnline,
   });
 
+  // Realtime-ish cross-client freshness: long-poll the workspace cursor and
+  // pull as soon as another device writes. Pull pause keeps a phone offline
+  // without waking the network.
+  useWorkspaceLiveSync({
+    enabled: Boolean(user?.id) && !syncPreferences.pausePull,
+    scope: localDataScope,
+    refreshWorkspace: refreshWorkspaceFromServer,
+  });
+
   const selectedNotebookHasChildren = useMemo(() => {
     if (!selectedNotebookId) return false;
     return notebooks.some((n) => n.parentId === selectedNotebookId);
@@ -1434,6 +1449,14 @@ export const WorkspaceApp = ({
       return;
     }
 
+    // The URL also mirrors the current selection (see the effect below). When
+    // it merely echoes an already-open note, keep the create/quick-switcher
+    // hand-off state (`createdMemoEditId` etc.) untouched.
+    if (memoId === selectedMemoId && rightView === "editor") {
+      consumedOpenMemoParamRef.current = memoId;
+      return;
+    }
+
     consumedOpenMemoParamRef.current = memoId;
     pendingQuickSwitcherMemoIdRef.current = memoId;
     setMemoView("notebook");
@@ -1442,15 +1465,57 @@ export const WorkspaceApp = ({
     setCreatedMemoEditId(null);
     setSelectedMemoId(memoId);
     setActivePane("editor");
-    navigateWorkspaceHome({ replace: true });
+    if (route.isTrash) {
+      navigateWorkspaceHome({ replace: true });
+    }
   }, [
     clearPendingCreatedMemo,
     navigateWorkspaceHome,
+    rightView,
+    route.isTrash,
     route.openMemoId,
+    selectedMemoId,
     setActivePane,
     setMemoView,
     setRightView,
     setSelectedMemoId,
+  ]);
+
+  // Keep the address bar in sync with the open note. Mobile web has no
+  // session restoration of its own, so a reload must find the note in the URL;
+  // leaving the editor (right view change, close, trash) drops the parameter.
+  useEffect(() => {
+    if (rendererRecoveryMode) {
+      return;
+    }
+
+    const showsMemo = rightView === "editor"
+      && memoView === "notebook"
+      && !memberNotesView
+      && !isTrashRoute
+      && Boolean(selectedMemoId);
+
+    if (showsMemo && selectedMemoId) {
+      if (route.pathname === "/" && route.openMemoId !== selectedMemoId) {
+        navigateWorkspaceOpenMemo(selectedMemoId, { replace: true });
+      }
+      return;
+    }
+
+    if (route.pathname === "/" && route.openMemoId) {
+      navigateWorkspaceHome({ replace: true });
+    }
+  }, [
+    isTrashRoute,
+    memberNotesView,
+    memoView,
+    navigateWorkspaceHome,
+    navigateWorkspaceOpenMemo,
+    rendererRecoveryMode,
+    rightView,
+    route.openMemoId,
+    route.pathname,
+    selectedMemoId,
   ]);
 
   useEffect(() => {
