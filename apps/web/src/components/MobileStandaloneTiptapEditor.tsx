@@ -94,6 +94,29 @@ type ListNotebooksResponse = {
   notebooks: Notebook[];
 };
 
+/**
+ * Cross-client freshness for the standalone editor. The workspace page cannot
+ * help here: this document has its own Tiptap instance and edit session.
+ */
+const MOBILE_EDITOR_REMOTE_POLL_MS = 5_000;
+const MOBILE_EDITOR_REMOTE_POLL_TIMEOUT_MS = 8_000;
+/** IndexedDB is normally instant but can stall on iOS; never await it unbounded. */
+const MOBILE_EDITOR_LOCAL_STORE_TIMEOUT_MS = 2_500;
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number) => {
+  let timer: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = window.setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
+};
+
 type MobileStandaloneTiptapEditorProps = {
   memoId?: string | null;
   onLeave?: () => void;
@@ -386,7 +409,7 @@ export const MobileStandaloneTiptapEditor = ({
 
     if (currentSnapshot() === savedSnapshot) {
       dirtyRef.current = false;
-      await clearPersistedDrafts(savedMemo.id);
+      await withTimeout(clearPersistedDrafts(savedMemo.id), MOBILE_EDITOR_LOCAL_STORE_TIMEOUT_MS);
       setSaveStateStable("saved");
       window.setTimeout(() => {
         if (!dirtyRef.current && !savingRef.current && !leavingRef.current) {
@@ -509,7 +532,10 @@ export const MobileStandaloneTiptapEditor = ({
         let payload: ReturnType<typeof buildSavePayload> | null = null;
         try {
           payload = buildSavePayload(currentMemo);
-          await localDb.syncQueue.delete(getMemoUpdateQueueId(currentMemo.id)).catch(() => undefined);
+          await withTimeout(
+            localDb.syncQueue.delete(getMemoUpdateQueueId(currentMemo.id)).catch(() => undefined),
+            MOBILE_EDITOR_LOCAL_STORE_TIMEOUT_MS,
+          );
           const data = await requestMobileEditorJson<MobileEditorMemoResponse>(`/api/v1/memos/${encodeURIComponent(currentMemo.id)}`, {
             method: "PATCH",
             keepalive,
@@ -591,8 +617,24 @@ export const MobileStandaloneTiptapEditor = ({
     window.location.replace(memoId ? getStandaloneMobileEditorReturnPath(memoId) : "/");
   }, [memoId, onLeave, persistReturnPreview]);
 
-  const leavePage = useCallback(async () => {
-    if (leavingRef.current || notebookUpdatePending || saveStateRef.current === "compressing" || saveStateRef.current === "uploading") {
+  const leavePageAttemptRef = useRef(0);
+  // Resolved by a second tap on ‹ while Done is still waiting for the server.
+  const escapeLeaveRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Two intents share this path:
+   * - "done" waits for a real save and stays put when it fails, so the error is
+   *   visible and the edit can be retried.
+   * - "back" is an escape hatch: the draft is written synchronously first, so it
+   *   navigates immediately instead of waiting on a slow or unreachable server.
+   *   A disabled/queued draft is recovered the next time this note is opened.
+   */
+  const leavePage = useCallback(async (intent: "done" | "back" = "done") => {
+    if (leavingRef.current) {
+      if (intent === "back") escapeLeaveRef.current?.();
+      return;
+    }
+    if (intent === "done" && (notebookUpdatePending || saveStateRef.current === "compressing" || saveStateRef.current === "uploading")) {
       return;
     }
     if (!memoRef.current) {
@@ -605,39 +647,80 @@ export const MobileStandaloneTiptapEditor = ({
     const wasEditable = Boolean(editor?.isEditable);
     editor?.commands.blur();
     editor?.setEditable(false, false);
+    const attempt = (leavePageAttemptRef.current += 1);
+    let releaseEscape!: () => void;
+    const escapePromise = new Promise<"escape">((resolve) => {
+      releaseEscape = () => resolve("escape");
+    });
+    escapeLeaveRef.current = releaseEscape;
+
+    const leaveWithDraft = () => {
+      persistLocalDraft();
+      try {
+        sendBackgroundSave();
+      } catch {
+        // Missing edit session: the draft is still durable.
+      }
+      navigateBack();
+    };
 
     try {
       if (editor && !editor.isDestroyed) {
         contentJsonRef.current = editor.getJSON() as TiptapDoc;
       }
-      if (dirtyRef.current || currentSnapshot() !== lastSavedSnapshotRef.current) {
+      const hasUnsavedEdits = dirtyRef.current || currentSnapshot() !== lastSavedSnapshotRef.current;
+      if (hasUnsavedEdits) {
         persistLocalDraft();
       }
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+
+      if (intent === "back") {
+        leaveWithDraft();
+        return;
+      }
+
       setSaveStateStable("leaving");
 
       // An in-flight autosave may only contain an earlier snapshot. Flush the
-      // latest edits too, and never navigate on a timeout or a failed save.
-      do {
-        if (!await saveNow()) {
+      // latest edits too, and never navigate after a timeout or a failed save.
+      // The loop is bounded so a non-converging body cannot hold the header in
+      // "leaving" forever, and ‹ can abandon the wait at any point.
+      let converged = false;
+      for (let round = 0; round < 3 && !converged; round += 1) {
+        const outcome = await Promise.race([
+          saveNow().then((saved) => (saved ? "saved" as const : "failed" as const)),
+          escapePromise,
+        ]);
+        if (outcome === "escape") {
+          leaveWithDraft();
           return;
         }
-      } while (dirtyRef.current || currentSnapshot() !== lastSavedSnapshotRef.current);
+        if (outcome === "failed") {
+          break;
+        }
+        converged = !dirtyRef.current && currentSnapshot() === lastSavedSnapshotRef.current;
+      }
+      if (!converged) {
+        return;
+      }
       navigateBack();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t("editor.saveState.error"));
       setSaveStateStable("error");
     } finally {
-      leavingRef.current = false;
-      setLeavePending(false);
+      escapeLeaveRef.current = null;
+      if (leavePageAttemptRef.current === attempt) {
+        leavingRef.current = false;
+        setLeavePending(false);
+      }
       if (editor && !editor.isDestroyed) {
         editor.setEditable(wasEditable, false);
       }
     }
-  }, [currentSnapshot, editor, navigateBack, notebookUpdatePending, persistLocalDraft, saveNow, setSaveStateStable, t]);
+  }, [currentSnapshot, editor, navigateBack, notebookUpdatePending, persistLocalDraft, saveNow, sendBackgroundSave, setSaveStateStable, t]);
 
   const handleTitleChange = (nextTitle: string) => {
     setTitle(nextTitle);
@@ -1001,6 +1084,92 @@ export const MobileStandaloneTiptapEditor = ({
     };
   }, [currentSnapshot, draftKey, memoId, persistLocalDraft, persistReturnPreview, reconcileBackgroundSave, saveNow, sendBackgroundSave, setSaveStateStable]);
 
+  // Adopt edits made elsewhere while this note is open and untouched. A dirty
+  // editor is never overwritten: the local draft wins until it is saved, which
+  // then surfaces the usual revision conflict instead of losing keystrokes.
+  useEffect(() => {
+    if (!memoId || !editor) {
+      return;
+    }
+
+    let disposed = false;
+    let timer: number | null = null;
+
+    const pollRemoteMemo = async () => {
+      if (disposed) return;
+
+      const canAdopt = document.visibilityState !== "hidden"
+        && !dirtyRef.current
+        && !savingRef.current
+        && !leavingRef.current
+        && !backgroundSavePendingRef.current;
+
+      if (canAdopt) {
+        try {
+          const data = await requestMobileEditorJson<MobileEditorMemoResponse>(
+            `/api/v1/memos/${encodeURIComponent(memoId)}`,
+            { timeoutMs: MOBILE_EDITOR_REMOTE_POLL_TIMEOUT_MS },
+          );
+          const current = memoRef.current;
+          if (
+            !disposed
+            && current
+            && !dirtyRef.current
+            && data.memo.revision > current.revision
+          ) {
+            // The old edit session is bound to the previous revision and would
+            // reject the next save, so rebind before adopting the content.
+            const sessionData = await requestMobileEditorJson<{ editSession: MemoEditSession }>(
+              `/api/v1/memos/${encodeURIComponent(memoId)}/edit-sessions`,
+              { method: "POST", body: JSON.stringify({}) },
+            );
+            if (disposed || dirtyRef.current) return;
+
+            const nextTitle = getEditableMemoTitle(data.memo.title);
+            const nextTagsText = Array.isArray(data.memo.tags) ? data.memo.tags.join(", ") : "";
+            const nextContentJson = normalizeMobileEditorDoc(data.memo);
+            memoRef.current = data.memo;
+            editSessionRef.current = sessionData.editSession;
+            setMemo(data.memo);
+            setTitle(nextTitle);
+            titleRef.current = nextTitle;
+            setTagsText(nextTagsText);
+            tagsTextRef.current = nextTagsText;
+            editor.commands.setContent(nextContentJson, { emitUpdate: false });
+            contentJsonRef.current = editor.getJSON() as TiptapDoc;
+            lastSavedSnapshotRef.current = JSON.stringify({
+              title: nextTitle,
+              tagsText: nextTagsText,
+              contentJson: contentJsonRef.current,
+            });
+            dirtyRef.current = false;
+            setSaveStateStable("saved");
+            window.setTimeout(() => {
+              if (!dirtyRef.current && !savingRef.current && !leavingRef.current) {
+                setSaveStateStable("idle");
+              }
+            }, 1200);
+          }
+        } catch {
+          // Network hiccups only delay the next attempt.
+        }
+      }
+
+      if (!disposed) {
+        timer = window.setTimeout(pollRemoteMemo, MOBILE_EDITOR_REMOTE_POLL_MS);
+      }
+    };
+
+    timer = window.setTimeout(pollRemoteMemo, MOBILE_EDITOR_REMOTE_POLL_MS);
+
+    return () => {
+      disposed = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [editor, memoId, setSaveStateStable]);
+
   const saveLabel =
     saveState === "loading"
       ? t("editor.loading")
@@ -1041,7 +1210,14 @@ export const MobileStandaloneTiptapEditor = ({
 
   return (
     <div className="mobile-editor-shell">
-      <MobileEditorHeader saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} leavePending={leavePending || notebookUpdatePending} onLeave={() => void leavePage()} />
+      <MobileEditorHeader
+        saveLabel={saveLabel}
+        statusClassName={statusClassName}
+        saveState={saveState}
+        leavePending={leavePending || notebookUpdatePending}
+        onLeave={() => void leavePage("done")}
+        onBack={() => void leavePage("back")}
+      />
 
       <main className="mobile-editor-main">
         {error && <div className="mobile-editor-error">{error}</div>}

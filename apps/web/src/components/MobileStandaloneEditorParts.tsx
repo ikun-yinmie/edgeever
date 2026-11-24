@@ -16,14 +16,17 @@ export const MobileEditorHeader = ({
   saveState,
   leavePending = false,
   onLeave,
+  onBack,
 }: {
   saveLabel: string;
   statusClassName: string;
   saveState: MobileEditorSaveState;
   leavePending?: boolean;
   onLeave: () => void;
+  /** Escape hatch: leaves immediately with a durable local draft. */
+  onBack?: () => void;
 }) => (
-  <MobileEditorHeaderInner saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} leavePending={leavePending} onLeave={onLeave} />
+  <MobileEditorHeaderInner saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} leavePending={leavePending} onLeave={onLeave} onBack={onBack} />
 );
 
 const MobileEditorHeaderInner = ({
@@ -32,24 +35,36 @@ const MobileEditorHeaderInner = ({
   saveState,
   leavePending,
   onLeave,
+  onBack,
 }: {
   saveLabel: string;
   statusClassName: string;
   saveState: MobileEditorSaveState;
   leavePending: boolean;
   onLeave: () => void;
+  onBack?: () => void;
 }) => {
   const { t } = useTranslation();
-  const disabled = leavePending || saveState === "compressing" || saveState === "uploading";
+  // Uploads are the only state where abandoning the page would cancel real work.
+  // A slow or failed save must never trap the user: the back arrow leaves with a
+  // durable local draft, and Done re-enables so the failure can be retried.
+  const backDisabled = saveState === "compressing" || saveState === "uploading";
+  const doneDisabled = leavePending || backDisabled;
 
   return (
     <header className="mobile-editor-header">
-      <button className="mobile-editor-back" type="button" aria-label={t("common.back")} disabled={disabled} onClick={onLeave}>
+      <button
+        className="mobile-editor-back"
+        type="button"
+        aria-label={t("common.back")}
+        disabled={backDisabled}
+        onClick={onBack ?? onLeave}
+      >
         ‹
       </button>
       <div className="mobile-editor-actions">
         <span className={`mobile-editor-status ${statusClassName}`}>{saveLabel}</span>
-        <button className="mobile-editor-done" type="button" disabled={disabled || saveState === "loading"} onClick={onLeave}>
+        <button className="mobile-editor-done" type="button" disabled={doneDisabled} onClick={onLeave}>
           {t("editor.done")}
         </button>
       </div>

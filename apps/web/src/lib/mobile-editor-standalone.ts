@@ -85,19 +85,45 @@ export const safeMobileEditorReturnPath = (value: string | null) => {
   return fallback;
 };
 
-export const requestMobileEditorJson = async <T,>(path: string, init?: RequestInit): Promise<T> => {
-  const headers = new Headers(init?.headers);
-  const isFormData = init?.body instanceof FormData;
+/**
+ * Every standalone-editor request must settle. Without a deadline a stalled
+ * connection leaves `saveNow` pending forever, which keeps the header in
+ * "saving" (Done disabled) and the document read-only after `leavePage` froze
+ * it. 408 is already treated as a retryable save error by the sync queue.
+ */
+export const MOBILE_EDITOR_REQUEST_TIMEOUT_MS = 20_000;
+
+export const requestMobileEditorJson = async <T,>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<T> => {
+  const { timeoutMs = MOBILE_EDITOR_REQUEST_TIMEOUT_MS, ...requestInit } = init ?? {};
+  const headers = new Headers(requestInit.headers);
+  const isFormData = requestInit.body instanceof FormData;
 
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, {
-    credentials: "include",
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch(path, {
+      credentials: "include",
+      ...requestInit,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (requestError) {
+    if (controller.signal.aborted) {
+      throw new ApiRequestError("请求超时，请检查网络后重试", 408, "REQUEST_TIMEOUT");
+    }
+    throw requestError;
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);

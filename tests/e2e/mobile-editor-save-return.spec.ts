@@ -38,6 +38,7 @@ const mockWorkspace = async (page: Page) => {
     } as MemoDetail,
     saves: [] as SavePayload[],
     saveGate: null as Promise<void> | null,
+    saveHangs: false,
     saveErrorStatus: 0,
   };
 
@@ -89,6 +90,7 @@ const mockWorkspace = async (page: Page) => {
       if (request.method() === "GET") return json({ memo: state.memo });
       const payload = request.postDataJSON() as SavePayload;
       state.saves.push(payload);
+      if (state.saveHangs) await new Promise(() => undefined);
       if (state.saveGate) await state.saveGate;
       if (state.saveErrorStatus) {
         return json({ error: { code: "TEST_SAVE_FAILED", message: "测试保存失败，请重试" } }, state.saveErrorStatus);
@@ -121,7 +123,7 @@ const openEditor = async (page: Page) => {
 };
 
 const expectPreview = async (page: Page, title: string, text: string) => {
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL(new RegExp(`openMemo=${memoId}`));
   const preview = page.locator(".edgeever-workspace-editor");
   await expect(preview).toBeVisible();
   await expect(preview.getByRole("textbox", { name: "无标题笔记", exact: true })).toHaveValue(title);
@@ -185,6 +187,57 @@ test("Done waits for a slow save instead of leaving after 1.6 seconds", async ({
   } finally {
     release();
   }
+});
+
+test("the back arrow abandons a pending Done wait immediately", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  const editor = await openEditor(page);
+  const release = gateSave(state);
+  try {
+    const text = "完成等待中按返回也要立刻离开";
+    await editor.fill(text);
+    await page.getByRole("button", { name: "完成", exact: true }).click();
+    await expect.poll(() => state.saves.length).toBe(1);
+    await expect(page.getByRole("button", { name: "完成", exact: true })).toBeDisabled();
+
+    const startedAt = Date.now();
+    await page.getByRole("button", { name: "返回上一页", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`openMemo=${memoId}`));
+    // The held save never settles; leaving well under the 20s request timeout
+    // proves the wait was abandoned rather than timed out. The bound covers the
+    // return navigation's own dev-server boot on a slow machine.
+    expect(Date.now() - startedAt).toBeLessThan(15_000);
+    expect(await page.evaluate((id) => localStorage.getItem(`edgeever-mobile-tiptap-draft:${id}`), memoId)).toContain(text);
+  } finally {
+    release();
+  }
+});
+
+test("reloading the note page keeps the note open instead of returning home", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.goto(`/?openMemo=${memoId}`);
+  await expect(page.locator(".edgeever-workspace-editor")).toContainText(originalText);
+  await expect(page).toHaveURL(new RegExp(`openMemo=${memoId}`));
+
+  await page.reload();
+  await expect(page.locator(".edgeever-workspace-editor")).toContainText(originalText);
+  await expect(page.locator(".edgeever-workspace-memo-list")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "编辑笔记", exact: true })).toBeVisible();
+});
+
+test("a hung save cannot trap the editor: the back arrow leaves with a durable draft", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  const editor = await openEditor(page);
+  state.saveHangs = true;
+  const text = "网络挂起时仍然要保留的正文";
+  await editor.fill(text);
+  // The autosave starts and its response never arrives.
+  await expect.poll(() => state.saves.length).toBe(1);
+
+  await page.getByRole("button", { name: "返回上一页", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`openMemo=${memoId}`));
+  expect(await page.evaluate((id) => localStorage.getItem(`edgeever-mobile-tiptap-draft:${id}`), memoId)).toContain(text);
+  expect(await readLocalStore(page, "drafts")).not.toEqual([]);
 });
 
 for (const status of [409, 503]) {
