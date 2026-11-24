@@ -87,8 +87,11 @@ export class CollabRoom {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingPersist: Promise<void> | null = null;
   private pendingActorLabel: string | null = null;
+  private documentVersion = 0;
+  private persistedVersion = 0;
   private paused = false;
-  private readonly pausedMessages: Array<{ connection: CollabConnection; message: Uint8Array }> = [];
+  private replacementApplied = false;
+  private readonly pausedMessages: Array<{ connection: CollabConnection; message: Uint8Array; isMutation: boolean }> = [];
   private readonly connectionsWithPausedEdits = new Map<string, CollabConnection>();
   private destroyed = false;
 
@@ -125,8 +128,13 @@ export class CollabRoom {
       // Server replacement is not an edit: keep it out of history and
       // memos.updated_by.
       this.pendingActorLabel = null;
-    } else if (origin && typeof origin === "object" && "actorLabel" in origin) {
-      this.pendingActorLabel = (origin as CollabConnection).actorLabel?.trim() || null;
+      // The replacement was already committed with memo_contents.
+      this.persistedVersion = this.documentVersion;
+    } else {
+      this.documentVersion += 1;
+      if (origin && typeof origin === "object" && "actorLabel" in origin) {
+        this.pendingActorLabel = (origin as CollabConnection).actorLabel?.trim() || null;
+      }
     }
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, COLLAB_MESSAGE_SYNC);
@@ -179,13 +187,22 @@ export class CollabRoom {
     (this.persistTimer as unknown as { unref?: () => void }).unref?.();
   }
 
-  /** Write the merged state now; concurrent calls share one write. */
+  /** Drain all accepted edits; concurrent callers share the complete drain. */
   async flush(): Promise<void> {
     if (this.destroyed) return;
     if (this.pendingPersist) return this.pendingPersist;
-    const state = Y.encodeStateAsUpdate(this.document);
-    const actorLabel = this.pendingActorLabel;
-    this.pendingPersist = Promise.resolve(this.options.persistState(this.memoId, state, actorLabel))
+    if (this.persistedVersion === this.documentVersion) return;
+    this.pendingPersist = (async () => {
+      while (!this.destroyed && this.persistedVersion < this.documentVersion) {
+        const version = this.documentVersion;
+        const state = Y.encodeStateAsUpdate(this.document);
+        const actorLabel = this.pendingActorLabel;
+        await this.options.persistState(this.memoId, state, actorLabel);
+        // A later edit may have arrived while the previous write awaited I/O.
+        // Drain it too, especially when destroy() has canceled its timer.
+        this.persistedVersion = version;
+      }
+    })()
       .catch((error) => {
         this.report(error, "persist");
       })
@@ -202,6 +219,7 @@ export class CollabRoom {
   /** Stop intake and drain writes before taking the state for a restore. */
   async pauseForRestore(): Promise<Uint8Array> {
     this.paused = true;
+    this.replacementApplied = false;
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
@@ -214,24 +232,29 @@ export class CollabRoom {
   resume() {
     if (!this.paused) return;
     this.paused = false;
-    // Edits sent during the restore window must not be replayed on top of the
-    // restored body. Reconnecting clients receive the restored document.
-    for (const connection of this.connectionsWithPausedEdits.values()) {
-      try {
-        connection.close("collab_restored");
-      } catch (error) {
-        this.report(error, "resume-close");
+    // Only a committed replacement invalidates edits sent while paused.
+    // A rejected save/failed restore must replay those edits on the old body.
+    if (this.replacementApplied) {
+      for (const connection of this.connectionsWithPausedEdits.values()) {
+        try {
+          connection.close("collab_restored");
+        } catch (error) {
+          this.report(error, "resume-close");
+        }
       }
     }
     this.connectionsWithPausedEdits.clear();
     const queued = this.pausedMessages.splice(0, this.pausedMessages.length);
-    for (const { connection, message } of queued) {
+    for (const { connection, message, isMutation } of queued) {
+      if (this.replacementApplied && isMutation) continue;
+      if (this.connections.get(connection.id) !== connection) continue;
       try {
         this.receive(connection, message);
       } catch (error) {
         this.report(error, "resume-message");
       }
     }
+    this.replacementApplied = false;
   }
 
   /**
@@ -242,6 +265,7 @@ export class CollabRoom {
   applyRestoredState(state: Uint8Array) {
     if (this.destroyed || state.byteLength === 0) return;
     Y.applyUpdate(this.document, state, RESTORE_ORIGIN);
+    this.replacementApplied = true;
   }
 
   connect(connection: CollabConnection) {
@@ -274,15 +298,16 @@ export class CollabRoom {
       try {
         const decoder = decoding.createDecoder(message);
         const messageType = decoding.readVarUint(decoder);
-        // Only a document request is deferred; mutations are marked for a
-        // disconnect so they cannot resurrect pre-restore content.
+        // Defer intake until the save/restore result is known. A successful
+        // replacement discards mutations; a failed operation replays them.
         if (messageType === COLLAB_MESSAGE_SYNC) {
-          if (decoding.peekVarUint(decoder) === syncProtocol.messageYjsSyncStep1) {
-            if (this.pausedMessages.length < 512) {
-              this.pausedMessages.push({ connection, message: message.slice() });
-            }
+          const isMutation = decoding.peekVarUint(decoder) !== syncProtocol.messageYjsSyncStep1;
+          if (isMutation && !connection.canEdit) return;
+          if (this.pausedMessages.length < 512) {
+            this.pausedMessages.push({ connection, message: message.slice(), isMutation });
+            if (isMutation) this.connectionsWithPausedEdits.set(connection.id, connection);
           } else {
-            this.connectionsWithPausedEdits.set(connection.id, connection);
+            connection.close("collab_sync_retry");
           }
         }
       } catch (error) {
@@ -335,8 +360,10 @@ export class CollabRoom {
     return this.connections.size;
   }
 
-  async destroy(flush = true): Promise<void> {
+  async destroy(flush = true, reason = flush ? "collab_shutdown" : "collab_restored"): Promise<void> {
     if (this.destroyed) return;
+    // Stop intake before draining, so the final accepted version is finite.
+    this.paused = true;
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
@@ -347,14 +374,14 @@ export class CollabRoom {
     this.awareness.off("update", this.handleAwarenessUpdate);
     for (const connection of [...this.connections.values()]) {
       this.disconnect(connection);
-      if (!flush) {
-        try {
-          connection.close("collab_restored");
-        } catch (error) {
-          this.report(error, "restore-close");
-        }
+      try {
+        connection.close(reason);
+      } catch (error) {
+        this.report(error, "destroy-close");
       }
     }
+    this.pausedMessages.length = 0;
+    this.connectionsWithPausedEdits.clear();
     this.awareness.destroy();
     this.document.destroy();
   }
@@ -408,7 +435,7 @@ export const createCollabRoomRegistry = (
     evictions.set(memoId, timer);
   };
 
-  const evict = async (memoId: string) => {
+  const evict = async (memoId: string, flush = true) => {
     const pending = rooms.get(memoId);
     if (!pending) return;
     // Remove first: a reconnecting client must not attach to a room that is
@@ -417,7 +444,7 @@ export const createCollabRoomRegistry = (
     clearEviction(memoId);
     try {
       const room = await pending;
-      await room.destroy();
+      await room.destroy(flush, flush ? "collab_shutdown" : "collab_stale");
     } catch (error) {
       options.onError?.(error, { memoId, phase: "evict" });
     }
@@ -437,7 +464,15 @@ export const createCollabRoomRegistry = (
           initialState,
           persistState: options.persistState,
           persistDebounceMs: options.persistDebounceMs,
-          onError: (error, phase) => options.onError?.(error, { memoId, phase }),
+          onError: (error, phase) => {
+            options.onError?.(error, { memoId, phase });
+            if (phase === "persist" && error instanceof AppError && error.code === "revision_conflict"
+              && rooms.get(memoId) === pending) {
+              // An outside writer moved on. Never keep broadcasting a room
+              // that cannot commit; reconnect from the authoritative body.
+              void evict(memoId, false);
+            }
+          },
         });
         return room;
       })();

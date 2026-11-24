@@ -180,7 +180,8 @@ describe("memo revision service", () => {
     );
 
     expect(result).toBe(restoredMemo);
-    expect(batch).toHaveLength(6);
+    expect(batch).toHaveLength(8);
+    expect(prepared.some(({ sql }) => sql.includes("INSERT INTO memo_write_checks"))).toBe(true);
     expect(prepared.some(({ sql }) => sql.includes("INSERT INTO memo_revisions"))).toBe(true);
     expect(prepared.some(({ sql }) => sql.includes("DELETE FROM memo_revisions"))).toBe(true);
     expect(prepared.some(({ sql }) => sql.includes("UPDATE memo_contents"))).toBe(true);
@@ -274,7 +275,7 @@ describe("memo revision service", () => {
     const database = {
       prepare: (sql) => createStatement(sql, sql.includes("FROM memo_revisions mr") ? revision : null),
       batch: async (statements) => {
-        expect(statements).toHaveLength(7);
+        expect(statements).toHaveLength(9);
         expect(statements).toContain(collabStatement);
         order.push("batch");
         throw new Error("collaboration write failed");

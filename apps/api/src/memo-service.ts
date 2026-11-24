@@ -39,7 +39,9 @@ import {
   createMemoRevisionStatement as createMemoRevisionStatementService,
   shouldSnapshotMemoRevision as shouldSnapshotMemoRevisionService,
   trimMemoRevisionsStatement as trimMemoRevisionsStatementService,
+  type MemoRevisionRestoreCollab,
 } from "./memo-revision-service";
+import { runMemoWriteBatch } from "./memo-write-guard";
 import { getNotebook } from "./notebook-service";
 import { deleteStoredObjects } from "./object-storage";
 import { getAuditActor, getWorkspaceId } from "./request-auth";
@@ -1220,6 +1222,10 @@ export const importMemosRecord = async (
   };
 };
 
+type MemoUpdateResult =
+  | { memo: MemoDetail; error?: never; message?: never; status?: never; details?: never }
+  | { error: string; message: string; status?: number; details?: Record<string, unknown> };
+
 export const updateMemoRecord = async (
   db: DatabaseAdapter,
   workspaceId: string,
@@ -1229,10 +1235,39 @@ export const updateMemoRecord = async (
   actorLabel: string,
   requireEditSession = false,
   commit?: MemoMutationCommit,
-): Promise<
-  | { memo: MemoDetail; error?: never; message?: never; status?: never; details?: never }
-  | { error: string; message: string; status?: number; details?: Record<string, unknown> }
-> => {
+  collab?: MemoRevisionRestoreCollab | null,
+): Promise<MemoUpdateResult> => {
+  try {
+    if (!collab || (input.contentJson === undefined && input.contentMarkdown === undefined)) {
+      return await commitMemoUpdate(db, workspaceId, id, input, actor, actorLabel, requireEditSession, commit);
+    }
+    const liveState = await collab.begin(id);
+    try {
+      return await commitMemoUpdate(db, workspaceId, id, input, actor, actorLabel, requireEditSession, commit, {
+        port: collab, state: liveState,
+      });
+    } finally {
+      await collab.end(id);
+    }
+  } catch (error) {
+    if (error instanceof AppError && error.code === "revision_conflict") {
+      return { error: error.code, message: error.message, status: error.status };
+    }
+    throw error;
+  }
+};
+
+const commitMemoUpdate = async (
+  db: DatabaseAdapter,
+  workspaceId: string,
+  id: string,
+  input: MemoUpdateInput,
+  actor: { actorType: "user" | "agent"; actorId: string | null },
+  actorLabel: string,
+  requireEditSession: boolean,
+  commit?: MemoMutationCommit,
+  collabCommit?: { port: MemoRevisionRestoreCollab; state: Uint8Array | null },
+): Promise<MemoUpdateResult> => {
   const current = await getMemoDetailRow(db, workspaceId, id);
 
   if (!current) {
@@ -1442,7 +1477,10 @@ export const updateMemoRecord = async (
         ]
       : [];
 
-  await db.batch([
+  const collabWrite = collabCommit
+    ? await collabCommit.port.prepare(id, { contentJson: contentJson as TiptapDoc, contentHash }, collabCommit.state)
+    : null;
+  await runMemoWriteBatch(db, current, [
     ...(commit?.before ?? []),
     ...revisionStatements,
     db
@@ -1468,8 +1506,10 @@ export const updateMemoRecord = async (
       learning: { version: 1, workspaceId, fromNotebookId: current.notebook_id, toNotebookId: notebookId,
         beforeTags: JSON.parse(current.tags_json), afterTags: tags },
     }),
+    ...(collabWrite ? [collabWrite.statement] : []),
     ...(commit?.after(id) ?? []),
   ]);
+  await collabWrite?.apply();
 
   const memo = await getMemoDetail(db, workspaceId, id);
 

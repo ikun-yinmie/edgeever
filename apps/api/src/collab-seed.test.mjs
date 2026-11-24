@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import * as Y from "yjs";
 import {
   resolveCollabInitialState,
   tiptapJsonToYjsUpdate,
@@ -117,6 +118,35 @@ describe("collab initial state decision", () => {
     });
     expect(initial).toBeInstanceOf(Uint8Array);
     expect(yjsUpdateToTiptapJson(initial)).toEqual(memoDoc);
+  });
+
+  test("a reconnecting stale client cannot resurrect the body replaced by an outside save", () => {
+    const stale = tiptapJsonToYjsUpdate({ type: "doc", content: [paragraph("old body")] });
+    const initial = resolveCollabInitialState({
+      persistedState: stale,
+      persistedContentHash: "old-hash",
+      memoContentJson: memoDoc,
+      memoContentHash: "new-hash",
+    });
+    const reconnected = new Y.Doc();
+    try {
+      Y.applyUpdate(reconnected, initial);
+      Y.applyUpdate(reconnected, stale);
+      expect(yjsUpdateToTiptapJson(Y.encodeStateAsUpdate(reconnected))).toEqual(memoDoc);
+    } finally {
+      reconnected.destroy();
+    }
+  });
+
+  test("an intentionally empty memo never falls back to an old nonempty cache", () => {
+    const empty = { type: "doc", content: [] };
+    const initial = resolveCollabInitialState({
+      persistedState: tiptapJsonToYjsUpdate(memoDoc),
+      persistedContentHash: "old-hash",
+      memoContentJson: empty,
+      memoContentHash: "empty-hash",
+    });
+    expect(yjsUpdateToTiptapJson(initial)).toEqual(empty);
   });
 
   test("seeds from the memo when no merge was ever persisted", () => {

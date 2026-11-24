@@ -15,6 +15,8 @@ import {
   docToText,
   type TiptapDoc,
 } from "@edgeever/shared";
+import { AppError } from "./app-error";
+import { createCollabDocumentStore } from "./collab-document-store";
 import { isoNow, parseJsonArray } from "./entity-utils";
 import { sha256 } from "./hash-utils";
 import {
@@ -23,6 +25,7 @@ import {
   trimMemoRevisionsStatement,
 } from "./memo-revision-service";
 import { upsertMemoSearchDocumentStatement } from "./memo-search-index";
+import { runMemoWriteBatch } from "./memo-write-guard";
 import type { DatabaseAdapter } from "./storage-contract";
 
 export type CollabMaterializeResult =
@@ -32,6 +35,10 @@ export type CollabMaterializeResult =
 export type CollabMaterializeOptions = {
   /** Authenticated editor behind this flush; never the client-advertised name. */
   actorLabel?: string | null;
+  /** The memo body this room last loaded or successfully materialized. */
+  expectedContentHash?: string | null;
+  /** Commit CRDT state and its materialized hash atomically with the memo. */
+  state?: Uint8Array;
 };
 
 /** Same formula the memo service hashes saved content with. */
@@ -58,6 +65,7 @@ export const createCollabMemoWriter = (database: DatabaseAdapter) => {
     throw new Error("createCollabMemoWriter requires a database adapter with a prepare() method");
   }
 
+  const documents = createCollabDocumentStore(database);
   const materialize = async (
     memoId: string,
     contentJson: TiptapDoc,
@@ -74,11 +82,19 @@ export const createCollabMemoWriter = (database: DatabaseAdapter) => {
       .bind(memoId)
       .first<CollabCurrentRow>();
     if (!current) return { materialized: false, contentHash: null };
+    if (options.expectedContentHash !== undefined && options.expectedContentHash !== current.content_hash) {
+      throw new AppError("revision_conflict", "The collaboration room is stale. Reconnect before saving.", 409);
+    }
 
     const contentMarkdown = docToMarkdown(contentJson);
     const contentText = docToText(contentJson);
     const contentHash = await collabContentHash(contentMarkdown, contentJson);
+    const stateStatements = options.state
+      ? [documents.prepareSaveWithHash(memoId, options.state, contentHash)]
+      : [];
     if (contentHash === current.content_hash) {
+      // Delete information may have changed even when visible content did not.
+      if (stateStatements.length) await runMemoWriteBatch(database, current, stateStatements);
       return { materialized: false, contentHash };
     }
 
@@ -110,7 +126,7 @@ export const createCollabMemoWriter = (database: DatabaseAdapter) => {
       )
       : false;
 
-    await database.batch([
+    await runMemoWriteBatch(database, current, [
       ...(snapshot
         ? [
             createMemoRevisionStatement(
@@ -157,6 +173,7 @@ export const createCollabMemoWriter = (database: DatabaseAdapter) => {
             .prepare(`UPDATE memos SET excerpt = ?, updated_at = ? WHERE id = ? AND is_deleted = 0`)
             .bind(excerpt, updatedAt, memoId),
       upsertMemoSearchDocumentStatement(database, memoId, current.title, contentText, tags.join(" ")),
+      ...stateStatements,
     ]);
 
     return { materialized: true, contentHash };

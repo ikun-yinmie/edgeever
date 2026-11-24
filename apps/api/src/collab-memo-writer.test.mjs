@@ -27,10 +27,11 @@ class Statement {
 
 const asAdapter = (db) => ({
   prepare: (sql) => new Statement(db, sql),
-  batch: async (statements) => {
-    for (const statement of statements) await statement.run();
-    return [];
-  },
+  batch: async (statements) => db.transaction(() => statements.map((statement) => ({
+    success: true,
+    results: [],
+    meta: db.query(statement.sql).run(...statement.bindings),
+  })))(),
 });
 
 const seedDatabase = () => {
@@ -50,6 +51,13 @@ const seedDatabase = () => {
       title TEXT, tags_json TEXT NOT NULL, content_json TEXT NOT NULL,
       content_markdown TEXT NOT NULL, content_text TEXT NOT NULL,
       content_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE memo_write_checks (
+      id TEXT PRIMARY KEY,
+      valid INTEGER NOT NULL CONSTRAINT memo_write_current CHECK (valid = 1)
+    );
+    CREATE TABLE memo_collab_documents (
+      memo_id TEXT PRIMARY KEY, state BLOB NOT NULL, content_hash TEXT, updated_at TEXT NOT NULL
     );
     CREATE TABLE memo_search_documents (
       memo_id TEXT PRIMARY KEY, title TEXT, content_text TEXT, tags TEXT
@@ -114,6 +122,64 @@ describe("collab memo writer", () => {
     expect(second.contentHash).toBe(first.contentHash);
     const after = env.sqlite.query(`SELECT revision FROM memo_contents WHERE memo_id = 'm1'`).get();
     expect(after.revision).toBe(before.revision + 1);
+  });
+
+  test("rejects a room whose base was changed by an outside save", async () => {
+    const env = seedDatabase();
+    const writer = createCollabMemoWriter(env.database);
+    await expect(writer.materialize("m1", mergedDoc, {
+      expectedContentHash: "stale-hash", actorLabel: "user:alice", state: new Uint8Array([1]),
+    })).rejects.toMatchObject({ code: "revision_conflict", status: 409 });
+    expect(env.sqlite.query("SELECT revision, content_hash FROM memo_contents").get())
+      .toEqual({ revision: 1, content_hash: "seed-hash" });
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_revisions").get().count).toBe(0);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_collab_documents").get().count).toBe(0);
+  });
+
+  test("checks the revision inside the batch, not just before hashing", async () => {
+    const env = seedDatabase();
+    const batch = env.database.batch;
+    env.database.batch = async (statements) => {
+      env.sqlite.query("UPDATE memo_contents SET revision = 2, content_hash = 'outside-hash', content_markdown = 'outside save'").run();
+      return batch(statements);
+    };
+    const writer = createCollabMemoWriter(env.database);
+    await expect(writer.materialize("m1", mergedDoc, { actorLabel: "user:alice", state: new Uint8Array([1]) }))
+      .rejects.toMatchObject({ code: "revision_conflict", status: 409 });
+    expect(env.sqlite.query("SELECT revision, content_hash, content_markdown FROM memo_contents").get())
+      .toEqual({ revision: 2, content_hash: "outside-hash", content_markdown: "outside save" });
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_revisions").get().count).toBe(0);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_collab_documents").get().count).toBe(0);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_write_checks").get().count).toBe(0);
+  });
+
+  test("commits the CRDT state and its hash with the materialized memo", async () => {
+    const env = seedDatabase();
+    const writer = createCollabMemoWriter(env.database);
+    const state = new Uint8Array([10, 20, 30]);
+    const result = await writer.materialize("m1", mergedDoc, { state, expectedContentHash: "seed-hash" });
+    const stored = env.sqlite.query("SELECT state, content_hash FROM memo_collab_documents").get();
+    expect(stored.state).toEqual(state);
+    expect(stored.content_hash).toBe(result.contentHash);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_write_checks").get().count).toBe(0);
+    const revision = env.sqlite.query("SELECT revision FROM memo_contents").get().revision;
+    await writer.materialize("m1", mergedDoc, { state: new Uint8Array([40]), expectedContentHash: result.contentHash });
+    expect(env.sqlite.query("SELECT state FROM memo_collab_documents").get().state).toEqual(new Uint8Array([40]));
+    expect(env.sqlite.query("SELECT revision FROM memo_contents").get().revision).toBe(revision);
+  });
+
+  test("a CRDT storage failure cannot partially commit the memo or its history", async () => {
+    const env = seedDatabase();
+    env.sqlite.exec(`CREATE TRIGGER reject_collab BEFORE INSERT ON memo_collab_documents
+      BEGIN SELECT RAISE(ABORT, 'collab storage failure'); END;`);
+    const writer = createCollabMemoWriter(env.database);
+    await expect(writer.materialize("m1", mergedDoc, { actorLabel: "user:alice", state: new Uint8Array([1]) }))
+      .rejects.toThrow("collab storage failure");
+    expect(env.sqlite.query("SELECT revision, content_hash FROM memo_contents").get())
+      .toEqual({ revision: 1, content_hash: "seed-hash" });
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_revisions").get().count).toBe(0);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_search_documents").get().count).toBe(0);
+    expect(env.sqlite.query("SELECT COUNT(*) AS count FROM memo_write_checks").get().count).toBe(0);
   });
 
   test("leaves deleted notes alone", async () => {

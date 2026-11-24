@@ -15,6 +15,7 @@ import { auditStatement } from "./audit";
 import { createId, isoNow, parseJsonArray } from "./entity-utils";
 import { sha256 } from "./hash-utils";
 import { upsertMemoSearchDocumentStatement } from "./memo-search-index";
+import { runMemoWriteBatch } from "./memo-write-guard";
 import type { DatabaseAdapter, PreparedStatementAdapter } from "./storage-contract";
 
 const REVISION_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
@@ -255,7 +256,7 @@ export type MemoRevisionRestoreCollab = {
     memoId: string,
     content: { contentJson: TiptapDoc; contentHash: string },
     liveState: Uint8Array | null,
-  ) => Promise<{ statement: PreparedStatementAdapter; apply: () => Promise<void> }>;
+  ) => Promise<{ statement: PreparedStatementAdapter; apply: () => Promise<void> } | null>;
   end: (memoId: string) => Promise<void>;
 };
 
@@ -290,7 +291,7 @@ export const restoreMemoRevision = async (
     const now = isoNow();
     const collabRestore = await collab?.prepare(memoId, { contentJson, contentHash }, liveState ?? null);
 
-    await db.batch([
+    await runMemoWriteBatch(db, current, [
       createMemoRevisionStatement(db, current, actorLabel, now),
       trimMemoRevisionsStatement(db, memoId),
       db.prepare(

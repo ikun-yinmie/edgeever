@@ -4,10 +4,7 @@ import { dirname, extname, join, normalize, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url";
 import { hasBootstrapCredential } from "../apps/api/src/auth-bootstrap.ts";
 import { isUnauthenticatedAccessEnabled } from "../apps/api/src/auth-state.ts";
-import { createCollabDocumentStore } from "../apps/api/src/collab-document-store.ts";
-import { createCollabMemoWriter } from "../apps/api/src/collab-memo-writer.ts";
-import { createCollabRoomRegistry } from "../apps/api/src/collab-realtime.ts";
-import { resolveCollabInitialState, replaceCollabDocumentContent, yjsUpdateToTiptapJson } from "../apps/api/src/collab-seed.ts";
+import { createMemoCollaborationService } from "../apps/api/src/memo-collaboration-service.ts";
 import { fetchEdgeEverApp } from "../apps/api/src/index.ts";
 import { nodePublicFetch } from "../apps/api/src/node-public-network.ts";
 import { createSelfHostedStorageAdapter } from "../apps/api/src/self-hosted-storage-adapter.ts";
@@ -118,125 +115,14 @@ const executionContext = {
 // socket replays its upgrade request against the collab-session endpoint with
 // the same cookie, so scopes, share permissions and the auth mode are decided
 // in exactly one place.
-const collabDocuments = createCollabDocumentStore(storage.db);
-const collabMemoWriter = createCollabMemoWriter(storage.db);
-
-/**
- * A fresh room starts from the persisted merge while it is still fresh, and
- * is re-seeded from the memo content when an outside writer (mobile, desktop
- * outbox, the LWW web path) moved the memo on. Deterministic and single:
- * the seed conversion happens exactly once per room creation, so two members
- * opening the note at the same moment still get one document, never a
- * duplicated seed.
- */
-const loadCollabInitialState = async (memoId) => {
-  const [persisted, memoRow] = await Promise.all([
-    collabDocuments.loadWithHash(memoId),
-    storage.db
-      .prepare(
-        `SELECT c.content_json, c.content_hash
-         FROM memos m INNER JOIN memo_contents c ON c.memo_id = m.id
-         WHERE m.id = ? AND m.is_deleted = 0`,
-      )
-      .bind(memoId)
-      .first(),
-  ]);
-  let memoContentJson = null;
-  if (typeof memoRow?.content_json === "string") {
-    try {
-      memoContentJson = JSON.parse(memoRow.content_json);
-    } catch {
-      memoContentJson = null;
-    }
-  }
-  return resolveCollabInitialState({
-    persistedState: persisted.state,
-    persistedContentHash: persisted.contentHash,
-    memoContentJson,
-    memoContentHash: typeof memoRow?.content_hash === "string" ? memoRow.content_hash : null,
-  });
-};
-
-/**
- * Writes the merged document back into memo_contents so every non-collab
- * reader (list preview, search, mobile, public share page, the LWW save path)
- * keeps seeing the merged content. The writer short-circuits on an unchanged
- * hash, so the frequent calls below are a hash read, not a write.
- */
-const materializeCollabState = async (memoId, state, actorLabel = null) => {
-  try {
-    const contentJson = yjsUpdateToTiptapJson(state);
-    if (!contentJson) return;
-    const result = await collabMemoWriter.materialize(memoId, contentJson, { actorLabel });
-    if (result.contentHash) await collabDocuments.setContentHash(memoId, result.contentHash);
-  } catch (error) {
-    console.error(
-      `[collab] materialize failed for ${memoId}`,
-      error instanceof Error ? error.message : error,
-    );
-  }
-};
-
-// Every quiet-period flush is materialized, including the final tail; the
-// editor switch itself forces a history snapshot (see collab-memo-writer).
-const collabRooms = createCollabRoomRegistry({
-  loadState: (memoId) => loadCollabInitialState(memoId),
-  persistState: async (memoId, state, actorLabel) => {
-    await collabDocuments.save(memoId, state);
-    await materializeCollabState(memoId, state, actorLabel);
-  },
+const collaboration = createMemoCollaborationService(storage.db, {
   onError: (error, context) => console.error(
     `[collab] ${context.phase} failed for ${context.memoId}`,
     error instanceof Error ? error.message : error,
   ),
 });
-
-/**
- * Runtime port for revision restores: pause the room, swap the persisted and
- * in-memory CRDT document with one that retains delete information, then
- * resume. Cloudflare has no sockets and simply omits this port.
- */
-env.collabRestore = {
-  begin: (memoId) => collabRooms.beginRestore(memoId),
-  prepare: async (memoId, content, liveState) => {
-    const state = liveState ?? await collabDocuments.load(memoId);
-    const nextState = replaceCollabDocumentContent(state, content.contentJson);
-    return {
-      statement: collabDocuments.prepareSaveWithHash(memoId, nextState, content.contentHash),
-      apply: () => collabRooms.applyRestoredState(memoId, nextState),
-    };
-  },
-  end: (memoId) => collabRooms.endRestore(memoId),
-};
-
-const collabStateBytes = (value) => {
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value)) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  }
-  return null;
-};
-
-/**
- * Final sweep before the database closes: the throttled materialization can
- * lag the last edits of a session by up to one interval, and the rooms are
- * already destroyed at this point, so their states are read back from the
- * table instead of memory. The writer skips unchanged memos, so this is
- * a handful of point reads in the common case.
- */
-const materializeAllCollabMemos = async () => {
-  try {
-    const rows = (await storage.db.prepare(`SELECT memo_id, state FROM memo_collab_documents`).all())?.results ?? [];
-    for (const row of rows) {
-      const state = collabStateBytes(row?.state);
-      if (!state || typeof row?.memo_id !== "string") continue;
-      await materializeCollabState(row.memo_id, state);
-    }
-  } catch (error) {
-    console.error("[collab] final materialize sweep failed", error instanceof Error ? error.message : error);
-  }
-};
+const collabRooms = collaboration.rooms;
+env.collabRestore = collaboration.restore;
 
 const COLLAB_SOCKET_PATH = /^\/api\/v1\/memos\/([^/]+)\/collab-ws$/;
 /** ws -> { memoId, connection, opened, ready, pending } */
@@ -464,11 +350,9 @@ const shutdown = async (signal) => {
 
   try {
     await server.stop();
-    // Flush every open collaboration document before the database closes,
-    // otherwise the last edits of a live session are lost. Then run one final
-    // materialization sweep so memo_contents carries the last tail too.
-    await collabRooms.shutdown();
-    await materializeAllCollabMemos();
+    // Drain only accepted live edits. Historical collaboration cache rows may
+    // be stale after successful HTTP/mobile saves and must never be replayed.
+    await collaboration.shutdown();
     sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     sqlite.close();
     console.log("[self-hosted] shutdown complete");

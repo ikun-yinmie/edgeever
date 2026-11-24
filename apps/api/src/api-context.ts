@@ -8,7 +8,7 @@ export type Bindings = {
   publicNetworkFetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** The only persistence dependency exposed to application code. */
   storage: StorageAdapter;
-  /** Runtime adapter that pauses/refreshes an open collaboration room on restore. */
+  /** Pauses/refreshes collaboration rooms around document saves and restores. */
   collabRestore?: MemoRevisionRestoreCollab;
   EDGE_EVER_AUTH_USERNAME?: string;
   EDGE_EVER_RUNTIME?: string;

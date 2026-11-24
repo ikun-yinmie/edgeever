@@ -36,7 +36,9 @@ import {
     mapMemoRevision as mapMemoRevisionService,
     restoreMemoRevision as restoreMemoRevisionService,
   type MemoRevisionSourceRow,
+  type MemoRevisionRestoreCollab,
 } from "./memo-revision-service";
+import type { MemoMutationCommit } from "./memo-service";
 import {
   createNotebookRecord,
   findNotebooks,
@@ -176,6 +178,8 @@ export type McpToolDependencies = {
     actor: AuditActor,
     actorLabel: string,
     requireEditSession?: boolean,
+    commit?: MemoMutationCommit,
+    collabRestore?: MemoRevisionRestoreCollab | null,
   ) => Promise<MemoUpdateResult>;
 };
 
@@ -763,7 +767,7 @@ export const callMcpTool = async (
       const result = await updateMemoRecord(c.env.storage.db, auth.workspaceId, memoId, {
         expectedRevision: args.expectedRevision,
         contentMarkdown: mutation.contentMarkdown,
-      }, getAuditActor(c), getActorLabel(c));
+      }, getAuditActor(c), getActorLabel(c), false, undefined, c.env.collabRestore);
       if (result.error !== undefined) {
         throw new AppError(result.error, result.message, result.status ?? 400);
       }
@@ -817,7 +821,10 @@ export const callMcpTool = async (
           updatedAt: getOptionalString(args.updatedAt) ?? undefined,
         },
         actor,
-        actorLabel
+        actorLabel,
+        false,
+        undefined,
+        c.env.collabRestore,
       );
 
       if ("error" in result) {

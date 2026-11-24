@@ -11,7 +11,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { Database } from "bun:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
+import { tiptapJsonToYjsUpdate } from "../apps/api/src/collab-seed.ts";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as decoding from "lib0/decoding";
@@ -96,7 +98,8 @@ const stopServer = async (server) => {
   if (!server || server.child.exitCode !== null) return;
   const exited = new Promise((resolvePromise) => server.child.once("exit", resolvePromise));
   server.child.kill("SIGTERM");
-  await Promise.race([exited, wait(15_000)]);
+  await Promise.race([exited, wait(15_000).then(() => { throw new Error(`server did not stop:\n${server.log()}`); })]);
+  if (server.child.exitCode !== 0) throw new Error(`server shutdown failed:\n${server.log()}`);
 };
 
 const login = async (url) => {
@@ -139,6 +142,31 @@ const getMemoContent = async (url, cookie, memoId) => {
   if (!response.ok) throw new Error(`memo read failed: ${response.status}`);
   return (await response.json()).memo;
 };
+
+const saveMemoContent = async (url, cookie, memoId, contentJson) => {
+  const headers = { "content-type": "application/json", cookie };
+  const sessionResponse = await fetch(`${url}/api/v1/memos/${memoId}/edit-sessions`, {
+    method: "POST", headers,
+  });
+  if (!sessionResponse.ok) throw new Error(`edit session failed: ${sessionResponse.status}`);
+  const { editSession } = await sessionResponse.json();
+  const response = await fetch(`${url}/api/v1/memos/${memoId}`, {
+    method: "PATCH", headers,
+    body: JSON.stringify({
+      expectedRevision: editSession.baseRevision,
+      expectedContentHash: editSession.baseContentHash,
+      editSessionId: editSession.id,
+      contentJson,
+    }),
+  });
+  if (!response.ok) throw new Error(`memo save failed: ${response.status} ${await response.text()}`);
+  return (await response.json()).memo;
+};
+
+const textDoc = (text) => ({
+  type: "doc",
+  content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+});
 
 const socketUrl = (url, memoId) =>
   `${url.replace(/^http/, "ws")}/api/v1/memos/${encodeURIComponent(memoId)}/collab-ws`;
@@ -364,6 +392,67 @@ describe("collaboration websocket session", () => {
     await expectRefused(`${socketUrl(server.url, memoId)}?token=${encodeURIComponent("bogus-token")}`, "");
   }, 20_000);
 
+  test("a stale closed collaboration cache cannot replace an acknowledged save on restart", async () => {
+    const staleDoc = textDoc("old collaboration content");
+    const id = await seedMemo(server.url, cookie, staleDoc);
+    const oldMemo = await getMemoContent(server.url, cookie, id);
+    const saved = await saveMemoContent(server.url, cookie, id, textDoc("latest acknowledged content"));
+    // Reproduce a database left by the old release: a former collaborator's
+    // cache remains after a successfully acknowledged non-collaboration save.
+    const sqlite = new Database(join(dataDir, "edgeever.sqlite"));
+    try {
+      sqlite.query(`INSERT INTO memo_collab_documents (memo_id, state, content_hash, updated_at)
+        VALUES (?, ?, ?, ?)`).run(id, tiptapJsonToYjsUpdate(staleDoc), oldMemo.contentHash, "2026-01-01T00:00:00.000Z");
+    } finally {
+      sqlite.close();
+    }
+
+    for (let restart = 0; restart < 2; restart += 1) {
+      await stopServer(server);
+      server = await startServer(dataDir);
+      cookie = await login(server.url);
+      const memo = await getMemoContent(server.url, cookie, id);
+      expect(memo.contentJson).toEqual(saved.contentJson);
+      expect(memo.contentHash).toBe(saved.contentHash);
+      expect(memo.revision).toBe(saved.revision);
+    }
+  }, 90_000);
+
+  test("a corrupt historical collaboration cache cannot block a valid normal save", async () => {
+    const id = await seedMemo(server.url, cookie, textDoc("before repairing corrupt cache"));
+    const sqlite = new Database(join(dataDir, "edgeever.sqlite"));
+    try {
+      sqlite.query(`INSERT INTO memo_collab_documents (memo_id, state, content_hash, updated_at)
+        VALUES (?, ?, 'invalid-cache', '2026-01-01T00:00:00.000Z')`).run(id, new Uint8Array([1, 2, 3]));
+    } finally {
+      sqlite.close();
+    }
+    const saved = await saveMemoContent(server.url, cookie, id, textDoc("valid new body"));
+    expect(saved.contentText).toBe("valid new body");
+    expect((await getMemoContent(server.url, cookie, id)).contentHash).toBe(saved.contentHash);
+  });
+
+  test("a normal save replaces an open room before its next edit", async () => {
+    const id = await seedMemo(server.url, cookie, textDoc("old open-room content"));
+    const editor = await openEditor(socketUrl(server.url, id), cookie);
+    try {
+      expect(await waitFor(() => editor.text().includes("old open-room content"))).toBe(true);
+      const saved = await saveMemoContent(server.url, cookie, id, textDoc("new normal-save content"));
+      expect(await waitFor(() => editor.text() === "new normal-save content")).toBe(true);
+      editor.type("collaborator's next edit");
+      expect(await waitFor(async () => {
+        const memo = await getMemoContent(server.url, cookie, id);
+        return memo.contentText.includes("collaborator's next edit");
+      })).toBe(true);
+      const memo = await getMemoContent(server.url, cookie, id);
+      expect(memo.contentText).toContain("new normal-save content");
+      expect(memo.contentText).not.toContain("old open-room content");
+      expect(memo.revision).toBeGreaterThan(saved.revision);
+    } finally {
+      await editor.close();
+    }
+  }, 30_000);
+
   test("the merged document survives a server restart", async () => {
     const editor = await openEditor(socketUrl(server.url, memoId), cookie);
     editor.type("persisted-across-restart ");
@@ -380,7 +469,7 @@ describe("collaboration websocket session", () => {
     expect(await waitFor(() => reconnected.text().includes("persisted-across-restart"))).toBe(true);
     await reconnected.close();
 
-    // The shutdown sweep materializes the final tail into memo_contents, so a
+    // The live-room drain materializes the final tail into memo_contents, so a
     // non-collaboration reader sees the merged content after the restart too.
     const memo = await getMemoContent(server.url, cookie, memoId);
     expect(JSON.stringify(memo.contentJson)).toContain("persisted-across-restart");

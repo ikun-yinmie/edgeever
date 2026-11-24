@@ -128,6 +128,7 @@ type MemoRouteDependencies = {
     actor: AuditActor,
     actorLabel: string,
     requireEditSession: boolean,
+    collabRestore?: MemoRevisionRestoreCollab | null,
   ) => Promise<
     | { memo: MemoDetail; error?: never; message?: never; status?: never; details?: never }
     | { error: string; message: string; status?: number; details?: Record<string, unknown> }
@@ -424,6 +425,7 @@ export const registerMemoRoutes = (
       getAuditActor(context),
       getActorLabel(context),
       true,
+      context.env.collabRestore ?? null,
     );
     if ("error" in result) {
       return context.json(

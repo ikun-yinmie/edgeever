@@ -182,8 +182,17 @@ export const resolveCollabInitialState = (input: CollabInitialStateInput): Uint8
 
   if (persistedFresh) return input.persistedState;
 
-  const seed = input.memoContentJson ? tiptapJsonToYjsUpdate(input.memoContentJson, field) : null;
-  if (seed) return seed;
+  if (isPlainObject(input.memoContentJson) && input.memoContentJson.type === "doc") {
+    // Replace inside the old CRDT, preserving its deleted nodes. A brand-new
+    // seed forgets their identities and merges an old page's body back in on
+    // reconnect. An intentionally empty doc is authoritative too.
+    try {
+      return replaceCollabDocumentContent(input.persistedState, input.memoContentJson, field);
+    } catch {
+      // A corrupt cache must not prevent a valid memo from opening.
+      return replaceCollabDocumentContent(null, input.memoContentJson, field);
+    }
+  }
 
   // The memo content is unreadable; a stale merge is better than an empty room.
   return input.persistedState && input.persistedState.byteLength > 0 ? input.persistedState : null;

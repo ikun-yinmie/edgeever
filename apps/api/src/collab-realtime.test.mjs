@@ -4,6 +4,7 @@ import * as encoding from "lib0/encoding";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
+import { AppError } from "./app-error.ts";
 import {
   COLLAB_MESSAGE_AWARENESS,
   COLLAB_MESSAGE_SYNC,
@@ -192,6 +193,51 @@ describe("collab realtime rooms", () => {
     await restarted.registry.shutdown();
   });
 
+  test("closing an unchanged room does not republish its cached content", async () => {
+    let writes = 0;
+    const { registry } = createRegistry({
+      loadState: async () => createStoredState("already saved"),
+      persistState: async () => { writes += 1; },
+    });
+    const client = await connectClient(registry, "memo_clean");
+    expect(client.text()).toBe("already saved");
+    await client.disconnect();
+    await registry.shutdown();
+    expect(writes).toBe(0);
+  });
+
+  test("shutdown drains edits accepted while the previous persistence is in flight", async () => {
+    const writes = [];
+    let releaseFirst;
+    const firstWrite = new Promise((resolve) => { releaseFirst = resolve; });
+    const { registry } = createRegistry({
+      persistDebounceMs: 60_000,
+      persistState: async (_memoId, state, actorLabel) => {
+        writes.push({ state, actorLabel });
+        if (writes.length === 1) await firstWrite;
+      },
+    });
+    const client = await connectClient(registry, "memo_tail", { actorLabel: "user:alice" });
+    client.type("first");
+    client.pump();
+    const flushing = client.room.flush();
+    expect(writes).toHaveLength(1);
+    client.type(" and final tail");
+    client.pump();
+    const stopping = registry.shutdown();
+    releaseFirst();
+    await flushing;
+    await stopping;
+    const replay = new Y.Doc();
+    try {
+      Y.applyUpdate(replay, writes.at(-1).state);
+      expect(replay.getText("body").toString()).toBe("first and final tail");
+      expect(writes.at(-1).actorLabel).toBe("user:alice");
+    } finally {
+      replay.destroy();
+    }
+  });
+
   test("a read-only member cannot mutate the shared document", async () => {
     const { registry } = createRegistry();
     const editor = await connectClient(registry, "memo_readonly", { displayName: "Editor" });
@@ -304,6 +350,50 @@ describe("collab attribution, pause and restore", () => {
     settle([fresh]);
     expect(fresh.text()).toBe("committed restore");
     await registry.shutdown();
+  });
+
+  test("a rejected normal save replays edits received while the room was paused", async () => {
+    const { registry, persisted } = createRegistry();
+    const client = await connectClient(registry, "memo_rejected_save", { actorLabel: "user:alice" });
+    client.type("before");
+    client.pump();
+    await registry.beginRestore("memo_rejected_save");
+    client.type(" during rejected save");
+    client.pump();
+    await registry.endRestore("memo_rejected_save");
+    expect(client.closeReason()).toBeNull();
+    await registry.shutdown();
+    const replay = new Y.Doc();
+    try {
+      Y.applyUpdate(replay, persisted.get("memo_rejected_save"));
+      expect(replay.getText("body").toString()).toBe("before during rejected save");
+    } finally {
+      replay.destroy();
+    }
+  });
+
+  test("a persistence conflict releases the stale room without flushing it again", async () => {
+    let writes = 0;
+    const { registry } = createRegistry({
+      loadState: async () => createStoredState("fresh server body"),
+      persistState: async () => {
+        writes += 1;
+        throw new AppError("revision_conflict", "outside save", 409);
+      },
+      persistDebounceMs: 60_000,
+    });
+    const client = await connectClient(registry, "memo_stale_room");
+    client.type(" stale addition");
+    client.pump();
+    await client.room.flush();
+    await wait(1);
+    expect(client.closeReason()).toBe("collab_stale");
+    expect(registry.roomCount()).toBe(0);
+    expect(writes).toBe(1);
+    const fresh = await connectClient(registry, "memo_stale_room");
+    expect(fresh.text()).toBe("fresh server body");
+    await registry.shutdown();
+    expect(writes).toBe(1);
   });
 
   test("waits for a restore before opening a new room", async () => {

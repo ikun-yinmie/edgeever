@@ -382,7 +382,8 @@ registerMemoRoutes(app, {
     { getMemoDetail, getMemoDetailRow },
     collabRestore,
   ),
-  updateMemo: (...args) => updateMemoRecord(...args),
+  updateMemo: (db, workspaceId, memoId, input, actor, actorLabel, requireEditSession, collabRestore) =>
+    updateMemoRecord(db, workspaceId, memoId, input, actor, actorLabel, requireEditSession, undefined, collabRestore),
 });
 
 registerBackupRoutes(app, {
