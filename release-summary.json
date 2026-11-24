@@ -1,14 +1,17 @@
 {
-  "version": "1.105.4",
+  "version": "1.105.5",
   "changes": {
     "en-US": [
-      "After signing in or out on mobile, the workspace opens on the home page instead of restoring the previous settings page."
+      "On mobile, tapping Done waits for the latest edits to save before returning to the note preview; a failed save keeps the editor open with the draft, and the edited note stays selected.",
+      "Collaboration sync no longer lets a stale room cache overwrite a note that was just saved."
     ],
     "zh-CN": [
-      "手机端登录或退出后回到首页，不再停留在上一次的设置页。"
+      "手机端点击完成后会等最新内容保存成功再回到笔记预览；保存失败则留在编辑器并保留草稿，返回后仍选中刚编辑的笔记。",
+      "协作同步不再让旧的房间缓存覆盖刚刚保存成功的笔记。"
     ],
     "ja": [
-      "モバイルでログインまたはログアウトした後、以前の設定ページではなくホームが開くようになりました。"
+      "モバイルで「完了」を押すと最新の編集が保存されるまで待ってノートのプレビューに戻り、保存に失敗した場合はエディタに留まって下書きを保持し、編集したノートが選択されたままになります。",
+      "コラボ同期で古いルームキャッシュが保存直後のノートを上書きしなくなりました。"
     ]
   }
 }
