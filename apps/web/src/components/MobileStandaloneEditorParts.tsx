@@ -14,37 +14,42 @@ export const MobileEditorHeader = ({
   saveLabel,
   statusClassName,
   saveState,
+  leavePending = false,
   onLeave,
 }: {
   saveLabel: string;
   statusClassName: string;
   saveState: MobileEditorSaveState;
+  leavePending?: boolean;
   onLeave: () => void;
 }) => (
-  <MobileEditorHeaderInner saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} onLeave={onLeave} />
+  <MobileEditorHeaderInner saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} leavePending={leavePending} onLeave={onLeave} />
 );
 
 const MobileEditorHeaderInner = ({
   saveLabel,
   statusClassName,
   saveState,
+  leavePending,
   onLeave,
 }: {
   saveLabel: string;
   statusClassName: string;
   saveState: MobileEditorSaveState;
+  leavePending: boolean;
   onLeave: () => void;
 }) => {
   const { t } = useTranslation();
+  const disabled = leavePending || saveState === "compressing" || saveState === "uploading";
 
   return (
     <header className="mobile-editor-header">
-      <button className="mobile-editor-back" type="button" aria-label={t("editor.backToList")} onClick={onLeave}>
+      <button className="mobile-editor-back" type="button" aria-label={t("common.back")} disabled={disabled} onClick={onLeave}>
         ‹
       </button>
       <div className="mobile-editor-actions">
         <span className={`mobile-editor-status ${statusClassName}`}>{saveLabel}</span>
-        <button className="mobile-editor-done" type="button" disabled={saveState === "loading"} onClick={onLeave}>
+        <button className="mobile-editor-done" type="button" disabled={disabled || saveState === "loading"} onClick={onLeave}>
           {t("editor.done")}
         </button>
       </div>

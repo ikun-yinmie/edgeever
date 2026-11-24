@@ -50,7 +50,8 @@ describe("desktop create-note wiring", () => {
   test("restores the last memo after a renderer hibernate reload", () => {
     expect(workspaceSource).toContain("readDesktopWorkspaceRestoreState");
     expect(workspaceSource).toContain("writeDesktopWorkspaceRestoreState");
-    expect(workspaceSource).toContain("useWorkspaceSelection(workspaceRestore)");
+    expect(workspaceSource).toContain("useWorkspaceSelection(isInitialMobileEditorReturn");
+    expect(workspaceSource).toContain(": workspaceRestore);");
     expect(editorSource).toContain("onHibernatePrepare");
   });
 

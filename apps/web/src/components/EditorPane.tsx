@@ -436,7 +436,6 @@ export const EditorPane = (props: EditorPaneProps) => {
   const { editingActive, requestEdit } = useStandaloneMobileEditor({
     memoId: props.memo?.id ?? null,
     mobileDefaultEditMemoId: props.mobileDefaultEditMemoId,
-    onBackToList: props.onBackToList,
     onDefaultEditConsumed: props.onMobileDefaultEditConsumed,
     readOnly: readOnly || sharedReadOnly,
   });

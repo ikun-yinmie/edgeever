@@ -260,9 +260,9 @@ export const WorkspaceApp = ({
 
     return user?.id ? readWebWorkspaceRestoreState(user.id) : null;
   });
-  const [activePane, setActivePane] = useState<Pane>(() => ((isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute) && !isInitialMobileEditorReturn ? "editor" : "memos"));
+  const [activePane, setActivePane] = useState<Pane>(() => ((isInitialSettingsRoute || isInitialPluginsRoute || isInitialTemplatesRoute || isInitialAiPromptsRoute || isInitialExecutionCenterRoute || isInitialMobileEditorReturn) ? "editor" : "memos"));
   const [memoView, setMemoView] = useState<MemoView>(() => (
-    isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
+    isInitialMobileEditorReturn ? "notebook" : isTrashRoute ? "trash" : workspaceRestore?.memoView ?? "notebook"
   ));
   const [memberNotesView, setMemberNotesView] = useState<MemberNotesMember | null>(null);
   const memberNotesActive = memberNotesView !== null;
@@ -281,14 +281,16 @@ export const WorkspaceApp = ({
     setSelectedMemoIds,
     setSelectedNotebookId,
     setSelectionMoveTargetNotebookId,
-  } = useWorkspaceSelection(workspaceRestore);
+  } = useWorkspaceSelection(isInitialMobileEditorReturn
+    ? { ...workspaceRestore, selectedMemoId: route.mobileEditorReturnMemoId }
+    : workspaceRestore);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [notebookRevealRequest, setNotebookRevealRequest] = useState<{ notebookId: string; token: number } | null>(null);
   const notebookRevealTokenRef = useRef(0);
   const autoSelectedDemoNotebookRef = useRef(false);
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
-  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(route.mobileEditorReturnMemoId ?? workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
   const consumedOpenMemoParamRef = useRef<string | null>(null);
   // Group-shared memos live in the author's workspace, so they never appear in
   // the personal list. The selection-normalising effect below would otherwise
@@ -886,7 +888,7 @@ export const WorkspaceApp = ({
   }, [i18n.resolvedLanguage, notebooks, selectedNotebookId, selectedTag]);
 
   const mobileEditorReturnMemoId = route.mobileEditorReturnMemoId;
-  const visibleActivePane: Pane = mobileEditorReturnMemoId ? "memos" : activePane;
+  const visibleActivePane: Pane = mobileEditorReturnMemoId ? "editor" : activePane;
   const defaultMemoNotebookId =
     notebooks.find(
       (notebook) => notebook.id === "nb_inbox" || notebook.slug === "inbox" || notebook.name === "等待分类"
@@ -946,6 +948,21 @@ export const WorkspaceApp = ({
     clearMobileEditorReturnPreview(memoId);
   }, []);
 
+  const returnToMobileMemoPreview = useCallback((memoId: string) => {
+    applyMobileEditorReturnPreview(memoId);
+    // Keep the returned note selected even before its refreshed list arrives.
+    pendingQuickSwitcherMemoIdRef.current = memoId;
+    clearPendingCreatedMemo();
+    setMemoView("notebook");
+    setRightView("editor");
+    setMobileBottomNavActive("home");
+    setActivePane("editor");
+    setSelectedMemoId(memoId);
+    setCreatedMemoEditId(null);
+    clearMemoSelection();
+    void invalidateWorkspaceQueries();
+  }, [applyMobileEditorReturnPreview, clearMemoSelection, clearPendingCreatedMemo, invalidateWorkspaceQueries, setSelectedMemoId]);
+
   useEffect(() => {
     const handleStandaloneMobileEditorReturn = () => {
       if (document.visibilityState === "hidden") {
@@ -957,14 +974,8 @@ export const WorkspaceApp = ({
         return;
       }
 
-      applyMobileEditorReturnPreview(returnedMemoId);
       consumeStandaloneMobileEditorReturn(returnedMemoId);
-      setRightView("editor");
-      setMobileBottomNavActive("home");
-      setActivePane("memos");
-      setSelectedMemoId(null);
-      setCreatedMemoEditId(null);
-      clearMemoSelection();
+      returnToMobileMemoPreview(returnedMemoId);
     };
 
     handleStandaloneMobileEditorReturn();
@@ -975,7 +986,7 @@ export const WorkspaceApp = ({
       window.removeEventListener("pageshow", handleStandaloneMobileEditorReturn);
       document.removeEventListener("visibilitychange", handleStandaloneMobileEditorReturn);
     };
-  }, [applyMobileEditorReturnPreview, clearMemoSelection]);
+  }, [returnToMobileMemoPreview]);
 
   useEffect(() => {
     const returnedMemoId = route.mobileEditorReturnMemoId;
@@ -983,18 +994,10 @@ export const WorkspaceApp = ({
       return;
     }
 
-    applyMobileEditorReturnPreview(returnedMemoId);
-
     skipNextHomeRouteSyncRef.current = false;
-    setRightView("editor");
-    setMobileBottomNavActive("home");
-    setActivePane("memos");
-    setSelectedMemoId(null);
-    setCreatedMemoEditId(null);
-    clearMemoSelection();
-
+    returnToMobileMemoPreview(returnedMemoId);
     navigateWorkspaceHome({ replace: true });
-  }, [applyMobileEditorReturnPreview, clearMemoSelection, navigateWorkspaceHome, route.mobileEditorReturnMemoId]);
+  }, [navigateWorkspaceHome, returnToMobileMemoPreview, route.mobileEditorReturnMemoId]);
 
   const enterMemoSelectionMode = useCallback(() => {
     beginMemoSelection();

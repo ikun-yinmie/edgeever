@@ -31,7 +31,6 @@ import {
 } from "@/lib/mobile-editor";
 import {
   MOBILE_EDITOR_INITIAL_FOCUS_DELAY_MS,
-  MOBILE_EDITOR_LEAVE_SAVE_TIMEOUT_MS,
   getMobileEditorDraftKey,
   getMobileEditorParams,
   getMobileEditorStatusClassName,
@@ -122,6 +121,7 @@ export const MobileStandaloneTiptapEditor = ({
   const contentJsonRef = useRef<TiptapDoc>(emptyDoc());
   const [saveState, setSaveState] = useState<MobileEditorSaveState>("loading");
   const saveStateRef = useRef<MobileEditorSaveState>("loading");
+  const [leavePending, setLeavePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const [, setToolbarVersion] = useState(0);
@@ -479,19 +479,19 @@ export const MobileStandaloneTiptapEditor = ({
   }, [clearPersistedDrafts, currentSnapshot, persistLocalDraft, setSaveStateStable]);
 
   const saveNow = useCallback(
-    async ({ keepalive = false }: { keepalive?: boolean } = {}) => {
-      const currentMemo = memoRef.current;
-      if (!currentMemo) {
-        return false;
+    ({ keepalive = false }: { keepalive?: boolean } = {}): Promise<boolean> => {
+      if (currentSavePromiseRef.current) {
+        return currentSavePromiseRef.current;
       }
 
-      if (savingRef.current) {
-        return currentSavePromiseRef.current ?? false;
+      const currentMemo = memoRef.current;
+      if (!currentMemo) {
+        return Promise.resolve(false);
       }
 
       const snapshot = currentSnapshot();
       if (!dirtyRef.current && snapshot === lastSavedSnapshotRef.current) {
-        return true;
+        return Promise.resolve(true);
       }
 
       if (saveTimerRef.current !== null) {
@@ -503,12 +503,13 @@ export const MobileStandaloneTiptapEditor = ({
       setSaveStateStable("saving");
       setError(null);
 
-      let payload: ReturnType<typeof buildSavePayload> | null = null;
-
-      try {
-        payload = buildSavePayload(currentMemo);
-        await localDb.syncQueue.delete(getMemoUpdateQueueId(currentMemo.id)).catch(() => undefined);
-        currentSavePromiseRef.current = (async () => {
+      // Share the entire save operation, including queue cleanup and error handling,
+      // so Done can wait for an autosave without missing its result.
+      const savePromise = (async () => {
+        let payload: ReturnType<typeof buildSavePayload> | null = null;
+        try {
+          payload = buildSavePayload(currentMemo);
+          await localDb.syncQueue.delete(getMemoUpdateQueueId(currentMemo.id)).catch(() => undefined);
           const data = await requestMobileEditorJson<MobileEditorMemoResponse>(`/api/v1/memos/${encodeURIComponent(currentMemo.id)}`, {
             method: "PATCH",
             keepalive,
@@ -517,27 +518,31 @@ export const MobileStandaloneTiptapEditor = ({
 
           await applySavedMemo(data.memo, snapshot);
           return true;
-        })();
+        } catch (saveError) {
+          persistLocalDraft();
+          setError(saveError instanceof Error ? saveError.message : t("editor.saveState.error"));
+          if (payload && shouldQueueMemoSaveError(saveError)) {
+            await queueMemoUpdate({ memoId: currentMemo.id, ...payload });
+            setSaveStateStable("local-draft");
+            return false;
+          }
 
-        return await currentSavePromiseRef.current;
-      } catch (saveError) {
-        persistLocalDraft();
-        if (payload && shouldQueueMemoSaveError(saveError)) {
-          await queueMemoUpdate({ memoId: currentMemo.id, ...payload });
-          setError(null);
-          setSaveStateStable("local-draft");
-          return true;
+          setSaveStateStable("error");
+          return false;
         }
+      })();
 
+      currentSavePromiseRef.current = savePromise.catch((saveError) => {
         setError(saveError instanceof Error ? saveError.message : t("editor.saveState.error"));
         setSaveStateStable("error");
         return false;
-      } finally {
+      }).finally(() => {
         savingRef.current = false;
         currentSavePromiseRef.current = null;
-      }
+      });
+      return currentSavePromiseRef.current;
     },
-    [applySavedMemo, buildSavePayload, currentSnapshot, persistLocalDraft, setSaveStateStable]
+    [applySavedMemo, buildSavePayload, currentSnapshot, persistLocalDraft, setSaveStateStable, t]
   );
 
   useEffect(() => {
@@ -587,27 +592,52 @@ export const MobileStandaloneTiptapEditor = ({
   }, [memoId, onLeave, persistReturnPreview]);
 
   const leavePage = useCallback(async () => {
-    if (leavingRef.current) {
+    if (leavingRef.current || notebookUpdatePending || saveStateRef.current === "compressing" || saveStateRef.current === "uploading") {
+      return;
+    }
+    if (!memoRef.current) {
+      navigateBack();
       return;
     }
 
     leavingRef.current = true;
-    persistLocalDraft();
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    setSaveStateStable("leaving");
+    setLeavePending(true);
+    const wasEditable = Boolean(editor?.isEditable);
+    editor?.commands.blur();
+    editor?.setEditable(false, false);
 
     try {
-      await Promise.race([
-        saveNow({ keepalive: true }),
-        new Promise((resolve) => window.setTimeout(resolve, MOBILE_EDITOR_LEAVE_SAVE_TIMEOUT_MS)),
-      ]);
-    } finally {
+      if (editor && !editor.isDestroyed) {
+        contentJsonRef.current = editor.getJSON() as TiptapDoc;
+      }
+      if (dirtyRef.current || currentSnapshot() !== lastSavedSnapshotRef.current) {
+        persistLocalDraft();
+      }
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      setSaveStateStable("leaving");
+
+      // An in-flight autosave may only contain an earlier snapshot. Flush the
+      // latest edits too, and never navigate on a timeout or a failed save.
+      do {
+        if (!await saveNow()) {
+          return;
+        }
+      } while (dirtyRef.current || currentSnapshot() !== lastSavedSnapshotRef.current);
       navigateBack();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : t("editor.saveState.error"));
+      setSaveStateStable("error");
+    } finally {
+      leavingRef.current = false;
+      setLeavePending(false);
+      if (editor && !editor.isDestroyed) {
+        editor.setEditable(wasEditable, false);
+      }
     }
-  }, [navigateBack, persistLocalDraft, saveNow, setSaveStateStable]);
+  }, [currentSnapshot, editor, navigateBack, notebookUpdatePending, persistLocalDraft, saveNow, setSaveStateStable, t]);
 
   const handleTitleChange = (nextTitle: string) => {
     setTitle(nextTitle);
@@ -866,11 +896,11 @@ export const MobileStandaloneTiptapEditor = ({
           contentJsonRef.current = queuedPayload.contentJson || emptyDoc();
           editor.commands.setContent(contentJsonRef.current, { emitUpdate: false });
           lastSavedSnapshotRef.current = JSON.stringify({
-            title: queuedTitle,
-            tagsText: queuedTagsText,
-            contentJson: contentJsonRef.current,
+            title: nextTitle,
+            tagsText: nextTagsText,
+            contentJson: nextContentJson,
           });
-          dirtyRef.current = false;
+          dirtyRef.current = true;
           setSaveStateStable("local-draft");
           focusEditorAfterLoad();
         } else {
@@ -880,10 +910,11 @@ export const MobileStandaloneTiptapEditor = ({
           tagsTextRef.current = nextTagsText;
           contentJsonRef.current = nextContentJson;
           editor.commands.setContent(nextContentJson, { emitUpdate: false });
+          contentJsonRef.current = editor.getJSON() as TiptapDoc;
           lastSavedSnapshotRef.current = JSON.stringify({
             title: nextTitle,
             tagsText: nextTagsText,
-            contentJson: nextContentJson,
+            contentJson: contentJsonRef.current,
           });
           dirtyRef.current = false;
           setSaveStateStable("idle");
@@ -984,15 +1015,15 @@ export const MobileStandaloneTiptapEditor = ({
               : saveState === "saved"
                 ? t("editor.saveState.saved")
                 : saveState === "local-draft"
-                  ? t("editor.saveState.unsaved")
+                  ? t("editor.saveState.queued")
                   : saveState === "leaving"
-                    ? t("editor.backToList")
+                    ? t("editor.saveState.saving")
                     : saveState === "error"
                       ? t("editor.saveState.error")
                       : t("editor.saveState.saved");
   const statusClassName = getMobileEditorStatusClassName(saveState);
   const editorActionDisabled =
-    !memo || !editor || saveState === "loading" || saveState === "compressing" || saveState === "uploading" || saveState === "leaving";
+    !memo || !editor || leavePending || notebookUpdatePending || saveState === "loading" || saveState === "compressing" || saveState === "uploading" || saveState === "leaving";
   const currentNotebookLabel =
     notebookOptions.find((notebook) => notebook.id === memo?.notebookId)?.name ?? t("editor.notebookFallback");
   const activeListItemType = editor?.isActive("taskItem") ? "taskItem" : "listItem";
@@ -1010,13 +1041,14 @@ export const MobileStandaloneTiptapEditor = ({
 
   return (
     <div className="mobile-editor-shell">
-      <MobileEditorHeader saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} onLeave={() => void leavePage()} />
+      <MobileEditorHeader saveLabel={saveLabel} statusClassName={statusClassName} saveState={saveState} leavePending={leavePending || notebookUpdatePending} onLeave={() => void leavePage()} />
 
       <main className="mobile-editor-main">
         {error && <div className="mobile-editor-error">{error}</div>}
         <input
           className="mobile-editor-title"
           value={title}
+          disabled={!memo || leavePending || saveState === "loading"}
           autoComplete="on"
           autoCorrect="on"
           inputMode="text"
@@ -1026,12 +1058,12 @@ export const MobileStandaloneTiptapEditor = ({
         <div className="mobile-editor-meta-row">
           <MobileEditorNotebookButton
             label={currentNotebookLabel}
-            disabled={!memo || notebookUpdatePending || saveState === "loading" || notebookOptions.length === 0}
+            disabled={!memo || leavePending || notebookUpdatePending || saveState === "loading" || notebookOptions.length === 0}
             onOpen={() => setNotebookSheetOpen(true)}
           />
           <EditorTagPicker
             contentMarkdown={fallbackMarkdown}
-            disabled={!memo || saveState === "loading"}
+            disabled={!memo || leavePending || saveState === "loading"}
             loadTags={loadTags}
             title={title}
             value={tagsText}
