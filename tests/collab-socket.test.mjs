@@ -202,8 +202,10 @@ const insertParagraph = (doc, text) => {
  * Opens a real Yjs client over the socket. It speaks the same frame format the
  * browser client will, so convergence here is convergence in the product.
  */
-const openEditor = (url, cookie) => new Promise((resolvePromise, reject) => {
+const openEditor = (url, cookie, initialState) => new Promise((resolvePromise, reject) => {
   const doc = new Y.Doc();
+  if (initialState) Y.applyUpdate(doc, initialState);
+  let synced = false;
   const awareness = new awarenessProtocol.Awareness(doc);
   const origin = { id: "browser", canEdit: true, send: () => undefined, close: () => undefined };
   const socket = new WebSocket(url, { headers: cookie ? { cookie } : {} });
@@ -220,7 +222,9 @@ const openEditor = (url, cookie) => new Promise((resolvePromise, reject) => {
     if (messageType === 0) {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, 0);
+      const syncType = decoding.peekVarUint(decoder);
       syncProtocol.readSyncMessage(decoder, encoder, doc, origin);
+      if (syncType === syncProtocol.messageYjsSyncStep2) synced = true;
       if (encoding.length(encoder) > 1) socket.send(encoding.toUint8Array(encoder));
       return;
     }
@@ -240,6 +244,7 @@ const openEditor = (url, cookie) => new Promise((resolvePromise, reject) => {
       doc,
       awareness,
       text: () => fragmentText(doc),
+      synced: () => synced,
       type: (value) => insertParagraph(doc, value),
       close: () => new Promise((resolveClose) => {
         socket.addEventListener("close", () => resolveClose(), { once: true });
@@ -452,6 +457,39 @@ describe("collaboration websocket session", () => {
       await editor.close();
     }
   }, 30_000);
+
+  for (const staleCache of [false, true]) {
+    test(`an unchanged ${staleCache ? "reseeded" : "new"} room keeps its CRDT identities across restart`, async () => {
+      const originalDoc = textDoc("unchanged content must not duplicate on reconnect");
+      const id = await seedMemo(server.url, cookie, originalDoc);
+      const before = await getMemoContent(server.url, cookie, id);
+      if (staleCache) {
+        const sqlite = new Database(join(dataDir, "edgeever.sqlite"));
+        try {
+          sqlite.query(`INSERT INTO memo_collab_documents (memo_id, state, content_hash, updated_at)
+            VALUES (?, ?, 'old-cache-hash', '2026-01-01T00:00:00.000Z')`)
+            .run(id, tiptapJsonToYjsUpdate(textDoc("old cache")));
+        } finally { sqlite.close(); }
+      }
+      const first = await openEditor(socketUrl(server.url, id), cookie);
+      expect(await waitFor(() => first.text() === "unchanged content must not duplicate on reconnect")).toBe(true);
+      const clientState = Y.encodeStateAsUpdate(first.doc);
+      await first.close();
+      // No edit was made. Closing/restarting may not materialize the memo,
+      // but the seed's identities still have to survive in the cache.
+      await stopServer(server);
+      server = await startServer(dataDir);
+      cookie = await login(server.url);
+      const reconnected = await openEditor(socketUrl(server.url, id), cookie, clientState);
+      try {
+        expect(await waitFor(() => reconnected.synced())).toBe(true);
+        expect(reconnected.text()).toBe("unchanged content must not duplicate on reconnect");
+        const memo = await getMemoContent(server.url, cookie, id);
+        expect(memo.contentHash).toBe(before.contentHash);
+        expect(memo.revision).toBe(before.revision);
+      } finally { await reconnected.close(); }
+    }, 90_000);
+  }
 
   test("the merged document survives a server restart", async () => {
     const editor = await openEditor(socketUrl(server.url, memoId), cookie);

@@ -4,6 +4,7 @@ import { createCollabMemoWriter } from "./collab-memo-writer";
 import { createCollabRoomRegistry, type CollabRoomRegistryOptions } from "./collab-realtime";
 import { replaceCollabDocumentContent, resolveCollabInitialState, yjsUpdateToTiptapJson } from "./collab-seed";
 import type { MemoRevisionRestoreCollab } from "./memo-revision-service";
+import { runMemoWriteBatch } from "./memo-write-guard";
 import type { DatabaseAdapter } from "./storage-contract";
 
 /** Storage/room coordination, independent of the websocket runtime. */
@@ -20,10 +21,10 @@ export const createMemoCollaborationService = (
       const [persisted, memo] = await Promise.all([
         documents.loadWithHash(memoId),
         database.prepare(
-          `SELECT c.content_json, c.content_hash
+          `SELECT c.content_json, c.content_hash, c.revision
            FROM memos m INNER JOIN memo_contents c ON c.memo_id = m.id
            WHERE m.id = ? AND m.is_deleted = 0`,
-        ).bind(memoId).first<{ content_json: string; content_hash: string }>(),
+        ).bind(memoId).first<{ content_json: string; content_hash: string; revision: number }>(),
       ]);
       if (!memo) {
         baseHashes.delete(memoId);
@@ -31,13 +32,23 @@ export const createMemoCollaborationService = (
       }
       let contentJson: unknown = null;
       try { contentJson = JSON.parse(memo.content_json); } catch { /* Keep the usable cache fallback. */ }
-      baseHashes.set(memoId, memo.content_hash);
-      return resolveCollabInitialState({
+      const state = resolveCollabInitialState({
         persistedState: persisted.state,
         persistedContentHash: persisted.contentHash,
         memoContentJson: contentJson,
         memoContentHash: memo.content_hash,
       });
+      if (state && state !== persisted.state) {
+        // Even a read-only visit must retain its seed identities. Recreating a
+        // random seed after idle eviction/restart would merge the old client's
+        // identical body back in as different nodes. Persist cache state only,
+        // guarded by the memo base; do not materialize or bump its revision.
+        await runMemoWriteBatch(database, {
+          id: memoId, revision: memo.revision, content_hash: memo.content_hash,
+        }, [documents.prepareSaveWithHash(memoId, state, memo.content_hash)]);
+      }
+      baseHashes.set(memoId, memo.content_hash);
+      return state;
     },
     persistState: async (memoId, state, actorLabel) => {
       const contentJson = yjsUpdateToTiptapJson(state);
