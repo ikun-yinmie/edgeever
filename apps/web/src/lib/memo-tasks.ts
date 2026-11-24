@@ -85,11 +85,33 @@ export const memoTaskAttributes = (mark: MemoTaskMark) => ({
   rejected: mark === "rejected",
 });
 
+/**
+ * A rejected parent cancels its whole subtree, and re-opening it clears the
+ * cascade again. "Done" keeps descendant marks untouched (a parent can be
+ * finished while children stay pending).
+ */
+export const shouldCascadeMemoTaskMark = (mark: MemoTaskMark) => mark !== "done";
+
+const markTaskItemsDeep = (node: TiptapNode, mark: MemoTaskMark) => {
+  for (const child of node.content ?? []) {
+    if (child.type === "taskItem") {
+      child.attrs = { ...child.attrs, ...memoTaskAttributes(mark) };
+    }
+    // Task items sit inside taskList wrappers, so keep walking containers.
+    markTaskItemsDeep(child, mark);
+  }
+};
+
+export const applyMemoTaskMarkToNode = (node: TiptapNode, mark: MemoTaskMark, cascade = shouldCascadeMemoTaskMark(mark)) => {
+  node.attrs = { ...node.attrs, ...memoTaskAttributes(mark) };
+  if (cascade) markTaskItemsDeep(node, mark);
+};
+
 export const updateMemoTaskDocument = (doc: TiptapDoc, task: MemoTask, mark: MemoTaskMark): TiptapDoc | null => {
   const node = findMemoTaskNode(doc, task.path);
   if (!node || textOf(node.content?.[0] ?? { type: "paragraph" }) !== task.text) return null;
   const updated = structuredClone(doc);
   const target = findMemoTaskNode(updated, task.path)!;
-  target.attrs = { ...target.attrs, ...memoTaskAttributes(mark) };
+  applyMemoTaskMarkToNode(target, mark);
   return updated;
 };

@@ -7,7 +7,8 @@ import {
   toggleTaskItemCollapseAtSelection,
 } from "@edgeever/shared";
 import i18n from "@/i18n";
-import { memoTaskAttributes, nextMemoTaskMark } from "@/lib/memo-tasks";
+import { nextMemoTaskMark } from "@/lib/memo-tasks";
+import { setMemoTaskMark } from "@/lib/memo-task-editor";
 import { hasTaskItemSubContent, isTaskItemCollapsed } from "./task-item-collapse";
 import { createTaskItemCompositionPlugin } from "./task-item-composition";
 
@@ -130,10 +131,8 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
         if (!currentNode) return;
         // Read the document, not the browser's two-state checkbox toggle.
         const mark = nextMemoTaskMark(currentNode.attrs);
-        editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {
-          ...currentNode.attrs,
-          ...memoTaskAttributes(mark),
-        }));
+        // Rejecting also rejects the subtree; re-opening clears the cascade.
+        setMemoTaskMark(editor, position, mark);
       });
 
       toggle.addEventListener("mousedown", (event) => event.preventDefault());

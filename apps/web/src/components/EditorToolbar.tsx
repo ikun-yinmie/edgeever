@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
 import { ensureCodeBlockTrailingParagraph } from "@edgeever/shared";
+import { setMemoTaskMark } from "@/lib/memo-task-editor";
 import { useTranslation } from "react-i18next";
 import {
   Undo2,
@@ -634,10 +635,11 @@ export const EditorToolbar = ({
             title={t("editorToolbar.taskRejected")}
             active={isActive("taskItem", { rejected: true })}
             disabled={disabled || !isActive("taskItem")}
-            onClick={() => run((current) => current.chain().focus().updateAttributes("taskItem", {
-              checked: false,
-              rejected: current.getAttributes("taskItem").rejected !== true,
-            }).run())}
+            onClick={() => run((current) => setMemoTaskMark(
+              current,
+              null,
+              isActive("taskItem", { rejected: true }) ? "pending" : "rejected",
+            ))}
           >
             <SquareX className="h-4 w-4 text-[#dc2626] dark:text-red-400" />
           </EditorToolbarButton>

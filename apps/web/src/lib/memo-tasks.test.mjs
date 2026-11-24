@@ -19,13 +19,36 @@ describe("memo task progress", () => {
     expect(nextMemoTaskMark({ checked: true })).toBe("rejected");
     expect(nextMemoTaskMark({ rejected: true })).toBe("pending");
   });
-  test("cycling a parent leaves child marks intact and restores automatic progress", () => {
+  test("cycling a parent leaves child marks intact on done and cascades on reject", () => {
     let doc = markdownToDoc(`- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child`);
-    for (const expected of ["done", "rejected", "doing"]) {
+    const marks = [
+      ["done", ["done", "done", "rejected"]],
+      ["rejected", ["rejected", "rejected", "rejected"]],
+      ["pending", ["pending", "pending", "pending"]],
+    ];
+    for (const [expected, statuses] of marks) {
       const task = collectMemoTasks(doc, "memo")[0];
-      doc = updateMemoTaskDocument(doc, task, nextMemoTaskMark(task));
-      expect(collectMemoTasks(doc, "memo").map(task => task.status)).toEqual([expected, "done", "rejected"]);
+      expect(nextMemoTaskMark(task)).toBe(expected);
+      doc = updateMemoTaskDocument(doc, task, expected);
+      expect(collectMemoTasks(doc, "memo").map(task => task.status)).toEqual(statuses);
     }
+  });
+  test("rejecting a parent crosses out every descendant level and clears checked", () => {
+    const doc = markdownToDoc(`- [ ] Parent\n  - [x] Done child\n    - [ ] Grandchild\n  - [ ] Pending child\n- [ ] Sibling`);
+    const parent = collectMemoTasks(doc, "memo")[0];
+    const updated = updateMemoTaskDocument(doc, parent, "rejected");
+    expect(collectMemoTasks(updated, "memo").map(task => task.status))
+      .toEqual(["rejected", "rejected", "rejected", "rejected", "pending"]);
+    expect(collectMemoTasks(updated, "memo").slice(0, 4).every(task => task.checked === false)).toBe(true);
+  });
+  test("re-opening a parent clears the rejected cascade but keeps unrelated marks", () => {
+    const rejected = updateMemoTaskDocument(
+      markdownToDoc(`- [${cross}] Parent\n  - [${cross}] Child\n    - [${cross}] Grandchild\n- [${cross}] Sibling`),
+      collectMemoTasks(markdownToDoc(`- [${cross}] Parent\n  - [${cross}] Child\n    - [${cross}] Grandchild\n- [${cross}] Sibling`), "memo")[0],
+      "pending",
+    );
+    expect(collectMemoTasks(rejected, "memo").map(task => task.status))
+      .toEqual(["pending", "pending", "pending", "rejected"]);
   });
   test("derives progress from completed and crossed descendants without marking parents", () => {
     const tasks = tasksFor(`## Plan\n\n- [ ] Parent\n  - [x] Done\n  - [${cross}] Cancelled\n  - [ ] Pending\n- [ ] Untouched\n  - [ ] Child`);

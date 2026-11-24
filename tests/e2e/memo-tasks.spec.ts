@@ -5,7 +5,7 @@ const cross = "❌";
 test("task overview and in-note dialog derive progress and persist marks", async ({ page }) => {
   // The overview walks every note and each mark save waits for a server
   // acknowledgement, so a loaded local machine can take minutes.
-  test.setTimeout(240_000);
+  test.setTimeout(300_000);
   // Keep the dev API from proxying GitHub plugin manifests: an unreachable
   // github.com stalls workerd fast enough that unrelated PATCH saves 503.
   await page.route("**/api/v1/plugins/github/**", (route) => route.fulfill({ status: 404, body: "Plugin download disabled in this test" }));
@@ -45,6 +45,36 @@ test("task overview and in-note dialog derive progress and persist marks", async
     }
     await expect(page.getByRole("menu")).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("article-tasks-desktop.png") });
+    // Rejecting a parent crosses out its subtree; re-opening clears the cascade.
+    // A row that changes status moves between groups, so switch to the unfiltered
+    // view and open both groups before cycling.
+    await dialog.locator('button[aria-pressed]').filter({ hasText: "全部" }).click();
+    for (const group of ["done", "rejected"]) {
+      const header = dialog.locator(`[data-task-group="${group}"] > button`);
+      if ((await header.getAttribute("aria-expanded")) === "false") {
+        await header.click();
+      }
+    }
+    // This locator must not pin a status: the row leaves [data-task-status=doing].
+    const stableParent = dialog.locator("[data-task-id]").filter({ has: page.getByText("Parent", { exact: true }) }).first();
+    await stableParent.getByRole("button", { name: /更改标记/ }).click();
+    await expect(stableParent).toHaveAttribute("data-task-status", "done");
+    await stableParent.getByRole("button", { name: /更改标记/ }).click();
+    await expect(stableParent).toHaveAttribute("data-task-status", "rejected");
+    await expect(childRow).toHaveAttribute("data-task-status", "rejected");
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 })
+      .toContain(`- [${cross}] Parent\n  - [${cross}] Done child\n  - [${cross}] Crossed child\n  - [${cross}] Pending child`);
+    await stableParent.getByRole("button", { name: /更改标记/ }).click();
+    await expect(stableParent).toHaveAttribute("data-task-status", "pending");
+    await expect(childRow).toHaveAttribute("data-task-status", "pending");
+    // The rejected cascade reset every child to pending; re-check one child so
+    // the parent derives "doing" again for the later filter steps.
+    await childRow.getByRole("button", { name: /更改标记/ }).click();
+    await expect(childRow).toHaveAttribute("data-task-status", "done");
+    await expect(stableParent).toHaveAttribute("data-task-status", "doing");
+    // The later overview steps read persisted data, so wait for the restore.
+    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 })
+      .toContain(`- [ ] Parent\n  - [ ] Done child\n  - [ ] Crossed child\n  - [x] Pending child`);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
@@ -60,6 +90,15 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await trigger.click();
     await dialog.locator('button[aria-pressed]').filter({ hasText: "进行中" }).click();
     const parentTarget = dialog.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await expect(parentTarget).toBeVisible();
+    // A status filter keeps the outline: the done child stays nested as context
+    // instead of the whole list becoming flat.
+    const nestedChild = dialog.locator("[data-task-context]").filter({ has: page.getByText("Pending child", { exact: true }) });
+    await expect(nestedChild).toBeVisible();
+    expect(await nestedChild.evaluate(
+      (element, parent) => element.getBoundingClientRect().left > parent.getBoundingClientRect().left,
+      await parentTarget.elementHandle(),
+    )).toBe(true);
     await parentTarget.getByRole("button", { name: /定位原文/ }).click();
     await expect(dialog).toBeHidden();
     await expect(parentItem).toHaveAttribute("data-collapsed", "true");

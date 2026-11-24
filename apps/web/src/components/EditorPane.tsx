@@ -75,7 +75,8 @@ import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } f
 import { readEditorCursor, writeEditorCursor } from "@/lib/editor-cursor-memory";
 import { EditorOutline } from "./EditorOutline";
 import { MemoTasksDialog } from "./dialogs/MemoTasksDialog";
-import { collectMemoTasks, memoTaskAttributes, updateMemoTaskDocument, type MemoTask, type MemoTaskMark } from "@/lib/memo-tasks";
+import { collectMemoTasks, updateMemoTaskDocument, type MemoTask, type MemoTaskMark } from "@/lib/memo-tasks";
+import { setMemoTaskMark } from "@/lib/memo-task-editor";
 import { MobileOutlineSheet } from "./MobileOutlineSheet";
 import { ScrollToEdgeButtons } from "./ScrollToEdgeButtons";
 import { useAiBubbleMenu } from "./editor/useAiBubbleMenu";
@@ -3246,8 +3247,8 @@ const RichEditorPane = ({
       const current = editorRef.current;
       const position = taskPosition(task);
       if (!isEditorReady(current) || position === null) throw new Error(t("memoTasks.changed"));
-      const node = current.state.doc.nodeAt(position)!;
-      current.view.dispatch(current.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, ...memoTaskAttributes(mark) }));
+      // Rejecting also rejects the subtree; re-opening clears the cascade.
+      setMemoTaskMark(current, position, mark);
     }
   }, [effectiveReadOnly, getCurrentContentJson, handleMarkdownSourceChange, hydrateMarkdownSource, markDirty, persistCurrentDraft, t, tagsText, taskPosition, title, useMarkdownSourceEditor, useMobilePlainTextEditor]);
 
