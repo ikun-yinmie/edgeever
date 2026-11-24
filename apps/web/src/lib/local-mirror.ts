@@ -63,6 +63,13 @@ export const hasLocalSyncCursorRewound = hasSyncCursorRewound;
 
 export const isLocalMirrorInitialized = async (scope: string) => Boolean(await getMeta(scope, SYNC_IDENTITY_KEY));
 
+/** Cursor the long-poll watcher resumes from; null until the mirror bootstrapped. */
+export const getLocalSyncCursor = async (scope: string) => {
+  const value = await getMeta(scope, SYNC_CURSOR_KEY);
+  const cursor = Number(value);
+  return value !== null && Number.isFinite(cursor) ? cursor : null;
+};
+
 export const hasLocalMirrorData = async (scope: string) =>
   (await localDb.memos.where("scope").equals(scope).count()) > 0 ||
   (await localDb.notebooks.where("scope").equals(scope).count()) > 0;

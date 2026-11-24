@@ -31,6 +31,18 @@ export type SyncChangesResponse = {
   syncIdentity?: string;
 };
 
+/**
+ * Long-poll answer of `/api/v1/sync/watch`. It carries no entities so a
+ * waiting client can cheaply learn that the workspace cursor moved and then
+ * pull the regular `/sync/changes` page.
+ */
+export type SyncWatchResponse = {
+  cursor: number;
+  changed: boolean;
+  syncIdentity?: string;
+  timedOut: boolean;
+};
+
 export type SyncCursorState = {
   cursor: number;
   syncIdentity: string;

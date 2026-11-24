@@ -150,6 +150,54 @@ export const registerSyncRoutes = (
     });
   });
 
+  // Long-poll change watcher: clients keep one request in flight while they are
+  // visible and pull the full page through `/sync/changes` as soon as the
+  // workspace cursor advances. This is runtime-agnostic (no websocket or
+  // pub/sub dependency), so it works on the self-hosted Bun server and on
+  // Workers alike, and gives sub-second cross-client updates.
+  const SYNC_WATCH_POLL_INTERVAL_MS = 600;
+  const SYNC_WATCH_MAX_TIMEOUT_MS = 25_000;
+
+  app.get("/api/v1/sync/watch", async (context) => {
+    const denied = requireScopes(context, "read:notebooks", "read:memos");
+    if (denied) return denied;
+
+    const workspaceId = getWorkspaceId(context);
+    const cursor = dependencies.clampNumber(
+      Number(context.req.query("cursor") ?? 0),
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const timeoutMs = dependencies.clampNumber(
+      Number(context.req.query("timeout") ?? 20_000),
+      1_000,
+      SYNC_WATCH_MAX_TIMEOUT_MS,
+    );
+    const readServerCursor = async () => (await context.env.storage.db.prepare(
+      `SELECT COALESCE(MAX(c.id), 0) AS cursor
+       FROM mobile_sync_changes c
+       WHERE c.workspace_id = ?`,
+    ).bind(workspaceId).first<{ cursor: number }>())?.cursor ?? 0;
+    const workspaceRow = await context.env.storage.db.prepare(
+      `SELECT created_at AS sync_identity FROM workspaces WHERE id = ?`,
+    ).bind(workspaceId).first<{ sync_identity: string }>();
+    const signal = context.req.raw.signal;
+    const deadline = Date.now() + timeoutMs;
+    let serverCursor = await readServerCursor();
+
+    while (serverCursor <= cursor && Date.now() < deadline && !signal.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, SYNC_WATCH_POLL_INTERVAL_MS));
+      serverCursor = await readServerCursor();
+    }
+
+    return context.json({
+      cursor: serverCursor,
+      changed: serverCursor > cursor,
+      syncIdentity: workspaceRow?.sync_identity,
+      timedOut: serverCursor <= cursor,
+    });
+  });
+
   app.get("/api/v1/sync/changes", async (context) => {
     const denied = requireScopes(context, "read:notebooks", "read:memos");
     if (denied) return denied;

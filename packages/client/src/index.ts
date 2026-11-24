@@ -66,6 +66,7 @@ import type {
   SyncBootstrapResponse,
   SyncChange,
   SyncChangesResponse,
+  SyncWatchResponse,
   DeploymentMetadata,
   PluginAiGenerateRequest,
   PluginPublicFetchRequest,
@@ -618,7 +619,7 @@ export type ApiResponseDiagnostics = {
   rayId?: string;
 };
 
-export type { SyncBootstrapResponse, SyncChangesResponse };
+export type { SyncBootstrapResponse, SyncChangesResponse, SyncWatchResponse };
 
 export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
   const getFetch = () => options.fetch ?? globalThis.fetch;
@@ -1730,6 +1731,16 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
       const search = new URLSearchParams({ cursor: String(params.cursor) });
       if (params.limit) search.set("limit", String(params.limit));
       return request<SyncChangesResponse>(`/api/v1/sync/changes?${search.toString()}`);
+    },
+
+    // Long-poll: resolves when the workspace cursor advances, when the server
+    // deadline expires, or when `signal` aborts the request.
+    syncWatch: (params: { cursor: number; timeoutMs?: number; signal?: AbortSignal }) => {
+      const search = new URLSearchParams({ cursor: String(params.cursor) });
+      if (params.timeoutMs) search.set("timeout", String(params.timeoutMs));
+      return request<SyncWatchResponse>(`/api/v1/sync/watch?${search.toString()}`, {
+        signal: params.signal,
+      });
     },
 
     getMobileSyncBootstrapPage: (afterId: string | null = null, limit = 100) => {

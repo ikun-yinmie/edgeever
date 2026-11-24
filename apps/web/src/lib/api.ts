@@ -32,6 +32,7 @@ export type {
   MemoShareResponse,
   SyncBootstrapResponse,
   SyncChangesResponse,
+  SyncWatchResponse,
 } from "@edgeever/client";
 
 const WEB_DEVICE_ID_STORAGE_KEY = "edgeever.web.device-id";

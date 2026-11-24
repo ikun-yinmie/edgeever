@@ -410,3 +410,46 @@ describe("sync route contracts", () => {
     expect(detailQueryBindingCounts).toEqual([91, 91, 21]);
   });
 });
+
+describe("sync watch contract", () => {
+  test("times out without changes and wakes once the cursor advances", async () => {
+    const fixture = createSyncIntegrationFixture();
+    try {
+      const idle = await fixture.app.request(
+        "/api/v1/sync/watch?cursor=2&timeout=1000",
+        {},
+        { storage: fixture.storage },
+      );
+      expect(idle.status).toBe(200);
+      expect(await idle.json()).toMatchObject({ cursor: 2, changed: false, timedOut: true });
+
+      fixture.sqlite.exec(`
+        INSERT INTO mobile_sync_changes (workspace_id, entity_type, entity_id, operation)
+        VALUES ('ws_1', 'memo', 'memo_trashed', 'upsert')
+      `);
+      const woke = await fixture.app.request(
+        "/api/v1/sync/watch?cursor=2&timeout=1000",
+        {},
+        { storage: fixture.storage },
+      );
+      expect(woke.status).toBe(200);
+      expect(await woke.json()).toMatchObject({ cursor: 3, changed: true, timedOut: false });
+    } finally {
+      fixture.sqlite.close();
+    }
+  });
+
+  test("never reports changes for a cursor ahead of the server", async () => {
+    const fixture = createSyncIntegrationFixture();
+    try {
+      const response = await fixture.app.request(
+        "/api/v1/sync/watch?cursor=99&timeout=1000",
+        {},
+        { storage: fixture.storage },
+      );
+      expect(await response.json()).toMatchObject({ cursor: 2, changed: false, timedOut: true });
+    } finally {
+      fixture.sqlite.close();
+    }
+  });
+});
