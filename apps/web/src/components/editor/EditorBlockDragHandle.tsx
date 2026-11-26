@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import type { DragHandleRule, NestedOptions } from "@tiptap/extension-drag-handle";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
 import { ensureCodeBlockTrailingParagraph } from "@edgeever/shared";
 import DragHandle from "@tiptap/extension-drag-handle-react";
@@ -53,6 +55,47 @@ import { cn } from "@/lib/utils";
 
 const BLOCK_DRAG_HANDLE_CLASS_NAME = "edgeever-block-drag-handle";
 const BLOCK_MENU_TRIGGER_CLASS_NAME = "edgeever-block-menu-trigger";
+
+const LIST_ITEM_NODE_TYPES: readonly string[] = ["listItem", "taskItem"];
+
+/** Depth of the innermost list item that contains the resolved position. */
+const enclosingListItemDepth = ($pos: ResolvedPos) => {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if (LIST_ITEM_NODE_TYPES.includes($pos.node(depth).type.name)) return depth;
+  }
+  return -1;
+};
+
+/**
+ * A row keeps its handle even while the pointer is over the chrome in front of
+ * its text (collapse chevron, checkbox). That chrome is not editable content,
+ * so the position lookup lands on the row's boundary and the scoring hands the
+ * row's sub-tree to the enclosing item: the handle then jumps up to the parent
+ * row, away from the pointer, and the ⋮ next to the row can never be clicked.
+ * Excluding the blocks that wrap the row's list keeps the handle on the row the
+ * pointer is in.
+ */
+const nestedItemRowRule: DragHandleRule = {
+  id: "edgeeverNestedItemRow",
+  evaluate: ({ node, pos, $pos }) => {
+    const itemDepth = enclosingListItemDepth($pos);
+    if (itemDepth < 1) return 0;
+    const itemPos = $pos.before(itemDepth);
+    const containsItem = pos < itemPos && itemPos + $pos.node(itemDepth).nodeSize <= pos + node.nodeSize;
+    return containsItem ? 1000 : 0;
+  },
+};
+
+/**
+ * Keep the vendor's "near the left or top edge prefers the outer block"
+ * behaviour, but soften it: at the default strength every candidate two levels
+ * deep is excluded, and next to a list row that band covers the upper half of
+ * the first line, so the handle went missing instead of following the pointer.
+ */
+const NESTED_DRAG_HANDLE_OPTIONS: NestedOptions = {
+  edgeDetection: { strength: 100 },
+  rules: [nestedItemRowRule],
+};
 
 const isBlockHandleEvent = (event: DragEvent, className: string) => {
   const target = event.target;
@@ -481,7 +524,7 @@ export const EditorBlockDragHandle = ({ editor }: { editor: Editor }) => {
     <DragHandle
       editor={editor}
       className={cn(BLOCK_DRAG_HANDLE_CLASS_NAME, overCollapsibleBlock && "edgeever-block-drag-handle-shift")}
-      nested
+      nested={NESTED_DRAG_HANDLE_OPTIONS}
       onNodeChange={({ node, pos }) => {
         hoveredBlockPosRef.current = pos >= 0 ? pos : null;
         const dom = pos >= 0 ? editor.view.nodeDOM(pos) : null;
