@@ -1,5 +1,5 @@
 import { devices, expect as baseExpect, test, type Page } from "@playwright/test";
-import { createExcerpt, docToMarkdown, docToText, type MemoDetail, type Notebook, type TiptapDoc } from "@edgeever/shared";
+import { createExcerpt, docToMarkdown, docToText, markdownToDoc, type MemoDetail, type Notebook, type TiptapDoc } from "@edgeever/shared";
 
 const memoId = "memo_mobile_edit_return";
 const originalText = "手机笔记原来的正文";
@@ -40,7 +40,12 @@ const mockWorkspace = async (page: Page) => {
     saveGate: null as Promise<void> | null,
     saveHangs: false,
     saveErrorStatus: 0,
+    // Emulate a server whose reads lag behind the save this client just made:
+    // the returned workspace must still show the saved note from its mirror.
+    staleReads: false,
+    preEditMemo: null as MemoDetail | null,
   };
+  const readMemo = () => (state.staleReads && state.preEditMemo ? state.preEditMemo : state.memo);
 
   const otherMemo: MemoDetail = {
     ...state.memo, id: "memo_mobile_edit_other", title: "不应跳到这篇笔记", contentText: "另一篇笔记的正文",
@@ -61,18 +66,20 @@ const mockWorkspace = async (page: Page) => {
     }
     if (path === "/api/health") return json({ ok: true, runtime: "cloudflare-workers" });
     if (path === "/api/v1/notebooks") return json({ notebooks: [notebook] });
-    if (path === "/api/v1/memos") return json({ memos: [otherMemo, state.memo], totalCount: 2, nextCursor: null });
+    if (path === "/api/v1/memos") return json({ memos: [otherMemo, readMemo()], totalCount: 2, nextCursor: null });
     if (path === "/api/v1/sync/bootstrap") {
-      return json({ notebooks: [notebook], memos: [otherMemo, state.memo], snapshotCursor: state.memo.revision,
+      return json({ notebooks: [notebook], memos: [otherMemo, readMemo()], snapshotCursor: readMemo().revision,
         syncIdentity: "mobile-edit-return-fixture", totalCount: 2, nextAfterId: null });
     }
     if (path === "/api/v1/sync/changes") {
       const cursor = Number(url.searchParams.get("cursor") ?? 0);
+      const memo = readMemo();
+      const useStaleCursor = Boolean(state.staleReads && state.preEditMemo);
       return json({
-        changes: cursor < state.memo.revision ? [{
-          cursor: state.memo.revision, entityType: "memo", entityId: memoId, operation: "upsert", notebook: null, memo: state.memo,
+        changes: !useStaleCursor && cursor < memo.revision ? [{
+          cursor: memo.revision, entityType: "memo", entityId: memoId, operation: "upsert", notebook: null, memo,
         }] : [],
-        cursor: state.memo.revision, serverCursor: state.memo.revision, syncIdentity: "mobile-edit-return-fixture", hasMore: false,
+        cursor: memo.revision, serverCursor: memo.revision, syncIdentity: "mobile-edit-return-fixture", hasMore: false,
       });
     }
     if (path === "/api/v1/tags") return json({ tags: [] });
@@ -87,7 +94,14 @@ const mockWorkspace = async (page: Page) => {
       } });
     }
     if (path === `/api/v1/memos/${memoId}` || path === `/api/v1/memos/${memoId}/save`) {
-      if (request.method() === "GET") return json({ memo: state.memo });
+      if (request.method() === "GET") {
+        // A detail endpoint that is not answering while the change feed stays
+        // silent: the returned workspace can only render its mirror copy.
+        if (state.staleReads) {
+          return json({ error: { code: "TEMPORARILY_UNAVAILABLE", message: "测试详情读取暂不可用" } }, 503);
+        }
+        return json({ memo: readMemo() });
+      }
       const payload = request.postDataJSON() as SavePayload;
       state.saves.push(payload);
       if (state.saveHangs) await new Promise(() => undefined);
@@ -143,6 +157,22 @@ const readLocalStore = (page: Page, storeName: string) => page.evaluate((store) 
     read.onsuccess = () => { db.close(); resolve(read.result); };
   };
 }), storeName);
+
+/**
+ * The returned workspace preview reads the IndexedDB mirror. Wait for the
+ * first boot's bootstrap to finish so the return trip takes the incremental
+ * path instead of rebuilding the scope from the (stale) fixture.
+ */
+const waitForLocalMirror = async (page: Page, id: string) => {
+  await expect.poll(async () => {
+    const [meta, memos] = await Promise.all([
+      readLocalStore(page, "syncMeta").catch(() => []),
+      readLocalStore(page, "memos").catch(() => []),
+    ]);
+    return (meta as Array<{ key?: string }>).some((entry) => entry.key === "cursor")
+      && (memos as Array<{ id?: string }>).some((entry) => entry.id === id);
+  }, { timeout: 30_000 }).toBe(true);
+};
 
 const gateSave = (state: Awaited<ReturnType<typeof mockWorkspace>>) => {
   let release!: () => void;
@@ -343,4 +373,74 @@ test("Done saves a recovered queued edit instead of treating it as already saved
   expect(state.memo.tags).toEqual(["mobile"]);
   expect(state.saves).toHaveLength(1);
   expect(await readLocalStore(page, "syncQueue")).toEqual([]);
+});
+
+test("Done returns to the saved note when the server detail read fails", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  const title = "手机保存后的新标题";
+  const text = "手机保存后的新正文不会被旧镜像覆盖";
+
+  await page.goto(`/?openMemo=${memoId}`);
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.locator(".edgeever-workspace-editor")).toContainText(originalText);
+  await waitForLocalMirror(page, memoId);
+  await page.getByRole("button", { name: "编辑笔记", exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile-edit\.html#/);
+  const editor = page.locator(".edgeever-mobile-tiptap-content[contenteditable='true']");
+  await expect(editor).toContainText(originalText);
+
+  await page.locator(".mobile-editor-title").fill(title);
+  await editor.fill(text);
+
+  // The save is authoritative, but the detail read fails and the change feed
+  // stays silent on the way back. Only the mirror the editor wrote can keep
+  // the returned preview on the edited version.
+  state.preEditMemo = state.memo;
+  state.staleReads = true;
+  await page.getByRole("button", { name: "完成", exact: true }).click();
+  await expectPreview(page, title, text);
+  expect(state.memo.title).toBe(title);
+  expect(state.memo.contentText).toBe(text);
+});
+
+test("Done returns to the scroll position where the editor left off", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  const paragraphs = Array.from({ length: 60 }, (_, index) => `第 ${index + 1} 段。把手机端编辑位置带回预览的长正文。`).join("\n\n");
+  state.memo = {
+    ...state.memo,
+    revision: 5,
+    contentHash: "mobile-hash-long",
+    contentJson: markdownToDoc(paragraphs) as TiptapDoc,
+    contentMarkdown: paragraphs,
+    contentText: docToText(markdownToDoc(paragraphs) as TiptapDoc),
+    excerpt: createExcerpt(paragraphs),
+  };
+
+  await page.goto(`/?openMemo=${memoId}`);
+  await page.waitForLoadState("domcontentloaded");
+  const preview = page.locator(".edgeever-editor");
+  await expect(page.locator(".edgeever-workspace-editor")).toContainText("第 1 段");
+  await expect.poll(() => preview.evaluate((element) => element.scrollHeight > element.clientHeight + 200)).toBe(true);
+
+  // Leave the reading screen away from the top so a stale scroll memory is
+  // visibly different from the editor position asserted below.
+  await preview.evaluate((element) => {
+    element.scrollTop = (element.scrollHeight - element.clientHeight) * 0.12;
+  });
+  await page.waitForTimeout(300);
+
+  await page.getByRole("button", { name: "编辑笔记", exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile-edit\.html#/);
+  const editor = page.locator(".edgeever-mobile-tiptap-content[contenteditable='true']");
+  await expect(editor).toContainText("第 1 段");
+  await page.evaluate(() => window.scrollTo(0, (document.scrollingElement!.scrollHeight - window.innerHeight) * 0.7));
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "完成", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`openMemo=${memoId}`));
+  await expect.poll(async () => preview.evaluate((element) => {
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+    return maxScrollTop > 0 ? element.scrollTop / maxScrollTop : 0;
+  }), { timeout: 30_000 }).toBeGreaterThan(0.55);
 });

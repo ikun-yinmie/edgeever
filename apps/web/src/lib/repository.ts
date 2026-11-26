@@ -34,6 +34,7 @@ import {
   deleteLocalResource,
   createLocalResource,
   putLocalMemo,
+  putLocalMemoIfNotStale,
   removeLocalMemo,
   putLocalNotebook,
   putLocalMemoUpdate,
@@ -113,7 +114,9 @@ const getLocalMemoWithoutBlocking = (scope: string, memoId: string) =>
   ]);
 
 const cacheMemoWithoutBlocking = (scope: string, memo: MemoDetail) => {
-  void putLocalMemo(scope, memo).catch(() => {
+  // Never let a lagging detail response overwrite a row saved more recently
+  // (the standalone mobile editor caches its save before returning here).
+  void putLocalMemoIfNotStale(scope, memo).catch(() => {
     // Cache persistence must never prevent a remote detail from rendering.
   });
 };

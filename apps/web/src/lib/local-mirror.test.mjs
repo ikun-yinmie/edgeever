@@ -16,6 +16,7 @@ const {
   putLocalTemplate,
   putLocalMemo,
   putLocalMemoUpdate,
+  cacheSavedLocalMemo,
   applyLocalTagRename,
   applyLocalMemoMove,
   applyLocalMemoPin,
@@ -449,6 +450,56 @@ describe("local mirror", () => {
     expect((await getLocalMemo(scope, memo.id))?.title).toBe("Updated locally");
     expect((await getLocalMemo(scope, memo.id))?.tags).toEqual(["updated"]);
     expect((await getLocalMemo(scope, memo.id))?.contentMarkdown).toContain("Changed");
+  });
+
+  test("caches a memo the standalone editor saved over the pre-edit mirror row", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Before editing" });
+    const saved = {
+      ...memo,
+      title: "Saved from the phone",
+      contentMarkdown: "Saved from the phone",
+      revision: memo.revision + 1,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    };
+
+    expect(await cacheSavedLocalMemo(scope, saved)).toBe(true);
+    expect((await getLocalMemo(scope, memo.id))?.title).toBe("Saved from the phone");
+    expect((await getLocalMemo(scope, memo.id))?.revision).toBe(1);
+  });
+
+  test("does not regress a newer saved row to an older server snapshot", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Before editing" });
+    const saved = { ...memo, title: "Saved on the phone", revision: 4, updatedAt: "2026-01-02T00:00:00.000Z" };
+    expect(await cacheSavedLocalMemo(scope, saved)).toBe(true);
+
+    // A detail response that was already in flight can be older than the save.
+    expect(await cacheSavedLocalMemo(scope, { ...memo, title: "Stale server", revision: 3 })).toBe(false);
+    expect((await getLocalMemo(scope, memo.id))?.title).toBe("Saved on the phone");
+    expect((await getLocalMemo(scope, memo.id))?.revision).toBe(4);
+  });
+
+  test("does not overwrite a mirror row with a newer queued local update", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "nb-inbox", title: "Queued locally" });
+    await localDb.syncQueue.put({
+      id: `memo.update:${memo.id}`,
+      kind: "memo.update",
+      scope,
+      memoId: memo.id,
+      status: "pending",
+      payload: { memoId: memo.id, title: "Queued locally", contentMarkdown: "Queued locally", tags: [] },
+      attemptCount: 0,
+      lastError: null,
+      nextAttemptAt: null,
+      claimId: null,
+      createdAt: "2026-01-02T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+
+    expect(await cacheSavedLocalMemo(scope, { ...memo, title: "Server snapshot", revision: 2 })).toBe(false);
+    expect((await getLocalMemo(scope, memo.id))?.title).toBe("Queued locally");
   });
 
   test("caches templates inside the same local data scope", async () => {

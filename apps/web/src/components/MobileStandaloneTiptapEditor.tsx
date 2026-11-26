@@ -26,6 +26,7 @@ import { compressImageForUpload } from "@/lib/image-compression";
 import { localDb, type LocalDraft, type MemoUpdateSyncPayload } from "@/lib/local-db";
 import {
   getStandaloneMobileEditorReturnPath,
+  getStandaloneMobileEditorScope,
   markStandaloneMobileEditorReturning,
   writeMobileEditorReturnPreview,
 } from "@/lib/mobile-editor";
@@ -57,7 +58,8 @@ import {
 import { parseImageWidth, TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeever/shared/image-display";
 import { ThemeBlock } from "./ThemeBlock";
 import { EditorTagPicker } from "./EditorTagPicker";
-import { listLocalTags } from "@/lib/local-mirror";
+import { cacheSavedLocalMemo, listLocalTags } from "@/lib/local-mirror";
+import { writeEditorScrollMemory } from "@/components/editor/editor-scroll-memory";
 
 const ProtectedExternalImage = Image.extend({
   addPasteRules() {
@@ -115,6 +117,24 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number) => {
     ]);
   } finally {
     if (timer !== null) window.clearTimeout(timer);
+  }
+};
+
+/**
+ * The workspace preview reads the local mirror, not this editor's state. Mirror
+ * every memo the server confirms here so Done returns to the edited snapshot
+ * instead of the pre-edit one. Mirroring is a cache write: a stall or failure
+ * must never turn a successful save into an error.
+ */
+const cacheSavedMemoInMirror = async (memo: MemoDetail) => {
+  const scope = getStandaloneMobileEditorScope();
+  if (!scope) {
+    return;
+  }
+  try {
+    await withTimeout(cacheSavedLocalMemo(scope, memo), MOBILE_EDITOR_LOCAL_STORE_TIMEOUT_MS);
+  } catch {
+    // Best effort: the save itself already reaches the server.
   }
 };
 
@@ -418,6 +438,8 @@ export const MobileStandaloneTiptapEditor = ({
     if (currentSnapshot() === savedSnapshot) {
       dirtyRef.current = false;
       await withTimeout(clearPersistedDrafts(savedMemo.id), MOBILE_EDITOR_LOCAL_STORE_TIMEOUT_MS);
+      // Do this after the queue entry is gone so the mirror accepts the save.
+      await cacheSavedMemoInMirror(savedMemo);
       setSaveStateStable("saved");
       window.setTimeout(() => {
         if (!dirtyRef.current && !savingRef.current && !leavingRef.current) {
@@ -490,6 +512,7 @@ export const MobileStandaloneTiptapEditor = ({
 
       memoRef.current = data.memo;
       setMemo(data.memo);
+      void cacheSavedMemoInMirror(data.memo);
       backgroundSavePendingRef.current = false;
 
       if (remoteSnapshot === currentSnapshot()) {
@@ -522,7 +545,9 @@ export const MobileStandaloneTiptapEditor = ({
 
       const snapshot = currentSnapshot();
       if (!dirtyRef.current && snapshot === lastSavedSnapshotRef.current) {
-        return Promise.resolve(true);
+        // Done without edits still has to leave the mirror at the revision this
+        // editor loaded, or the preview would show an older mirrored copy.
+        return cacheSavedMemoInMirror(currentMemo).then(() => true);
       }
 
       if (saveTimerRef.current !== null) {
@@ -602,6 +627,20 @@ export const MobileStandaloneTiptapEditor = ({
     if (!currentMemo) {
       return;
     }
+
+    // The preview restores this memo's scroll memory on the way back. Record
+    // the editor's own position: the entry the preview wrote is where the user
+    // left the reading screen, not where they edited.
+    const scroller = document.scrollingElement;
+    const scrollHeight = Math.max(0, scroller?.scrollHeight ?? document.body.scrollHeight);
+    const scrollTop = Math.max(0, window.scrollY || scroller?.scrollTop || 0);
+    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
+    writeEditorScrollMemory(currentMemo.id, {
+      progress: maxScrollTop > 0 ? Math.min(1, Math.max(0, scrollTop / maxScrollTop)) : 0,
+      scrollHeight,
+      scrollTop,
+      updatedAt: Date.now(),
+    });
 
     writeMobileEditorReturnPreview({
       memoId: currentMemo.id,
@@ -783,6 +822,7 @@ export const MobileStandaloneTiptapEditor = ({
 
       memoRef.current = data.memo;
       setMemo(data.memo);
+      await cacheSavedMemoInMirror(data.memo);
       setSaveStateStable("saved");
       window.setTimeout(() => {
         if (!dirtyRef.current && !savingRef.current && !leavingRef.current) {
@@ -965,6 +1005,9 @@ export const MobileStandaloneTiptapEditor = ({
         );
 
         setMemo(data.memo);
+        // The mirror the workspace preview reads may still hold an older
+        // revision; align it with the snapshot this editor just loaded.
+        void cacheSavedMemoInMirror(data.memo);
 
         if (useDraft && draft) {
           setTitle(draft.title || "");
@@ -1139,6 +1182,7 @@ export const MobileStandaloneTiptapEditor = ({
             memoRef.current = data.memo;
             editSessionRef.current = sessionData.editSession;
             setMemo(data.memo);
+            void cacheSavedMemoInMirror(data.memo);
             setTitle(nextTitle);
             titleRef.current = nextTitle;
             setTagsText(nextTagsText);

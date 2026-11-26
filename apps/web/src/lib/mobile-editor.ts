@@ -1,10 +1,15 @@
 import { getAppEntryPath, getAppPagePath } from "@/lib/app-page-path";
+import { getActiveSyncScope } from "@/lib/sync-preferences";
 
 export const STANDALONE_MOBILE_EDITOR_PATH = getAppPagePath("mobile-edit.html", import.meta.env.BASE_URL);
 export const MOBILE_EDITOR_RETURN_PARAM = "mobileEditorReturn";
 const STANDALONE_MOBILE_EDITOR_MEMO_KEY = "edgeever-standalone-mobile-editor-memo-id";
 const STANDALONE_MOBILE_EDITOR_RETURN_KEY = "edgeever-standalone-mobile-editor-return-memo-id";
 const STANDALONE_MOBILE_EDITOR_RETURN_PREVIEW_KEY = "edgeever-standalone-mobile-editor-return-preview";
+// The editor runs in its own document and cannot reach the workspace's
+// repository. Hand it the mirror scope through sessionStorage so its saves can
+// update the same IndexedDB rows the returned preview reads.
+const STANDALONE_MOBILE_EDITOR_SCOPE_KEY = "edgeever-standalone-mobile-editor-scope";
 
 export type MobileEditorReturnPreview = {
   memoId: string;
@@ -46,11 +51,20 @@ export const openStandaloneMobileEditor = (memoId: string, returnTo = getStandal
   window.location.href = getStandaloneMobileEditorHref(memoId, returnTo);
 };
 
-export const markStandaloneMobileEditorOpened = (memoId: string) => {
+export const markStandaloneMobileEditorOpened = (memoId: string, scope: string | null = getActiveSyncScope()) => {
   sessionStorage.setItem(STANDALONE_MOBILE_EDITOR_MEMO_KEY, memoId);
   sessionStorage.removeItem(STANDALONE_MOBILE_EDITOR_RETURN_KEY);
   sessionStorage.removeItem(STANDALONE_MOBILE_EDITOR_RETURN_PREVIEW_KEY);
+  if (scope) {
+    sessionStorage.setItem(STANDALONE_MOBILE_EDITOR_SCOPE_KEY, scope);
+  } else {
+    sessionStorage.removeItem(STANDALONE_MOBILE_EDITOR_SCOPE_KEY);
+  }
 };
+
+/** Mirror scope of the workspace that opened the editor, if it handed one over. */
+export const getStandaloneMobileEditorScope = () =>
+  sessionStorage.getItem(STANDALONE_MOBILE_EDITOR_SCOPE_KEY);
 
 export const markStandaloneMobileEditorReturning = (memoId: string | null) => {
   if (!memoId) {

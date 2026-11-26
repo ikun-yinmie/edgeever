@@ -1687,6 +1687,31 @@ const RichEditorPane = ({
     return () => window.cancelAnimationFrame(firstFrame);
   }, [editorScrollContainer, hydratedEditorMemoId, memo?.id, useMarkdownSourceEditor, useMobilePlainTextEditor]);
 
+  // A workspace restored from bfcache keeps its frozen scroll position and has
+  // already consumed the one-shot restore above. On a fresh mount the restore
+  // effect handles the entry, so this only fires once the note is hydrated.
+  useEffect(() => {
+    const handleMobileEditorReturn = (event: Event) => {
+      const detail = (event as CustomEvent<{ memoId?: string }>).detail;
+      const currentMemoId = memo?.id ?? null;
+      if (
+        !currentMemoId
+        || detail?.memoId !== currentMemoId
+        || hydratedEditorMemoId !== currentMemoId
+      ) {
+        return;
+      }
+      const container = editorScrollContainerRef.current;
+      const entry = readEditorScrollMemory(currentMemoId);
+      if (container && entry) {
+        restoreEditorScrollMemory(container, entry);
+      }
+    };
+
+    window.addEventListener("edgeever:mobile-editor-return-preview", handleMobileEditorReturn);
+    return () => window.removeEventListener("edgeever:mobile-editor-return-preview", handleMobileEditorReturn);
+  }, [hydratedEditorMemoId, memo?.id]);
+
   useEffect(() => {
     const syncPreference = (event?: Event) => {
       const detail = event && event.type === AI_SPACE_SHORTCUT_CHANGED_EVENT

@@ -383,6 +383,37 @@ export const putLocalMemo = async (scope: string, memo: MemoDetail) => {
   await localDb.memos.put({ ...memo, scope });
 };
 
+/**
+ * Persist a memo this client just saved straight to the API (the standalone
+ * mobile editor owns its own save loop and never passes through the
+ * repository). The workspace preview reads the mirror first, so without this
+ * a return from the editor would render the note's pre-edit snapshot until
+ * the next pull reaches it.
+ */
+export const cacheSavedLocalMemo = async (scope: string, memo: MemoDetail) => {
+  const pending = await collectPendingMemoSyncState(scope);
+  if (!shouldApplyRemoteMemoChange(memo, pending)) return false;
+  return putLocalMemoIfNotStale(scope, applyPendingTheme(memo, pending));
+};
+
+/**
+ * Write a confirmed snapshot without ever regressing the mirror row.
+ *
+ * The repository falls back to the network after a short local-read timeout,
+ * so an in-flight detail response can arrive while the local row is actually
+ * newer (for example a save made by the standalone editor moments ago). The
+ * check runs inside the same transaction as the write so no read can slip
+ * between them.
+ */
+export const putLocalMemoIfNotStale = async (scope: string, memo: MemoDetail) => {
+  return localDb.transaction("rw", localDb.memos, async () => {
+    const existing = await localDb.memos.get([scope, memo.id]);
+    if (existing && existing.revision > memo.revision) return false;
+    await localDb.memos.put({ ...memo, scope });
+    return true;
+  });
+};
+
 export const isLocalMemoId = (memoId: string) => memoId.startsWith("local_");
 
 export const createLocalMemo = async (
