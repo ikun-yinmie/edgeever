@@ -1,26 +1,17 @@
 {
-  "version": "1.105.6",
+  "version": "1.105.7",
   "changes": {
     "en-US": [
-      "Mobile editor: a stalled save no longer freezes Done or the back arrow; back leaves with a durable local draft.",
-      "Reloading a note keeps it open instead of dropping to the recent list.",
-      "Changes from another device now appear in already open notes within about a second.",
-      "Rejecting a task rejects its whole subtree; task filters keep the outline.",
-      "Recent notes, all notes and the task overview get a bottom gutter so the last line is no longer clipped."
+      "Fix the block handle menu disappearing before it can be clicked",
+      "Stop Tab on a task sub-block from spawning a task and pushing its children down"
     ],
     "zh-CN": [
-      "手机编辑器：保存卡住时不再锁死「完成」和返回键，返回会保留本地草稿直接离开。",
-      "笔记页刷新后仍停留在该笔记，不再掉回近期列表。",
-      "其他设备的修改约一秒内出现在已打开的笔记中。",
-      "叉掉任务会级联叉掉整棵子树；待办筛选保留层级。",
-      "近期笔记、全部笔记和待办总览增加底部留白，最后一行不再贴边截断。"
+      "修复笔记编辑器每行左侧「转换为…」按钮一移过去就消失、点不到的问题",
+      "修复待办子级末尾按 Tab 会在第一个子级位置新增待办、把其余子项下移的问题"
     ],
     "ja": [
-      "モバイル編集: 保存が止まっても完了ボタンと戻るが固まらず、戻ると下書きを保持したまま退出します。",
-      "メモを再読み込みしてもそのメモに留まり、最近の一覧へ戻りません。",
-      "他の端末での変更が、開いているメモに約1秒で反映されます。",
-      "タスクを取り消すとサブツリー全体が取り消され、絞り込みでも階層が保たれます。",
-      "最近のメモ・すべてのメモ・タスク概要の下部に余白を追加し、最終行が切れなくなりました。"
+      "ブロックメニューの「変換」ボタンがマウスを近づけると消えてクリックできない問題を修正",
+      "タスクの子項目の末尾で Tab を押すと最初の子項目位置に新しいタスクが作られ、他の子項目が下にずれる問題を修正"
     ]
   }
 }
