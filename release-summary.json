@@ -1,17 +1,14 @@
 {
-  "version": "1.105.7",
+  "version": "1.105.8",
   "changes": {
     "en-US": [
-      "Fix the block handle menu disappearing before it can be clicked",
-      "Stop Tab on a task sub-block from spawning a task and pushing its children down"
+      "Block menu on indented todo rows: the handle no longer jumps up to the parent row when the pointer crosses the row's collapse chevron or checkbox, so the turn-into menu opens again."
     ],
     "zh-CN": [
-      "修复笔记编辑器每行左侧「转换为…」按钮一移过去就消失、点不到的问题",
-      "修复待办子级末尾按 Tab 会在第一个子级位置新增待办、把其余子项下移的问题"
+      "缩进待办行的块菜单：鼠标经过行首折叠箭头/复选框时，手柄不再跳到父级行，行首 ⋮ 的「转化为」可以正常点开了。"
     ],
     "ja": [
-      "ブロックメニューの「変換」ボタンがマウスを近づけると消えてクリックできない問題を修正",
-      "タスクの子項目の末尾で Tab を押すと最初の子項目位置に新しいタスクが作られ、他の子項目が下にずれる問題を修正"
+      "インデントされたタスク行のブロックメニュー：行頭の折りたたみ矢印やチェックボックスを通過してもハンドルが親行へ飛ばなくなり、⋮ のメニューを開けるようになりました。"
     ]
   }
 }
