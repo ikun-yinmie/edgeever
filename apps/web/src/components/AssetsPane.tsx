@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ButtonTooltip } from "@/components/ui/button-tooltip";
 import { formatDateTime } from "@/lib/utils";
+import { toDesktopResourceDownloadUrl } from "@/lib/desktop-resources";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import type { EdgeEverRepository } from "@/lib/repository";
 import { isPdfAttachment, type ResourceListItem } from "@edgeever/shared";
@@ -162,7 +163,7 @@ export const AssetsPane = ({ onClose, repository, onOpenExecutionCenter }: Asset
     } else if (isPdfAttachment(resource.mimeType, resource.filename)) {
       setPdfPreview(resource);
     } else {
-      window.open(resource.url, "_blank", "noopener,noreferrer");
+      window.open(toDesktopResourceDownloadUrl(resource.url, resource.filename || resource.id), "_blank", "noopener,noreferrer");
     }
   };
 

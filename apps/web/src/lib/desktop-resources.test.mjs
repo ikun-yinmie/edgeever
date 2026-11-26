@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { downloadContentDispositionFromRequest, resourceIdFromRequest } from "../../../desktop/src/main/resource-url.mjs";
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 
@@ -42,6 +43,33 @@ describe("desktop resource URLs", () => {
     )).toBe("edgeever-staged://stage-1?download=offline.zip");
     expect(toDesktopResourceDownloadUrl("/api/v1/resources/resource-1/blob", "archive.zip"))
       .toBe("/api/v1/resources/resource-1/blob");
+  });
+
+  test("native download URLs round-trip through the main-process protocol", () => {
+    for (const [url, id] of [
+      ["edgeever-resource://resource/resource-1", "resource-1"],
+      ["edgeever-staged://stage-1", "stage-1"],
+    ]) {
+      for (const filename of ["资料包.zip", "报告 2026 (终稿).pdf", "audio & video #1.mp4"]) {
+        const downloadUrl = toDesktopResourceDownloadUrl(url, filename);
+        expect(resourceIdFromRequest(downloadUrl)).toBe(id);
+        const disposition = downloadContentDispositionFromRequest(downloadUrl);
+        expect(disposition).toStartWith("attachment;");
+        expect(decodeURIComponent(disposition.split("filename*=UTF-8''")[1])).toBe(filename);
+        expect(toDesktopResourceDownloadUrl(downloadUrl, filename)).toBe(downloadUrl);
+      }
+    }
+  });
+
+  test("leaves web download URLs unchanged even when they use a stored native resource URL", () => {
+    const desktop = window.edgeeverDesktop;
+    try {
+      window.edgeeverDesktop = undefined;
+      const url = toApiResourceUrl("edgeever-resource://resource/resource-1");
+      expect(toDesktopResourceDownloadUrl(url, "资料包.zip")).toBe("/api/v1/resources/resource-1/blob");
+    } finally {
+      window.edgeeverDesktop = desktop;
+    }
   });
 
   test("restores portable API URLs before a memo is saved", () => {
