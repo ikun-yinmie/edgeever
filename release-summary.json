@@ -1,14 +1,20 @@
 {
-  "version": "1.105.8",
+  "version": "1.106.0",
   "changes": {
     "en-US": [
-      "Block menu on indented todo rows: the handle no longer jumps up to the parent row when the pointer crosses the row's collapse chevron or checkbox, so the turn-into menu opens again."
+      "Fix code block language switching after reopening a saved note.",
+      "Add a full-height toggle for overflowing code blocks; blocks keep scrolling by default and only show the toggle when content overflows.",
+      "Fix attachment, PDF, and resource-library downloads failing with an error in the desktop client."
     ],
     "zh-CN": [
-      "缩进待办行的块菜单：鼠标经过行首折叠箭头/复选框时，手柄不再跳到父级行，行首 ⋮ 的「转化为」可以正常点开了。"
+      "修复重新打开笔记后代码块无法切换语言类型的问题。",
+      "长代码块新增“展开全部代码/恢复代码滚动”按钮，默认保持内部滚动，仅内容溢出时显示。",
+      "修复附件、PDF 与附件管理页下载在桌面客户端显示下载异常的问题。"
     ],
     "ja": [
-      "インデントされたタスク行のブロックメニュー：行頭の折りたたみ矢印やチェックボックスを通過してもハンドルが親行へ飛ばなくなり、⋮ のメニューを開けるようになりました。"
+      "保存したノートを開き直した後もコードブロックの言語を切り替えられるよう修正。",
+      "はみ出すコードブロックに「コード全体を表示 / コードのスクロールを復元」ボタンを追加。既定はスクロール表示で、内容がはみ出す場合のみ表示。",
+      "デスクトップ版で添付ファイル、PDF、リソース管理画面のダウンロードがエラーになる問題を修正。"
     ]
   }
 }
