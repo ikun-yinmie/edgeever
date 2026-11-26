@@ -1,20 +1,17 @@
 {
-  "version": "1.106.0",
+  "version": "1.106.1",
   "changes": {
     "en-US": [
-      "Fix code block language switching after reopening a saved note.",
-      "Add a full-height toggle for overflowing code blocks; blocks keep scrolling by default and only show the toggle when content overflows.",
-      "Fix attachment, PDF, and resource-library downloads failing with an error in the desktop client."
+      "Fix stale note previews after saving in the mobile web editor, and restore the reading position when returning to the preview.",
+      "Restore access to sync controls in the sync issue details dialog, including while searching notebooks."
     ],
     "zh-CN": [
-      "修复重新打开笔记后代码块无法切换语言类型的问题。",
-      "长代码块新增“展开全部代码/恢复代码滚动”按钮，默认保持内部滚动，仅内容溢出时显示。",
-      "修复附件、PDF 与附件管理页下载在桌面客户端显示下载异常的问题。"
+      "修复手机网页版编辑完成后预览内容未更新的问题，并在返回预览时恢复阅读位置。",
+      "修复同步异常详情中缺少操作入口的问题，搜索笔记本时也可在详情中管理同步。"
     ],
     "ja": [
-      "保存したノートを開き直した後もコードブロックの言語を切り替えられるよう修正。",
-      "はみ出すコードブロックに「コード全体を表示 / コードのスクロールを復元」ボタンを追加。既定はスクロール表示で、内容がはみ出す場合のみ表示。",
-      "デスクトップ版で添付ファイル、PDF、リソース管理画面のダウンロードがエラーになる問題を修正。"
+      "モバイル Web エディターで保存後のプレビューが古いままになる問題を修正し、プレビューに戻った際の閲覧位置を復元します。",
+      "同期の問題の詳細画面から同期を操作できるように修正しました。ノートブックの検索中も利用できます。"
     ]
   }
 }
