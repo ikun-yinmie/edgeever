@@ -8,6 +8,7 @@ import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
+import { SyncControlCard } from "@/components/settings/SyncControlCard";
 import { getShareableWebSystemInfoItems } from "@/components/settings/SystemInfoCard";
 import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
 import {
@@ -37,11 +38,13 @@ export const DesktopSyncIssuesDialog = ({
   onOpenChange,
   onSyncNow,
   open,
+  syncScope,
 }: {
   notebooks: Notebook[];
   onOpenChange: (open: boolean) => void;
   onSyncNow: () => Promise<void> | void;
   open: boolean;
+  syncScope: string;
 }) => {
   const { i18n, t } = useTranslation();
   const [items, setItems] = useState<DesktopOutboxItem[]>([]);
@@ -233,6 +236,8 @@ export const DesktopSyncIssuesDialog = ({
             <DialogTitle>{t("notebookPane.syncDetails.title")}</DialogTitle>
             <DialogDescription>{t("notebookPane.syncDetails.description")}</DialogDescription>
           </DialogHeader>
+
+          <SyncControlCard scope={syncScope} />
 
           {error ? <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p> : null}
           {loading ? <LoadingIndicator label={t("common.loading")} centered className="py-8" /> : null}

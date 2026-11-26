@@ -4,6 +4,12 @@ import { describe, expect, test } from "bun:test";
 const source = readFileSync(new URL("./DesktopSyncIssuesDialog.tsx", import.meta.url), "utf8");
 
 describe("desktop sync issue reporting", () => {
+  test("renders the shared sync controls for the current account scope", () => {
+    expect(source).toContain('import { SyncControlCard } from "@/components/settings/SyncControlCard";');
+    expect(source).toContain("syncScope: string;");
+    expect(source).toContain("<SyncControlCard scope={syncScope} />");
+  });
+
   test("collects connected-instance and desktop runtime diagnostics before opening GitHub", () => {
     expect(source).toContain('queryKey: ["instance-health", instanceUrl]');
     expect(source).toContain('queryKey: ["instance-release", instanceUrl]');

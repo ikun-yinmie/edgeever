@@ -385,6 +385,7 @@ const SyncStatusBar = ({
   onUploadLocalConflicts,
   notebooks,
   syncPaused,
+  syncScope,
 }: {
   summary: SyncQueueSummary;
   isOnline: boolean;
@@ -394,6 +395,7 @@ const SyncStatusBar = ({
   onUploadLocalConflicts: () => void;
   notebooks: Notebook[];
   syncPaused?: { pull: boolean; push: boolean };
+  syncScope: string;
 }) => {
   const { t } = useTranslation();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -497,6 +499,7 @@ const SyncStatusBar = ({
             onOpenChange={setDetailsOpen}
             notebooks={notebooks}
             onSyncNow={onSyncNow}
+            syncScope={syncScope}
           />
         </Suspense>
       )}
@@ -552,6 +555,7 @@ export const NotebookPane = ({
   isCreatingMemo,
   syncSummary,
   syncPaused,
+  syncScope,
   isOnline,
   isSyncingQueuedChanges,
   onSyncQueuedChanges,
@@ -605,6 +609,7 @@ export const NotebookPane = ({
   isCreatingMemo: boolean;
   syncSummary: SyncQueueSummary;
   syncPaused?: { pull: boolean; push: boolean };
+  syncScope: string;
   isOnline: boolean;
   isSyncingQueuedChanges: boolean;
   onSyncQueuedChanges: () => void;
@@ -951,6 +956,7 @@ export const NotebookPane = ({
             onUploadLocalConflicts={onUploadLocalConflicts}
             notebooks={notebooks}
             syncPaused={syncPaused}
+            syncScope={syncScope}
           />
         </div>
       )}

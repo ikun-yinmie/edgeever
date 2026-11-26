@@ -966,6 +966,10 @@ export const WorkspaceApp = ({
     setSelectedMemoId(memoId);
     setCreatedMemoEditId(null);
     clearMemoSelection();
+    // A restored (bfcache) workspace already ran its one-shot scroll restore,
+    // so let the mounted editor re-apply the position the standalone editor
+    // recorded before leaving.
+    window.dispatchEvent(new CustomEvent("edgeever:mobile-editor-return-preview", { detail: { memoId } }));
     void invalidateWorkspaceQueries();
   }, [applyMobileEditorReturnPreview, clearMemoSelection, clearPendingCreatedMemo, invalidateWorkspaceQueries, setSelectedMemoId]);
 
@@ -3927,6 +3931,7 @@ export const WorkspaceApp = ({
                   onImageCompressionChange={setImageCompressionEnabled}
                   syncSummary={syncSummary}
                   syncPaused={syncPaused}
+                  syncScope={localDataScope}
                   isOnline={isOnline}
                   isSyncingQueuedChanges={isSyncingQueuedChanges}
                   onSyncQueuedChanges={() => void runQueuedSync()}
