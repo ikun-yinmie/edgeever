@@ -47,6 +47,7 @@ import { createMarkdownImagePasteRule } from "@/lib/markdown-image-paste";
 import {
   handleConsecutiveListEnter,
   insertListItemChildParagraph,
+  isSelectionInsideListItem,
   preserveEmptyListIndentOnBackspace,
   sinkListItemPreservingAttrs,
   splitTaskItemWithoutInheritedMarks,
@@ -303,6 +304,13 @@ export const MobileStandaloneTiptapEditor = ({
               event.preventDefault();
               return true;
             }
+          }
+          // A task's sub-block (attachment line, note under the title) has no
+          // list to indent into. Swallow Tab so focus stays in the editor; it
+          // must never spawn a task at the first child position.
+          if (isSelectionInsideListItem(view.state)) {
+            event.preventDefault();
+            return true;
           }
         }
         if ((event.ctrlKey || event.metaKey) && event.altKey && !event.shiftKey && event.key.toLowerCase() === "t") {

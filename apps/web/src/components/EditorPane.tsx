@@ -223,6 +223,7 @@ import {
   getAiSlashCommandStart,
   handleConsecutiveListEnter,
   insertListItemChildParagraph,
+  isSelectionInsideListItem,
   preserveEmptyListIndentOnBackspace,
   saveAndSyncEditor,
   shouldOpenAiFromSpace,
@@ -1435,6 +1436,13 @@ const RichEditorPane = ({
             }
           }
           if (applyPlainTextTab(view.state, view.dispatch, event.shiftKey)) {
+            event.preventDefault();
+            return true;
+          }
+          // A task's sub-block (attachment line, note under the title) has no
+          // list to indent into. Swallow Tab so focus stays in the editor; it
+          // must never spawn a task at the first child position.
+          if (isSelectionInsideListItem(view.state)) {
             event.preventDefault();
             return true;
           }

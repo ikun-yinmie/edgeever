@@ -19,6 +19,21 @@ const hasDelegatedTabAncestor = (state: EditorState, position: number) => {
   return false;
 };
 
+/**
+ * True when the caret sits inside a list item. Tab there is structural, so an
+ * unhandled Tab must be swallowed instead of moving focus out of the editor.
+ * Table cells stay out of this so their own Tab navigation keeps working.
+ */
+export const isSelectionInsideListItem = (state: EditorState) => {
+  const resolved = state.doc.resolve(state.selection.from);
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    const name = resolved.node(depth).type.name;
+    if (name === "listItem" || name === "taskItem") return true;
+    if (name === "tableCell" || name === "tableHeader") return false;
+  }
+  return false;
+};
+
 const selectedTextBlockStarts = (state: EditorState) => {
   const { from, to } = state.selection;
   const starts: number[] = [];
@@ -170,9 +185,27 @@ export const preserveEmptyListIndentOnBackspace = (
 };
 
 /**
+ * True when a list item already owns a nested list below its first block.
+ * Wrapping another sub-paragraph there would insert a new item above those
+ * children and push them down a level.
+ */
+const hasNestedListChild = (item: { childCount: number; child: (index: number) => { isTextblock: boolean } }) => {
+  for (let index = 1; index < item.childCount; index += 1) {
+    if (!item.child(index).isTextblock) return true;
+  }
+  return false;
+};
+
+/**
  * Turns a direct paragraph below a list item's leading paragraph into a
  * nested list. This is the structural state produced by the Typora-style
  * Backspace behavior above.
+ *
+ * A task item may already own a nested list (its real children). Wrapping one
+ * of its sub-paragraphs (an attachment line, a note under the title) then
+ * inserts a brand-new task at that spot and pushes every existing child down a
+ * level. Tab there must sink the item instead, so wrapping stops as soon as an
+ * existing list child would be displaced.
  */
 export const wrapIndentedParagraphInList = (
   state: EditorState,
@@ -203,6 +236,12 @@ export const wrapIndentedParagraphInList = (
     || selection.$from.index(listItemDepth) === 0
     || selection.$from.blockRange(selection.$to)?.depth !== listItemDepth
   ) {
+    return false;
+  }
+
+  // An existing list child means the task already has real children: wrapping a
+  // sub-paragraph would spawn a new task and push them all down a level.
+  if (hasNestedListChild(selection.$from.node(listItemDepth))) {
     return false;
   }
 

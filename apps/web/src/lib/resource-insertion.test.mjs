@@ -3,7 +3,14 @@ import { Editor } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import StarterKit from "@tiptap/starter-kit";
 import { closeHistory, history, undo, redo } from "@tiptap/pm/history";
-import { ImageGallery, IMAGE_GALLERY_NODE_TYPE } from "@edgeever/shared";
+import {
+  EdgeEverTaskItem,
+  EdgeEverTaskList,
+  FileAttachment,
+  ImageGallery,
+  PdfAttachment,
+  IMAGE_GALLERY_NODE_TYPE,
+} from "@edgeever/shared";
 import { insertUploadedResources } from "./resource-insertion";
 import { getResourceInsertionTarget } from "./resource-insertion-target";
 
@@ -138,4 +145,91 @@ describe("uploaded resources beside an existing gallery", () => {
     expect(editor.state.selection.node.attrs.src).toBe("one");
     editor.destroy();
   });
+});
+
+describe("uploaded attachments inside a task item", () => {
+  const makeTaskEditor = (content) => new Editor({
+    extensions: [
+      StarterKit,
+      EdgeEverTaskList,
+      EdgeEverTaskItem.configure({ nested: true }),
+      FileAttachment,
+      PdfAttachment,
+    ],
+    content: { type: "doc", content },
+  });
+  const attachmentParagraph = (type, filename, mimeType) => ({
+    type: "paragraph",
+    content: [{
+      type,
+      attrs: {
+        url: "/api/v1/resources/res_1",
+        label: `附件：${filename}`,
+        filename,
+        mimeType,
+        byteSize: 7,
+        displayMode: type === "edgeeverPdfAttachment" ? "compact" : "inline",
+      },
+    }],
+  });
+  const nestedTask = (text, children = []) => ({
+    type: "taskItem",
+    attrs: { checked: false, rejected: false, collapsed: false },
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }, ...children],
+  });
+  const cursorAfter = (editor, text) => {
+    let position = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "paragraph" && node.textContent === text) {
+        position = pos + 1 + node.content.size;
+        return false;
+      }
+      return true;
+    });
+    editor.commands.setTextSelection(position);
+    return position;
+  };
+  const childBlocks = (editor) => {
+    const blocks = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "taskItem" && node.firstChild?.textContent === "Child A") {
+        node.forEach((child, _offset, index) => { if (index > 0) blocks.push(child.type.name); });
+      }
+      return true;
+    });
+    return blocks;
+  };
+
+  for (const [label, type, filename, mimeType] of [
+    ["a non-image file", "edgeeverFileAttachment", "archive.zip", "application/zip"],
+    ["a PDF", "edgeeverPdfAttachment", "report.pdf", "application/pdf"],
+  ]) {
+    test(`inserts ${label} as a sub-block of the child`, () => {
+      const editor = makeTaskEditor([
+        { type: "taskList", content: [nestedTask("Parent", [
+          { type: "taskList", content: [nestedTask("Child A"), nestedTask("Child B")] },
+        ])] },
+      ]);
+      cursorAfter(editor, "Child A");
+      const target = getResourceInsertionTarget(editor.state.selection);
+      expect(editor.commands.command(insertUploadedResources(
+        target,
+        [attachmentParagraph(type, filename, mimeType)],
+        true,
+      ))).toBe(true);
+      expect(childBlocks(editor)).toEqual(["paragraph"]);
+      const json = JSON.stringify(editor.getJSON());
+      expect(json).toContain(type);
+      expect(json).toContain(filename);
+      // The sibling child must not be pushed down a level.
+      let childB = null;
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "taskItem" && node.firstChild?.textContent === "Child B") childB = node;
+        return true;
+      });
+      expect(childB?.type.name).toBe("taskItem");
+      editor.state.doc.check();
+      editor.destroy();
+    });
+  }
 });

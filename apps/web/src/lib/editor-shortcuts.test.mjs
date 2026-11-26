@@ -382,6 +382,42 @@ describe("editor shortcut actions", () => {
     expect(restored.selection.eq(state.selection)).toBe(true);
   });
 
+  test("Tab does not spawn a task above an item's existing children", () => {
+    const taskSchema = getSchema([StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })]);
+    const paragraph = text => taskSchema.nodes.paragraph.create(null, taskSchema.text(text));
+    const title = paragraph("Parent");
+    const note = paragraph("note under the title");
+    const childA = taskSchema.nodes.taskItem.create(null, [paragraph("Child A")]);
+    const childB = taskSchema.nodes.taskItem.create(null, [paragraph("Child B")]);
+    const task = taskSchema.nodes.taskItem.create(null, [
+      title,
+      note,
+      taskSchema.nodes.taskList.create(null, [childA, childB]),
+    ]);
+    const doc = taskSchema.nodes.doc.create(null, taskSchema.nodes.taskList.create(null, [task]));
+    // Caret at the end of the sub-paragraph that sits above the real children.
+    const end = 1 + title.nodeSize + note.nodeSize - 1;
+    const state = EditorState.create({ doc, selection: TextSelection.create(doc, end) });
+
+    // Wrapping there would insert a new task at the first child position and
+    // push Child A/B down, which is the reported bug.
+    expect(wrapIndentedParagraphInList(state, () => {
+      throw new Error("must not dispatch when a nested list already exists");
+    })).toBe(false);
+  });
+
+  test("Tab still wraps a sub-paragraph when the item has no children yet", () => {
+    const taskSchema = getSchema([StarterKit, EdgeEverTaskList, EdgeEverTaskItem.configure({ nested: true })]);
+    const paragraph = text => taskSchema.nodes.paragraph.create(null, taskSchema.text(text));
+    const title = paragraph("Parent");
+    const note = paragraph("attachment line");
+    const task = taskSchema.nodes.taskItem.create(null, [title, note]);
+    const doc = taskSchema.nodes.doc.create(null, taskSchema.nodes.taskList.create(null, [task]));
+    const end = 1 + title.nodeSize + note.nodeSize - 1;
+    const state = EditorState.create({ doc, selection: TextSelection.create(doc, end) });
+    expect(wrapIndentedParagraphInList(state, undefined)).toBe(true);
+  });
+
   test("keeps the default Backspace behavior outside a removable sibling list item", () => {
     const firstItemOnly = schema.node("doc", null, [
       schema.node("bulletList", null, [
