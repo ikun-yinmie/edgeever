@@ -2368,6 +2368,8 @@ export const zhCN = {
     codeToggleWidth: "切换宽窄",
     codeCollapse: "收起代码块",
     codeExpand: "展开代码块",
+    codeShowFullHeight: "展开全部代码",
+    codeRestoreScroll: "恢复代码滚动",
     fontColor: "字体颜色",
     fontColorReset: "恢复默认",
     highlightColor: "背景颜色",

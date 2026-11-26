@@ -2370,6 +2370,8 @@ export const enUS = {
     codeToggleWidth: "Toggle block width",
     codeCollapse: "Collapse code block",
     codeExpand: "Expand code block",
+    codeShowFullHeight: "Show full code block",
+    codeRestoreScroll: "Restore code scrolling",
     fontColor: "Text color",
     fontColorReset: "Reset color",
     highlightColor: "Highlight color",

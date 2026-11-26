@@ -2036,6 +2036,10 @@ textarea {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
+.ProseMirror .edgeever-code-block-full-height .edgeever-code-scroll {
+  max-height: none;
+}
+
 .ProseMirror .edgeever-code-body {
   position: relative;
 }

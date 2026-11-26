@@ -2370,6 +2370,8 @@ export const ja = {
     codeToggleWidth: "ブロック幅を切り替え",
     codeCollapse: "コードブロックを折りたたむ",
     codeExpand: "コードブロックを展開",
+    codeShowFullHeight: "コード全体を表示",
+    codeRestoreScroll: "コードのスクロールを復元",
     fontColor: "文字色",
     fontColorReset: "色をリセット",
     highlightColor: "背景色",

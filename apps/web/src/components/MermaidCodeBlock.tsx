@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Ellipsis, Eye, ListOrdered, Maximize2, WrapText } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, Code2, Copy, Ellipsis, Eye, ListOrdered, Maximize2, Minimize2, WrapText } from "lucide-react";
 import { MERMAID_THEME_PALETTES, useMermaidTheme } from "./ThemeProvider";
 import { MermaidViewer } from "./MermaidViewer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -139,12 +139,21 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
   );
   const [canEdit, setCanEdit] = useState(editor.isEditable);
   useEffect(() => {
-    // setEditable emits update without changing the node view's props.
+    // setEditable(editable, false) updates the editor root without emitting an update.
+    // Observe its editable attribute so hydrated/read-only mode changes reach this node view.
     const syncEditable = () => setCanEdit(editor.isEditable);
+    const observer = new MutationObserver(syncEditable);
+    observer.observe(editor.view.dom, { attributes: true, attributeFilter: ["contenteditable"] });
     syncEditable();
     editor.on("update", syncEditable);
-    return () => { editor.off("update", syncEditable); };
+    return () => {
+      observer.disconnect();
+      editor.off("update", syncEditable);
+    };
   }, [editor]);
+  const codeScrollRef = useRef<HTMLDivElement>(null);
+  const [hasVerticalOverflow, setHasVerticalOverflow] = useState(false);
+  const [fullHeight, setFullHeight] = useState(false);
   // Read mode keeps the header view-only: collapse, width, line numbers and
   // wrapping toggle per viewer without ever editing the document.
   const [viewCollapsed, setViewCollapsed] = useState(isCollapsed);
@@ -185,6 +194,36 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
   const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const scroll = codeScrollRef.current;
+    if (!scroll) return;
+    const sourceIsVisible = !collapsed && (!hasPreview || !previewVisible) && (!isMermaid || sourceVisible);
+    if (!sourceIsVisible) {
+      setHasVerticalOverflow(false);
+      setFullHeight(false);
+      return;
+    }
+
+    const measureOverflow = () => {
+      // Match the scroll cap even while full-height mode removes max-height.
+      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const scrollLimit = Math.min(window.innerHeight * 0.6, rootFontSize * 36);
+      const overflowing = scroll.scrollHeight > scrollLimit + 1;
+      setHasVerticalOverflow(overflowing);
+      if (!overflowing) setFullHeight(false);
+    };
+    const observer = new ResizeObserver(measureOverflow);
+    observer.observe(scroll);
+    const body = scroll.querySelector(".edgeever-code-body");
+    if (body) observer.observe(body);
+    window.addEventListener("resize", measureOverflow);
+    measureOverflow();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measureOverflow);
+    };
+  }, [collapsed, hasPreview, isMermaid, lineNumbersVisible, previewVisible, rawSource, sourceVisible, wide, wrapLinesVisible]);
 
   useEffect(() => {
     if (copyState === "idle") return;
@@ -364,6 +403,7 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
         hasPreview && previewVisible ? "is-code-preview" : "",
         !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && !collapsed ? "edgeever-code-block-numbered" : "",
         !isMermaid && !(hasPreview && previewVisible) && wrapLinesVisible && !collapsed ? "edgeever-code-block-wrap" : "",
+        fullHeight ? "edgeever-code-block-full-height" : "",
       ].filter(Boolean).join(" ")}
       data-language={language}
     >
@@ -435,6 +475,29 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {previewToggleLabel}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {hasVerticalOverflow && !collapsed && (!hasPreview || !previewVisible) && (!isMermaid || sourceVisible) && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="edgeever-code-tool-button edgeever-code-height-toggle"
+                    aria-label={t(fullHeight ? "editorToolbar.codeRestoreScroll" : "editorToolbar.codeShowFullHeight")}
+                    aria-pressed={fullHeight}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setFullHeight((value) => !value);
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    {fullHeight ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t(fullHeight ? "editorToolbar.codeRestoreScroll" : "editorToolbar.codeShowFullHeight")}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -707,7 +770,7 @@ export const MermaidCodeBlock = ({ editor, getPos, node, updateAttributes }: Nod
           )}
         </div>
       )}
-      <div className="edgeever-code-scroll">
+      <div className="edgeever-code-scroll" ref={codeScrollRef}>
         <div className="edgeever-code-body">
           {!collapsed && !isMermaid && !(hasPreview && previewVisible) && lineNumbersVisible && (
             <div className="edgeever-code-gutter" contentEditable={false} aria-hidden="true">
