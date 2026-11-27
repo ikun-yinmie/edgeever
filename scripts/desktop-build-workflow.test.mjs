@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 
@@ -137,6 +138,30 @@ describe("desktop release workflow", () => {
     );
   });
 
+  test("isolates the known broken Linux updater without changing release auditing", () => {
+    const predecessor = step("Build Linux automatic update predecessor");
+    const selection = predecessor.split("        run: |\n")[1]
+      .split('          if [[ -n "$update_source_tag" ]]')[0]
+      .replace(/^ {10}/gm, "");
+    for (const [repository, previousTag, expected] of [
+      ["ikun-yinmie/edgeever", "v1.107.0", "v1.106.1"],
+      ["ikun-yinmie/edgeever", "v1.108.0", "v1.108.0"],
+      ["tianma-if/edgeever", "v1.107.0", "v1.107.0"],
+      ["ikun-yinmie/edgeever", "", ""],
+    ]) {
+      const output = execFileSync("bash", ["-e", "-c", `${selection}\nprintf '\\nSOURCE=%s;AUDIT=%s' "$update_source_tag" "$PREVIOUS_TAG"`], {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, GITHUB_REPOSITORY: repository, PREVIOUS_TAG: previousTag, GITHUB_STEP_SUMMARY: "/dev/null" },
+      });
+      expect(output.trim().split("\n").at(-1)).toBe(`SOURCE=${expected};AUDIT=${previousTag}`);
+      expect(output.includes("::warning::")).toBe(repository === "ikun-yinmie/edgeever" && previousTag === "v1.107.0");
+    }
+    expect(predecessor).toContain('node scripts/verify-linux-update-release.mjs "$previous_directory" "$source_version"');
+    expect(predecessor).toContain("53269b788bab8f8b07c443464ab63899ba69187eae0b3f9198daccb6621d9ae2");
+    expect(predecessor.indexOf("sha256sum --check")).toBeLessThan(predecessor.indexOf('mv "$previous_app_image"'));
+    expect(predecessor).toContain("v1.107.0 users must manually replace their AppImage once");
+  });
+
   test("builds and audits a Linux x64 AppImage Preview in parallel", () => {
     const linuxJob = workflow.slice(
       workflow.indexOf("name: Linux x64 AppImage Preview"),
@@ -160,7 +185,7 @@ describe("desktop release workflow", () => {
     expect(workflow).toContain("verify-linux-update-release.mjs");
     expect(step("Verify real Linux AppImage automatic update")).toContain("verify-linux-appimage-update.mjs");
     expect(step("Verify real Linux AppImage automatic update")).toContain("xvfb-run -a");
-    expect(step("Build Linux automatic update predecessor")).toContain('gh release download "$PREVIOUS_TAG"');
+    expect(step("Build Linux automatic update predecessor")).toContain('gh release download "$update_source_tag"');
     expect(step("Build Linux automatic update predecessor")).toContain("EdgeEver-linux-update-source.AppImage");
     expect(workflow).toContain("name: Audit Linux Preview asset");
     expect(linuxAuditJob).toContain("name: Check out source");

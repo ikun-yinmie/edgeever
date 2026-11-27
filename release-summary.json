@@ -3,15 +3,18 @@
   "changes": {
     "en-US": [
       "Restore open note tabs, their order, and the selected note after reloading the workspace. Keep closed tabs closed and restore each account separately.",
-      "Coordinate parent and child task states while preserving manual choices. Keep task status consistent across the editor, task overview, and Markdown mode."
+      "Coordinate parent and child task states while preserving manual choices. Keep task status consistent across the editor, task overview, and Markdown mode.",
+      "Fix desktop update checks failing when a newer version is found. Linux v1.107.0 users must manually replace their AppImage once. Windows v1.107.0 users whose update fails should run the new installer manually."
     ],
     "zh-CN": [
       "刷新工作区后恢复已打开笔记的页签、顺序和选中项；已关闭的页签保持关闭，不同账号独立恢复。",
-      "待办父子任务状态自动联动并保留手动设置；编辑器、待办总览与 Markdown 模式之间保持状态一致。"
+      "待办父子任务状态自动联动并保留手动设置；编辑器、待办总览与 Markdown 模式之间保持状态一致。",
+      "修复桌面端发现新版时更新检查失败的问题。Linux v1.107.0 用户需手动替换一次 AppImage；Windows v1.107.0 用户若更新失败，请手动运行新版安装包。"
     ],
     "ja": [
       "ワークスペースの再読み込み後に、開いていたノートのタブ、順序、選択を復元します。閉じたタブは開き直さず、アカウントごとに状態を保存します。",
-      "親子タスクの状態を自動的に連動させ、手動で設定した状態を保持します。エディター、タスク一覧、Markdown モード間で状態を一貫させます。"
+      "親子タスクの状態を自動的に連動させ、手動で設定した状態を保持します。エディター、タスク一覧、Markdown モード間で状態を一貫させます。",
+      "新しいバージョンの検出時にデスクトップ版の更新確認が失敗する問題を修正しました。Linux v1.107.0 は AppImage を一度手動で置き換えてください。Windows v1.107.0 で更新できない場合は、新しいインストーラーを手動で実行してください。"
     ]
   }
 }

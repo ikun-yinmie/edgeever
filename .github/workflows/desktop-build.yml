@@ -629,18 +629,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_TAG: ${{ needs.release-plan.outputs.previous_tag }}
         run: |
-          if [[ -n "$PREVIOUS_TAG" ]]; then
-            git fetch --depth=1 origin "refs/tags/${PREVIOUS_TAG}:refs/tags/${PREVIOUS_TAG}"
-            if git show "${PREVIOUS_TAG}:apps/desktop/src/main/index.mjs" | grep -q 'linuxUpdateTestMode'; then
+          update_source_tag="$PREVIOUS_TAG"
+          # v1.107.0 cannot update out: its published updater has a missing import.
+          # Keep previous_tag for release auditing; test the last working original.
+          if [[ "$GITHUB_REPOSITORY" == "ikun-yinmie/edgeever" && "$PREVIOUS_TAG" == "v1.107.0" ]]; then
+            update_source_tag="v1.106.1"
+            printf '%s\n' '::warning::Testing original v1.106.1 AppImage: v1.107.0 users must manually replace their AppImage once.'
+            printf '%s\n' 'Linux update source: v1.106.1 (original published asset). Release audit baseline remains v1.107.0. Automatic update from v1.107.0 is broken; users must manually replace that AppImage once.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -n "$update_source_tag" ]]; then
+            git fetch --depth=1 origin "refs/tags/${update_source_tag}:refs/tags/${update_source_tag}"
+            if git show "${update_source_tag}:apps/desktop/src/main/index.mjs" | grep -q 'linuxUpdateTestMode'; then
               previous_directory="$RUNNER_TEMP/edgeever-previous-linux-x64"
               mkdir -p "$previous_directory"
-              gh release download "$PREVIOUS_TAG" \
+              gh release download "$update_source_tag" \
                 --repo "$GITHUB_REPOSITORY" \
                 --pattern 'EdgeEver-*-linux-x64.AppImage' \
+                --pattern 'latest-linux.yml' \
+                --pattern 'SHA256SUMS-linux.txt' \
                 --dir "$previous_directory"
               previous_app_image="$(find "$previous_directory" -maxdepth 1 -name 'EdgeEver-*-linux-x64.AppImage' -type f -print -quit)"
               test -n "$previous_app_image"
               test "$(find "$previous_directory" -maxdepth 1 -name 'EdgeEver-*-linux-x64.AppImage' -type f | wc -l | tr -d ' ')" = "1"
+              source_version="$(basename "$previous_app_image" -linux-x64.AppImage)"
+              source_version="${source_version#EdgeEver-}"
+              node scripts/verify-linux-update-release.mjs "$previous_directory" "$source_version"
+              if [[ "$GITHUB_REPOSITORY" == "ikun-yinmie/edgeever" && "$PREVIOUS_TAG" == "v1.107.0" ]]; then
+                printf '%s  %s\n' '53269b788bab8f8b07c443464ab63899ba69187eae0b3f9198daccb6621d9ae2' "$previous_app_image" | sha256sum --check
+              fi
               mv "$previous_app_image" "$RUNNER_TEMP/EdgeEver-linux-update-source.AppImage"
               chmod +x "$RUNNER_TEMP/EdgeEver-linux-update-source.AppImage"
               exit 0
