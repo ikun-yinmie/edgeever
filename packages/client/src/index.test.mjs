@@ -8,6 +8,42 @@ const jsonResponse = (body, init = {}) => new Response(JSON.stringify(body), {
 });
 
 describe("EdgeEver client HTTP contract", () => {
+  test("reads feedback availability and submits to the connected instance", async () => {
+    const calls = [];
+    const client = createEdgeEverClient({ baseUrl: "https://notes.example/", token: "test-token", fetch: async (url, init) => {
+      calls.push({ url, init });
+      return jsonResponse(String(url).endsWith("/public/feedback")
+        ? { feedback: { enabled: true, contactEmail: "contact@example.com" } }
+        : { ok: true });
+    } });
+    expect(await client.getFeedbackConfig()).toEqual({ feedback: { enabled: true, contactEmail: "contact@example.com" } });
+    const payload = { requestId: crypto.randomUUID(), content: "Feedback content", replyTo: "reply@example.com" };
+    expect(await client.submitFeedback(payload)).toEqual({ ok: true });
+    expect(calls.map(({ url }) => url)).toEqual([
+      "https://notes.example/api/v1/public/feedback", "https://notes.example/api/v1/feedback",
+    ]);
+    expect(calls[1].init.method).toBe("POST");
+    expect(new Headers(calls[1].init.headers).get("Authorization")).toBe("Bearer test-token");
+    expect(JSON.parse(calls[1].init.body)).toEqual(payload);
+  });
+
+  test("preserves feedback rate-limit details without retrying the POST", async () => {
+    let calls = 0;
+    const client = createEdgeEverClient({ fetch: async () => {
+      calls++;
+      return jsonResponse({ error: { code: "feedback_rate_limited", message: "Wait", details: { retryAfterSeconds: 180, contactEmail: "contact@example.com" } } }, { status: 429 });
+    } });
+    try {
+      await client.submitFeedback({ requestId: crypto.randomUUID(), content: "Feedback" });
+      throw new Error("Expected a rate limit");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiRequestError);
+      expect(error.code).toBe("feedback_rate_limited");
+      expect(error.details).toEqual({ retryAfterSeconds: 180, contactEmail: "contact@example.com" });
+    }
+    expect(calls).toBe(1);
+  });
+
   test("companion streaming handles split UTF-8 frames, authenticates and does not retry", async () => {
     const expected = [{ type: "start", id: "request" }, { type: "text-delta", text: "你好" }, { type: "error", code: "failed" }];
     const bytes = new TextEncoder().encode(expected.map(event => `data: ${JSON.stringify(event)}`).join("\n\n"));

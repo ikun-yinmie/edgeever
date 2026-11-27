@@ -40,7 +40,7 @@ fn settle_pending_memo_create(
         // The note never reached the server, so its queued edits are moot and
         // would otherwise surface as unresolvable missing-memo sync issues.
         tx.execute(
-            "DELETE FROM _edgeever_sidecar_outbox WHERE entity_id = ?1 AND kind IN ('memo.update', 'memo.restore', 'memo.setTheme') AND status <> 'syncing'",
+            "DELETE FROM _edgeever_sidecar_outbox WHERE entity_id = ?1 AND kind IN ('memo.update', 'memo.restore', 'memo.setTheme', 'memo.status') AND status <> 'syncing'",
             [memo_id],
         )
         .map_err(|e| e.to_string())?;
@@ -59,6 +59,7 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "tags": tags_from_json(&tags),
         "isPinned": row.get::<_, i64>("is_pinned")? != 0,
         "theme": row.get::<_, Option<String>>("theme")?,
+        "status": row.get::<_, Option<String>>("status")?,
         "isArchived": row.get::<_, i64>("is_archived")? != 0,
         "isDeleted": row.get::<_, i64>("is_deleted")? != 0,
         "revision": row.get::<_, i64>("revision")?,
@@ -74,7 +75,7 @@ pub(crate) fn memo_value(
     include_deleted: bool,
 ) -> Result<Value, String> {
     let mut statement = database.prepare(
-        "SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.is_archived, m.is_deleted,
+        "SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status, m.is_archived, m.is_deleted,
                 m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id, m.created_at, m.updated_at, m.deleted_at,
                 c.content_json, c.content_markdown, c.content_text, c.content_hash, c.revision
            FROM memos m JOIN memo_contents c ON c.memo_id = m.id
@@ -89,6 +90,7 @@ pub(crate) fn memo_value(
             "title": row.get::<_, Option<String>>("title")?, "excerpt": row.get::<_, String>("excerpt")?,
             "tags": tags_from_json(&tags), "isPinned": row.get::<_, i64>("is_pinned")? != 0,
             "theme": row.get::<_, Option<String>>("theme")?,
+            "status": row.get::<_, Option<String>>("status")?,
             "isArchived": row.get::<_, i64>("is_archived")? != 0, "isDeleted": row.get::<_, i64>("is_deleted")? != 0,
             "revision": row.get::<_, i64>("revision")?, "createdAt": row.get::<_, String>("created_at")?,
             "updatedAt": row.get::<_, String>("updated_at")?, "deletedAt": row.get::<_, Option<String>>("deleted_at")?,
@@ -371,6 +373,41 @@ pub(crate) fn set_memo_theme(database: &Connection, params: &Value) -> Result<Va
     Ok(memo)
 }
 
+pub(crate) fn set_memo_status(database: &Connection, params: &Value) -> Result<Value, String> {
+    let memo_id = string_param(params, "memoId")?;
+    // Omitted (undefined over JSON) keeps the current status; null explicitly
+    // clears it. Reject invalid values instead of silently clearing the note.
+    let status = match params.get("status") {
+        None => return memo_value(database, &memo_id, false),
+        Some(Value::Null) => None,
+        Some(Value::String(value))
+            if matches!(value.as_str(), "in_progress" | "completed" | "cancelled") =>
+        {
+            Some(value.as_str())
+        }
+        _ => return Err("Invalid memo status".to_owned()),
+    };
+    let tx = database
+        .unchecked_transaction()
+        .map_err(|e| e.to_string())?;
+    let changed = tx.execute(
+        "UPDATE memos SET status = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_by = 'desktop' WHERE id = ?2 AND is_deleted = 0",
+        rusqlite::params![status, memo_id],
+    ).map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("Memo not found or deleted: {memo_id}"));
+    }
+    enqueue_change(
+        &tx,
+        "memo.status",
+        &memo_id,
+        &json!({ "memoId": memo_id, "status": status }),
+    )?;
+    let memo = memo_value(&tx, &memo_id, false)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(memo)
+}
+
 pub(crate) fn merge_memos(database: &Connection, params: &Value) -> Result<Value, String> {
     let memo_ids = params
         .get("memoIds")
@@ -560,7 +597,7 @@ pub(crate) fn list_memos(database: &Connection, params: &Value) -> Result<Value,
                 WHERE LOWER(TRIM(CAST(memo_tag.value AS TEXT))) = LOWER(?5)
             )){filter}"
     );
-    let query = format!("SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.is_archived, m.is_deleted,
+    let query = format!("SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status, m.is_archived, m.is_deleted,
                 c.revision, m.created_at, m.updated_at, m.deleted_at
            FROM memos m JOIN memo_contents c ON c.memo_id = m.id
           WHERE {where_clause}
@@ -614,6 +651,11 @@ pub(crate) fn create_memo(database: &Connection, params: &Value) -> Result<Value
         .unwrap_or("")
         .to_owned();
     let tags = params.get("tags").cloned().unwrap_or_else(|| json!([]));
+    let status = params
+        .get("status")
+        .and_then(Value::as_str)
+        .filter(|status| matches!(*status, "in_progress" | "completed" | "cancelled"))
+        .map(str::to_owned);
     let content_json = params
         .get("contentJson")
         .cloned()
@@ -629,7 +671,7 @@ pub(crate) fn create_memo(database: &Connection, params: &Value) -> Result<Value
     let tx = database
         .unchecked_transaction()
         .map_err(|e| e.to_string())?;
-    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, created_by, updated_by) VALUES (?1, ?2, ?3, ?4, ?5, 'desktop', 'desktop')", rusqlite::params![id, notebook_id, if title.is_empty() { None } else { Some(title.clone()) }, text.chars().take(180).collect::<String>(), tags.to_string()]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, status, created_by, updated_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'desktop', 'desktop')", rusqlite::params![id, notebook_id, if title.is_empty() { None } else { Some(title.clone()) }, text.chars().take(180).collect::<String>(), tags.to_string(), status.clone()]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_text, content_hash) VALUES (?1, ?2, ?3, ?4, ?5)", rusqlite::params![id, content_json_text, markdown, text, hash]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     let memo = memo_value(database, &id, true)?;
@@ -637,12 +679,18 @@ pub(crate) fn create_memo(database: &Connection, params: &Value) -> Result<Value
         database,
         "memo.create",
         &id,
-        &json!({
-            "temporaryId": id, "notebookId": notebook_id, "title": title, "contentJson": content_json,
-            "contentMarkdown": markdown,
-            "tags": tags, "createdAt": memo.get("createdAt").and_then(Value::as_str).unwrap_or(""),
-            "updatedAt": memo.get("updatedAt").and_then(Value::as_str).unwrap_or("")
-        }),
+        &{
+            let mut payload = json!({
+                "temporaryId": id, "notebookId": notebook_id, "title": title, "contentJson": content_json,
+                "contentMarkdown": markdown,
+                "tags": tags, "createdAt": memo.get("createdAt").and_then(Value::as_str).unwrap_or(""),
+                "updatedAt": memo.get("updatedAt").and_then(Value::as_str).unwrap_or("")
+            });
+            if let Some(status) = status.as_deref() {
+                payload["status"] = json!(status);
+            }
+            payload
+        },
     )?;
     Ok(memo)
 }

@@ -10,7 +10,7 @@ describe("desktop sync issue reporting", () => {
     expect(source).toContain("<SyncControlCard scope={syncScope} />");
   });
 
-  test("collects connected-instance and desktop runtime diagnostics before opening GitHub", () => {
+  test("collects connected-instance and desktop runtime diagnostics for the in-app feedback form", () => {
     expect(source).toContain('queryKey: ["instance-health", instanceUrl]');
     expect(source).toContain('queryKey: ["instance-release", instanceUrl]');
     expect(source).toContain('queryKey: ["system-info-client-runtime"]');
@@ -19,6 +19,11 @@ describe("desktop sync issue reporting", () => {
     expect(source).toContain("instance: healthQuery.data?.health");
     expect(source).toContain("instanceVersion: releaseQuery.data?.version");
     expect(source).toContain("&& !collectingSystemInfo");
-    expect(source).toContain("asChild={canReportIssue}");
+    // The report button opens the shared feedback dialog instead of a GitHub link.
+    expect(source).toContain("<FeedbackDialog");
+    expect(source).toContain("diagnostics={reportDiagnostics}");
+    expect(source).toContain("extraSystemInfo={reportDiagnosticText}");
+    expect(source).not.toContain("buildGitHubFeedbackUrl");
+    expect(source).not.toContain('target="_blank"');
   });
 });

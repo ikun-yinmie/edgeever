@@ -4,6 +4,7 @@ import * as m from "motion/react-m";
 import { GitBranch, Network, Workflow, Star, Check, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import { getMemoListTimestamp, type MemoSummary } from "@edgeever/shared";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MemoStatusBadge } from "@/components/MemoStatusBadge";
 import { cn } from "@/lib/utils";
 import { selectionSettleMotion } from "@/lib/motion";
 import type { MemoListDensity, MemoSortMode } from "@/lib/app-helpers";
@@ -419,6 +420,7 @@ export const MemoCard = ({
           <div className={cn("mb-1.5 flex min-w-0 items-center gap-1.5 text-[15px] font-semibold tracking-[-0.012em] leading-snug text-slate-950", listDensity === "compact" && "mb-0.5 text-[14px]")}>
             {memo.isPinned && <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />}
             <span className="min-w-0 truncate">{memoTitle}</span>
+            <MemoStatusBadge status={memo.status} />
           </div>
           {diagramLabel ? (
             <div className="space-y-1.5">

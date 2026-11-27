@@ -1,5 +1,7 @@
 import { diagramEditorSnapshot } from "@/lib/diagram-editor-snapshot";
 import { MemoTitleInput } from "@/components/MemoTitleInput";
+import { MemoStatusBadge } from "@/components/MemoStatusBadge";
+import { MemoStatusMenu } from "@/components/MemoStatusMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Dom, Export, Graph, History, Keyboard, Scroller, Selection, type Edge, type Node } from "@antv/x6";
 import * as m from "motion/react-m";
@@ -139,6 +141,7 @@ import {
   type DiagramStructure,
   type DiagramTheme,
   type MemoDetail,
+  type MemoStatus,
   type MemoEditSession,
   type Notebook,
 } from "@edgeever/shared";
@@ -1945,6 +1948,9 @@ export const DiagramEditorPane = ({
     }));
     bindDiagramScrollerFit(graph);
     graphRef.current = graph;
+    // A title typed before the canvas finished initializing cannot be saved
+    // until the graph exists; re-arm autosave now that it does.
+    setDirtyVersion((current) => current + 1);
     graph.use(new History({ enabled: !readOnly }));
     graph.use(new Export());
     graph.use(new Keyboard({
@@ -2958,6 +2964,15 @@ export const DiagramEditorPane = ({
     }, name.trim());
   };
 
+  const handleMemoStatusChange = async (status: MemoStatus | null) => {
+    const currentMemo = memoRef.current;
+    if (readOnly || currentMemo.isDeleted || saving || notebookUpdatePending) return;
+    if (editorDirty && !(await save())) throw new Error(t("memoStatus.saveError"));
+    const updatedMemo = await repository.setMemoStatus(currentMemo.id, status);
+    if (memoRef.current.id === updatedMemo.id) memoRef.current = updatedMemo;
+    await onSaved(updatedMemo);
+  };
+
   const handleNotebookChange = (notebookId: string) => {
     const currentMemo = memoRef.current;
     if (readOnly || notebookUpdatePending || notebookId === currentMemo.notebookId) {
@@ -3168,25 +3183,33 @@ export const DiagramEditorPane = ({
         </div>
 
         <div className={MEMO_EDITOR_TITLE_REGION_CLASS_NAME}>
-          <div className="min-w-0">
-            <MemoTitleInput
-              value={title}
-              readOnly={readOnly}
-              placeholder={kindLabel}
-              ariaLabel={t("diagram.title")}
-              onValueChange={(nextTitle) => {
-                titleRef.current = nextTitle;
-                setTitle(nextTitle);
-                setDirtyVersion((current) => current + 1);
-                const graph = graphRef.current;
-                if (graph) {
-                  setDirty(savedSnapshotRef.current !== diagramEditorSnapshot(
-                    nextTitle,
-                    graphToDocument(graph, document.kind, themeRef.current, structureRef.current),
-                  ));
-                }
-              }}
-            />
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <MemoTitleInput
+                value={title}
+                readOnly={readOnly}
+                placeholder={kindLabel}
+                ariaLabel={t("diagram.title")}
+                onValueChange={(nextTitle) => {
+                  titleRef.current = nextTitle;
+                  setTitle(nextTitle);
+                  setDirtyVersion((current) => current + 1);
+                  const graph = graphRef.current;
+                  if (graph) {
+                    setDirty(savedSnapshotRef.current !== diagramEditorSnapshot(
+                      nextTitle,
+                      graphToDocument(graph, document.kind, themeRef.current, structureRef.current),
+                    ));
+                  } else if (document) {
+                    // The canvas can still be initializing during a note switch;
+                    // the title edit itself must still mark the note dirty so
+                    // autosave runs once the graph is ready.
+                    setDirty(savedSnapshotRef.current !== diagramEditorSnapshot(nextTitle, document));
+                  }
+                }}
+              />
+            </div>
+            <MemoStatusBadge status={memo.status} />
           </div>
           <MemoEditorMetadataRow
             contentMarkdown={memo.contentMarkdown}
@@ -3240,7 +3263,14 @@ export const DiagramEditorPane = ({
           canUndo={historyState.undo}
           hasSelection={hasSelection}
           leading={!readOnly ? (
-            document.kind === "mind-map" ? (
+            <>
+            <MemoStatusMenu
+              key={memo.id}
+              status={memo.status}
+              disabled={memo.isDeleted || saving || notebookUpdatePending || nodeEditor !== null}
+              onStatusChange={handleMemoStatusChange}
+            />
+            {document.kind === "mind-map" ? (
               <DiagramInsertMenu
                 items={[
                   { icon: GitBranch, label: t("diagram.addTopic"), onSelect: () => addNode("topic", { relation: "child" }) },
@@ -3260,7 +3290,8 @@ export const DiagramEditorPane = ({
                   { icon: Circle, label: t("diagram.addTerminator"), onSelect: () => addNode("terminator") },
                 ]}
               />
-            )
+            )}
+            </>
           ) : undefined}
           onAutoLayout={applyAutoLayout}
           onDeleteSelection={removeSelected}

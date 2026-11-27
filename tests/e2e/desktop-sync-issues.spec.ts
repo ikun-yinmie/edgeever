@@ -16,6 +16,15 @@ test("sync details identify each conflicting note without exposing its content i
   }));
   await page.route("**/api/v1/notebooks", (route) => route.request().method() === "GET"
     ? route.fulfill({ json: { notebooks } }) : route.continue());
+  const feedbackSubmissions: { content: string; systemInfo: string | null }[] = [];
+  await page.route("**/api/v1/public/feedback", (route) => route.fulfill({ json: { feedback: { enabled: true, contactEmail: null } } }));
+  await page.route("**/api/v1/feedback", (route) => {
+    feedbackSubmissions.push(route.request().postDataJSON());
+    if (feedbackSubmissions.length === 1) return route.fulfill({
+      status: 502, json: { error: { code: "email_delivery_failed", message: "SMTP unavailable" } },
+    });
+    return route.fulfill({ json: { ok: true } });
+  });
   await page.goto("/");
   await expect(page.getByRole("button", { name: "个人中心", exact: true })).toBeVisible();
   await page.evaluate((notebooks) => {
@@ -102,15 +111,37 @@ test("sync details identify each conflicting note without exposing its content i
   await expect(affectedLists.nth(3)).toContainText("笔记标题不可用");
   await expect(affectedLists.nth(3)).toContainText("笔记 ID：sync-memo-missing");
   await expect(dialog.getByText("同步冲突", { exact: true })).toHaveCount(3);
-  const reportLink = dialog.getByRole("link", { name: "反馈问题", exact: true });
-  await expect(reportLink).toBeVisible();
-  const reportUrl = new URL((await reportLink.getAttribute("href"))!);
-  const report = reportUrl.searchParams.get("body")!;
-  expect(report).not.toContain("同步测试计划");
-  expect(report).not.toContain("sync-memo-work");
-  expect(report).not.toContain("private body");
+  await dialog.getByRole("button", { name: "反馈问题", exact: true }).click();
+  const feedback = page.getByRole("dialog", { name: "意见反馈", exact: true });
+  await expect(feedback).toBeVisible();
+  const content = feedback.getByLabel("反馈内容", { exact: true });
+  const includeSystemInfo = feedback.getByRole("checkbox");
+  await expect(includeSystemInfo).not.toBeChecked();
+  await content.fill("同步冲突无法上传");
+  await includeSystemInfo.check();
+  await includeSystemInfo.uncheck();
+  await feedback.getByRole("button", { name: "关闭", exact: true }).click();
+  await dialog.getByRole("button", { name: "反馈问题", exact: true }).click();
+  await expect(includeSystemInfo).not.toBeChecked();
+  await expect(content).toHaveValue("同步冲突无法上传");
+  await feedback.getByRole("button", { name: "提交反馈", exact: true }).click();
+  await expect(feedback.getByRole("alert")).toContainText("反馈邮件发送失败");
+  expect(feedbackSubmissions[0].systemInfo).toBeNull();
+  await includeSystemInfo.check();
+  await feedback.getByRole("button", { name: "提交反馈", exact: true }).click();
+  await expect(feedback).toContainText("反馈已发送");
+  expect(feedbackSubmissions).toHaveLength(2);
+  const submitted = feedbackSubmissions[1];
+  const diagnostics = submitted.systemInfo ?? "";
+  expect(diagnostics).toContain("自动采集的同步诊断");
+  expect(diagnostics).toContain("revision_conflict");
+  expect(diagnostics).not.toContain("同步测试计划");
+  expect(diagnostics).not.toContain("sync-memo-work");
+  expect(diagnostics).not.toContain("private body");
   expect(await page.evaluate(() => (window as unknown as { syncIssueRequests: string[] }).syncIssueRequests.every((method) => ["sync.outbox.list", "memo.get", "memo.list", "notebook.list", "sync.status"].includes(method)))).toBe(true);
   await dialog.screenshot({ path: test.info().outputPath("sync-issues-identifiable.png") });
+  await feedback.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(feedback).not.toBeVisible();
   await dialog.getByRole("button", { name: "关闭", exact: true }).last().click();
   await expect(dialog).not.toBeVisible();
   expect(errors).toEqual([]);

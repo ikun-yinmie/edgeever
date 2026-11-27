@@ -11,6 +11,7 @@
 // This module is the single source of truth for that decision, so the memo
 // routes only have to ask "may this actor read/write this note?".
 
+import type { MemoStatus } from "@edgeever/shared";
 import { createId, isoNow } from "./entity-utils";
 import type { ResourceRow } from "./resource-service";
 import { DEFAULT_SHARE_DISPLAY_POLICY, type ShareDisplayPolicy } from "./share-display-policy";
@@ -95,6 +96,7 @@ export type SharedWithMeMemo = {
   id: string;
   title: string | null;
   excerpt: string;
+  status?: MemoStatus | null;
   updatedAt: string;
   groupId: string;
   groupName: string;
@@ -108,6 +110,7 @@ export type SharedMemoSummary = {
   id: string;
   title: string | null;
   excerpt: string;
+  status?: MemoStatus | null;
   updatedAt: string;
   createdAt: string;
   notebookId: string;
@@ -657,6 +660,7 @@ type SharedQueryRow = GroupShareRow & {
   notebook_parent_id: string | null;
   memo_title: string | null;
   memo_excerpt: string | null;
+  memo_status: MemoStatus | null;
   memo_updated_at: string | null;
   author_username: string | null;
   author_display_name: string | null;
@@ -666,7 +670,7 @@ const SHARED_WITH_ME_SELECT = `SELECT s.id, s.group_id, s.target_type, s.target_
     s.edit_mode, s.editor_user_ids, s.allow_copy, s.note, s.created_by, s.created_at, s.updated_at, s.revoked_at,
     g.name AS group_name,
     n.name AS notebook_name, n.icon AS notebook_icon, n.parent_id AS notebook_parent_id,
-    m.title AS memo_title, m.excerpt AS memo_excerpt, m.updated_at AS memo_updated_at,
+    m.title AS memo_title, m.excerpt AS memo_excerpt, m.status AS memo_status, m.updated_at AS memo_updated_at,
     u.username AS author_username, u.display_name AS author_display_name
   FROM group_shares s
   INNER JOIN groups g ON g.id = s.group_id
@@ -729,6 +733,7 @@ export const listSharedWithMe = async (
       id: share.target_id,
       title: share.memo_title,
       excerpt: share.memo_excerpt ?? "",
+      status: share.memo_status ?? null,
       updatedAt: share.memo_updated_at,
       groupId: share.group_id,
       groupName: share.group_name,
@@ -770,14 +775,14 @@ export const listSharedNotebookMemos = async (
   const placeholders = descendants.map(() => "?").join(", ");
   const rows = await database
     .prepare(
-      `SELECT m.id, m.title, m.excerpt, m.updated_at, m.created_at, m.notebook_id
+      `SELECT m.id, m.title, m.excerpt, m.status, m.updated_at, m.created_at, m.notebook_id
        FROM memos m
        WHERE m.notebook_id IN (${placeholders}) AND m.is_deleted = 0
        ORDER BY m.updated_at DESC
        LIMIT 500`,
     )
     .bind(...descendants)
-    .all<{ id: string; title: string | null; excerpt: string; updated_at: string; created_at: string; notebook_id: string }>();
+    .all<{ id: string; title: string | null; excerpt: string; status: MemoStatus | null; updated_at: string; created_at: string; notebook_id: string }>();
 
   const accessByNotebook = new Map<string, boolean>();
   const summaries: SharedMemoSummary[] = [];
@@ -796,6 +801,7 @@ export const listSharedNotebookMemos = async (
       id: row.id,
       title: row.title,
       excerpt: row.excerpt,
+      status: row.status ?? null,
       updatedAt: row.updated_at,
       createdAt: row.created_at,
       notebookId: row.notebook_id,

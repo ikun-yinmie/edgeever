@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, session, net, protocol, shell, dialog, safeStorage, clipboard, ClipboardItem, powerMonitor, desktopCapturer, screen } from "electron";
 import { createReadStream, existsSync } from "node:fs";
-import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, mkdir, open, readdir, readFile, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
@@ -100,6 +100,10 @@ import {
 } from "./windows-update-trust.mjs";
 import { desktopReleaseLinks } from "./update-release-links.mjs";
 import { normalizeDesktopUpdateProgress } from "./update-progress.mjs";
+import {
+  UpdateDownloadPausedError,
+  runResumableUpdateDownload,
+} from "./update-resume.mjs";
 import electronUpdater from "electron-updater";
 import { createPluginPublicNetworkRuntime } from "./plugin-public-network.mjs";
 import { createAiDirectRuntime } from "./ai-direct.mjs";
@@ -192,6 +196,8 @@ let updateState = "idle";
 let updateDownloadProgress = null;
 let updateCheckInFlight = null;
 let updateDownloadInFlight = null;
+let updateDownloadAbort = null;
+let updateDownloadPauseRequested = false;
 let updateDownloadPromptInFlight = null;
 let updateCheckTimer = null;
 let updateWindowTimer = null;
@@ -1571,7 +1577,8 @@ const desktopUpdateStatus = () => {
   });
   return {
     state: updateState,
-    downloadProgress: updateState === "downloading" ? updateDownloadProgress : null,
+    // Paused downloads keep their byte count so the next resume is visible.
+    downloadProgress: updateState === "downloading" || updateState === "paused" ? updateDownloadProgress : null,
     version: downloadedUpdateVersion,
     latestVersion: resolvedLatestVersion,
     currentVersion: app.getVersion(),
@@ -1579,6 +1586,9 @@ const desktopUpdateStatus = () => {
     downloadUrl: links.downloadUrl,
     releasePageUrl: links.releasePageUrl,
     assetName: links.assetName,
+    // macOS installs through Squirrel.Mac's own promise, which cannot continue
+    // from a cache file, so the pause control is hidden there.
+    pauseSupported: process.platform !== "darwin",
     // "verification" means a newer build exists but cannot be installed by the
     // updater itself, so the UI must offer the release download.
     downloadBlocked: updateDownloadBlocked,
@@ -1700,6 +1710,15 @@ const relaunchDesktopApp = async () => {
 const trackDesktopUpdateDownload = (downloadPromise, reason) => {
   updateDownloadInFlight = Promise.resolve(downloadPromise)
     .catch(async (error) => {
+      // A pause is not a failure: keep the version, the partial file and the
+      // progress so the user can switch proxy and continue.
+      if (updateDownloadPauseRequested || error instanceof UpdateDownloadPausedError) {
+        updateState = "paused";
+        refreshTrayMenu();
+        publishDesktopUpdateStatus();
+        await writeDiagnostic("update.download-paused", { reason });
+        return;
+      }
       updateState = "idle";
       downloadedUpdateVersion = null;
       windowsDownloadedUpdateVerified = false;
@@ -1712,21 +1731,157 @@ const trackDesktopUpdateDownload = (downloadPromise, reason) => {
         message: lastUpdateError.message,
       });
     })
-    .finally(() => { updateDownloadInFlight = null; });
+    .finally(() => {
+      updateDownloadInFlight = null;
+      updateDownloadAbort = null;
+      updateDownloadPauseRequested = false;
+    });
   return updateDownloadInFlight;
 };
 
-const downloadTrustedDesktopUpdate = (reason) => {
+const updatePartialDirectory = () => join(app.getPath("userData"), "update-downloads");
+
+/** Mirrors electron-updater's own asset pick for the current platform. */
+const resolveDesktopUpdateAsset = () => {
+  const updateInfoAndProvider = autoUpdater.updateInfoAndProvider;
+  const info = updateInfoAndProvider?.info;
+  const resolveFiles = updateInfoAndProvider?.provider?.resolveFiles;
+  if (!info || typeof resolveFiles !== "function") return null;
+  const extension = process.platform === "win32" ? "exe" : "AppImage";
+  const candidates = resolveFiles.call(updateInfoAndProvider.provider, info)
+    .filter((file) => file?.url?.pathname?.toLowerCase().endsWith(`.${extension.toLowerCase()}`));
+  if (candidates.length === 0) return null;
+  const preferred = candidates.find((file) =>
+    [file.url?.pathname, file.info?.url].some((value) => value?.includes(process.arch)));
+  return {
+    fileInfo: preferred ?? candidates[0],
+    updateInfo: info,
+    provider: updateInfoAndProvider.provider,
+  };
+};
+
+const deliveredDownloadFileName = (fileInfo, extension) => {
+  const decodedPath = decodeURIComponent(fileInfo.url.pathname);
+  return decodedPath.toLowerCase().endsWith(`.${extension.toLowerCase()}`)
+    ? basename(decodedPath)
+    : basename(fileInfo.info?.url ?? decodedPath);
+};
+
+/**
+ * Move the verified part file into electron-updater's pending cache and let it
+ * finish the normal bookkeeping (cache manifest, `update-downloaded`) without
+ * touching the network again.
+ */
+const deliverDownloadedUpdate = async ({ completedPath, fileName, fileInfo, updateInfo, extension }) => {
+  const helper = await autoUpdater.getOrCreateDownloadHelper();
+  const pendingDirectory = helper.cacheDirForPendingUpdate;
+  await mkdir(pendingDirectory, { recursive: true });
+  const targetPath = join(pendingDirectory, fileName);
+  await unlink(targetPath).catch(() => undefined);
+  try {
+    await rename(completedPath, targetPath);
+  } catch (error) {
+    if (error?.code !== "EXDEV") throw error;
+    await copyFile(completedPath, targetPath);
+    await unlink(completedPath).catch(() => undefined);
+  }
+  await helper.setDownloadedFile(
+    targetPath,
+    null,
+    updateInfo,
+    fileInfo,
+    deliveredDownloadFileName(fileInfo, extension),
+    true,
+  );
+  // electron-updater applies this in its own download task, which is skipped
+  // when the verified file is already cached; the AppImage must be executable
+  // before doInstall spawns it.
+  if (process.platform !== "win32") await chmod(targetPath, 0o755);
+  await autoUpdater.downloadUpdate();
+};
+
+const downloadTrustedDesktopUpdate = (reason, { resume = false } = {}) => {
   if (updateDownloadInFlight) return updateDownloadInFlight;
   if (process.platform === "win32" && !trustedWindowsUpdate) {
     return Promise.reject(new Error("Windows update metadata has not passed the signature gate"));
   }
+  const asset = resolveDesktopUpdateAsset();
+  // macOS goes through Squirrel.Mac's own installer promise, which cannot be
+  // fed from a resumed cache file; keep electron-updater's download there.
+  if (process.platform === "darwin" || !asset || !asset.fileInfo.info?.sha512) {
+    updateState = "downloading";
+    updateDownloadProgress = normalizeDesktopUpdateProgress(null);
+    lastUpdateError = null;
+    refreshTrayMenu();
+    publishDesktopUpdateStatus();
+    return trackDesktopUpdateDownload(Promise.resolve().then(() => autoUpdater.downloadUpdate()), reason);
+  }
+
+  const extension = process.platform === "win32" ? "exe" : "AppImage";
+  const fileName = deliveredDownloadFileName(asset.fileInfo, extension);
   updateState = "downloading";
-  updateDownloadProgress = normalizeDesktopUpdateProgress(null);
+  if (!resume) updateDownloadProgress = normalizeDesktopUpdateProgress(null);
   lastUpdateError = null;
+  updateDownloadPauseRequested = false;
   refreshTrayMenu();
   publishDesktopUpdateStatus();
-  return trackDesktopUpdateDownload(Promise.resolve().then(() => autoUpdater.downloadUpdate()), reason);
+  const controller = new AbortController();
+  updateDownloadAbort = controller;
+  // Same headers electron-updater would send (cached feed token, user agent).
+  const requestHeaders = (() => {
+    try {
+      return autoUpdater.computeRequestHeaders(asset.provider) ?? {};
+    } catch {
+      return {};
+    }
+  })();
+  const download = (async () => {
+    // The proxy may have been changed while the download was paused.
+    await applyUpdaterProxy();
+    const result = await runResumableUpdateDownload({
+      url: asset.fileInfo.url.href,
+      version: asset.updateInfo.version,
+      fileName,
+      sha512: asset.fileInfo.info.sha512,
+      expectedSize: Number.isFinite(asset.fileInfo.info.size) ? asset.fileInfo.info.size : null,
+      directory: updatePartialDirectory(),
+      headers: requestHeaders,
+      fetchImpl: (url, init) => autoUpdater.netSession.fetch(url, init),
+      signal: controller.signal,
+      onProgress: (progress) => {
+        if (updateState !== "downloading") return;
+        updateDownloadProgress = normalizeDesktopUpdateProgress(progress);
+        publishDesktopUpdateStatus();
+        void writeDiagnostic("update.download-progress", updateDownloadProgress);
+      },
+      deliver: (delivery) => deliverDownloadedUpdate({
+        ...delivery,
+        fileInfo: asset.fileInfo,
+        updateInfo: asset.updateInfo,
+        extension,
+      }),
+    });
+    await writeDiagnostic("update.download-complete", {
+      version: asset.updateInfo.version,
+      transferred: result.transferred,
+    });
+  })();
+  return trackDesktopUpdateDownload(download, reason);
+};
+
+const pauseDesktopUpdateDownload = () => {
+  if (updateState !== "downloading" || !updateDownloadAbort || !updateDownloadInFlight) {
+    return { paused: false };
+  }
+  updateDownloadPauseRequested = true;
+  // Publish "paused" immediately; the in-flight promise settles right after the
+  // socket closes and must not be reported as a failure.
+  updateState = "paused";
+  refreshTrayMenu();
+  publishDesktopUpdateStatus();
+  updateDownloadAbort.abort();
+  void writeDiagnostic("update.pause-requested");
+  return { paused: true };
 };
 
 const requestDesktopUpdateDownload = (reason) => {
@@ -1736,6 +1891,16 @@ const requestDesktopUpdateDownload = (reason) => {
     const window = mainWindow;
     const version = downloadedUpdateVersion;
     if (isQuitting || !window || window.isDestroyed()) return { started: false, reason: "unavailable" };
+    // A paused download already has its version confirmed and its bytes on
+    // disk, so continuing never asks again.
+    if (updateState === "paused" && !updateDownloadInFlight && version) {
+      if (updateDownloadBlocked) return { started: false, reason: "not-ready" };
+      if (process.platform === "win32" && trustedWindowsUpdate?.version !== version) {
+        return { started: false, reason: "verification" };
+      }
+      void downloadTrustedDesktopUpdate(reason, { resume: true }).catch(() => undefined);
+      return { started: true, resumed: true };
+    }
     if (updateDownloadInFlight || updateState !== "available" || !version || updateDownloadBlocked) {
       return { started: false, reason: "not-ready" };
     }
@@ -1834,6 +1999,9 @@ const checkForDesktopUpdate = (reason, { force = false, throwOnError = false } =
     return throwOnError ? updateCheckInFlight : updateCheckInFlight.catch(() => null);
   }
   if (updateDownloadInFlight || updateDownloadPromptInFlight) return Promise.resolve(null);
+  // A paused download owns the discovered version and its partial bytes; a
+  // background check must not reset that state.
+  if (updateState === "paused") return Promise.resolve(null);
   const now = Date.now();
   if (!force && now - lastUpdateCheckAt < updateCheckFocusThrottleMs) return Promise.resolve(null);
   lastUpdateCheckAt = now;
@@ -1935,6 +2103,10 @@ const configureAutoUpdater = () => {
     if (process.platform === "win32") {
       trustedWindowsUpdate = null;
       windowsDownloadedUpdateVerified = false;
+    }
+    // Drop half-downloaded files from older versions.
+    if (info?.version) {
+      void prunePartialUpdates(updatePartialDirectory(), info.version).catch(() => undefined);
     }
     refreshTrayMenu();
     publishDesktopUpdateStatus();
@@ -2903,6 +3075,7 @@ const startApplication = async () => {
     return desktopUpdateStatus();
   });
   ipcMain.handle("desktop:download-update", () => requestDesktopUpdateDownload("manual-download"));
+  ipcMain.handle("desktop:pause-update-download", () => pauseDesktopUpdateDownload());
   ipcMain.handle("desktop:install-update", () => installDownloadedUpdate());
   ipcMain.handle("desktop:relaunch", async () => {
     await relaunchDesktopApp();

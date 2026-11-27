@@ -3,7 +3,12 @@ import { getCookie, setCookie } from "hono/cookie";
 import { hasBootstrapCredential, isSupportedPasswordHash, verifyBootstrapPassword } from "./auth-bootstrap";
 import { hashPassword, randomToken, SESSION_TOKEN_BYTES, verifyPassword } from "./auth-crypto";
 import type { LoginAttemptKey } from "./auth-login-limiter";
-import { resolveSessionDeviceId } from "./auth-session-devices";
+import {
+  resolveSessionClientKind,
+  resolveSessionDeviceId,
+  sessionClientKind,
+  type SessionClientKindRow,
+} from "./auth-session-devices";
 import {
   isDatabaseNotReadyError,
   isUnauthenticatedAccessEnabled,
@@ -38,6 +43,11 @@ const SESSION_COOKIE = "edgeever_session";
 const DEFAULT_GROUP_SESSION_TTL_DAYS = 30;
 const DEFAULT_SESSION_TTL_DAYS = 400;
 const MAX_SESSION_TTL_DAYS = 400;
+const MIN_SESSION_TTL_DAYS = 1;
+// The admin console may hand the desktop client a longer-lived session than a
+// browser; the ceiling is deliberately generous but still finite.
+const MAX_DESKTOP_SESSION_TTL_DAYS = 3650;
+const SECONDS_PER_DAY = 24 * 60 * 60;
 const SESSION_LAST_SEEN_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const API_TOKEN_LAST_USED_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const clampNumber = (value: number, min: number, max: number) =>
@@ -179,7 +189,7 @@ export const verifyLogin = async (env: Bindings, username: string, password: str
 const getUserByUsername = async (db: DatabaseAdapter, username: string) =>
   db
     .prepare(
-      `SELECT id, username, password_hash, display_name, is_disabled, account_type
+      `SELECT id, username, password_hash, display_name, is_disabled, account_type, session_ttl_days
        FROM users
        WHERE username = ? AND is_disabled = 0`
     )
@@ -189,7 +199,7 @@ const getUserByUsername = async (db: DatabaseAdapter, username: string) =>
 const getUserByEmail = async (db: DatabaseAdapter, email: string) =>
   db
     .prepare(
-      `SELECT id, username, password_hash, display_name, is_disabled, account_type
+      `SELECT id, username, password_hash, display_name, is_disabled, account_type, session_ttl_days
        FROM users
        WHERE email = ? AND is_disabled = 0`
     )
@@ -205,20 +215,63 @@ export const getInstanceUser = (db: DatabaseAdapter, userId: string) =>
      WHERE u.id = ?`
   ).bind(userId).first<InstanceUserRow>();
 
-export const createSession = async (c: AppContext, user: UserRow, requestedDeviceId?: string) => {
+export const createSession = async (
+  c: AppContext,
+  user: UserRow,
+  requestedDeviceId?: string,
+  requestedClientKind?: string,
+) => {
   const token = randomToken(SESSION_TOKEN_BYTES);
   const id = createId("sess");
   const now = isoNow();
   const isSharedAccount = isGroupAccount((user as { account_type?: string | null }).account_type);
-  const maxAge = isSharedAccount ? getGroupSessionMaxAge(c.env) : getSessionMaxAge(c.env);
-  const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString();
   const userAgent = c.req.header("User-Agent") ?? null;
+  const clientKind = resolveSessionClientKind(requestedClientKind, userAgent);
+  // Browser and mobile logins follow the personal-center retention setting;
+  // shared accounts keep their own instance-wide lifetime. The desktop client
+  // is an instance policy: the admin console owns its lifetime.
+  const desktopTtlDays = !isSharedAccount && clientKind === "desktop"
+    ? await getDesktopSessionTtlDays(c.env.storage.db, c.env)
+    : null;
+  const maxAgeDays = isSharedAccount
+    ? getGroupSessionMaxAgeDays(c.env)
+    : clientKind === "desktop"
+      ? (desktopTtlDays ?? getSessionMaxAgeDays(c.env))
+      : resolveUserSessionTtlDays(c.env, user);
+  const maxAge = maxAgeDays * SECONDS_PER_DAY;
+  const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString();
   const deviceId = resolveSessionDeviceId(requestedDeviceId, userAgent, id);
-  const ip = c.req.header("CF-Connecting-IP");
+  const ip = getClientIp(c) ?? null;
   const ipHash = ip ? await sha256(ip) : null;
   const cf = c.req.raw.cf as { country?: string; region?: string } | undefined;
   const ipCountry = c.req.header("CF-IPCountry") ?? cf?.country ?? null;
   const ipRegion = cf?.region ?? null;
+
+  // A personal account keeps one login per terminal (desktop client, desktop
+  // web, mobile), and that terminal is pinned to the IP it signed in from. A login
+  // from another IP on a different device is refused instead of replacing a live
+  // session that may still hold unsynced notes. The desktop client (or a password
+  // change) is the way to clear a conflicting session on another device.
+  if (!isSharedAccount && ip) {
+    const liveSessions = await c.env.storage.db.prepare(
+      `SELECT id, device_id, client_kind, user_agent, ip_address
+       FROM sessions
+       WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`,
+    ).bind(user.id, now).all<SessionClientKindRow>();
+    const conflicting = (liveSessions.results ?? []).find((row) =>
+      (!requestedDeviceId || row.device_id !== requestedDeviceId)
+      && sessionClientKind(row) === clientKind
+      && Boolean(row.ip_address)
+      && row.ip_address !== ip);
+    if (conflicting) {
+      throw new AppError(
+        "terminal_ip_conflict",
+        `This account is already signed in to the ${clientKind} terminal from another IP address.`
+          + " Sign that session out from the desktop client before signing in here.",
+        409,
+      );
+    }
+  }
 
   const statements = [
     // A personal account keeps one live session per device: a fresh sign-in
@@ -235,15 +288,107 @@ export const createSession = async (c: AppContext, user: UserRow, requestedDevic
         ]),
     c.env.storage.db.prepare(
       `INSERT INTO sessions (
-        id, user_id, token_hash, device_id, user_agent, ip_hash, device_label, ip_address, ip_country, ip_region, expires_at, created_at, last_seen_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, user.id, await sha256(token), deviceId, userAgent, ipHash, null, ip ?? null, ipCountry, ipRegion, expiresAt, now, now),
+        id, user_id, token_hash, device_id, client_kind, user_agent, ip_hash, device_label, ip_address, ip_country, ip_region, expires_at, created_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, user.id, await sha256(token), deviceId, clientKind, userAgent, ipHash, null, ip, ipCountry, ipRegion, expiresAt, now, now),
   ];
 
   await c.env.storage.db.batch(statements);
 
   return { id, token, maxAge };
 };
+
+/**
+ * Shorten the live browser/mobile sessions of a personal account to the newly
+ * configured retention window. Desktop-client sessions are left alone, and a
+ * session is never extended past its original expiry.
+ */
+export const capSessionsToRetention = async (
+  db: DatabaseAdapter,
+  userId: string,
+  ttlDays: number,
+) => {
+  const now = new Date();
+  const cappedExpiry = new Date(now.getTime() + clampNumber(ttlDays, MIN_SESSION_TTL_DAYS, MAX_SESSION_TTL_DAYS) * SECONDS_PER_DAY * 1000)
+    .toISOString();
+  const rows = await db.prepare(
+    `SELECT id, client_kind, user_agent, ip_address, expires_at
+     FROM sessions
+     WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`,
+  ).bind(userId, now.toISOString()).all<SessionClientKindRow & { expires_at: string }>();
+  const targets = (rows.results ?? []).filter((row) =>
+    sessionClientKind(row) !== "desktop" && row.expires_at > cappedExpiry);
+  if (targets.length === 0) return 0;
+  await db.batch(targets.map((row) => db.prepare(
+    `UPDATE sessions SET expires_at = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`,
+  ).bind(cappedExpiry, row.id, cappedExpiry)));
+  return targets.length;
+};
+
+/**
+ * Admin-console counterpart of the personal retention: shrink existing
+ * desktop-client sessions of personal accounts. Shared accounts keep their
+ * group lifetime, so their desktop sessions are not touched.
+ */
+export const capDesktopSessionsToRetention = async (
+  db: DatabaseAdapter,
+  ttlDays: number,
+) => {
+  const now = new Date();
+  const cappedExpiry = new Date(now.getTime() + clampNumber(ttlDays, MIN_SESSION_TTL_DAYS, MAX_DESKTOP_SESSION_TTL_DAYS) * SECONDS_PER_DAY * 1000)
+    .toISOString();
+  const rows = await db.prepare(
+    `SELECT s.id, s.client_kind, s.user_agent, s.ip_address, s.expires_at
+     FROM sessions s
+     INNER JOIN users u ON u.id = s.user_id
+     WHERE s.revoked_at IS NULL
+       AND s.expires_at > ?
+       AND (u.account_type IS NULL OR u.account_type != 'group')`,
+  ).bind(now.toISOString()).all<SessionClientKindRow & { expires_at: string }>();
+  const targets = (rows.results ?? []).filter((row) =>
+    sessionClientKind(row) === "desktop" && row.expires_at > cappedExpiry);
+  if (targets.length === 0) return 0;
+  await db.batch(targets.map((row) => db.prepare(
+    `UPDATE sessions SET expires_at = ? WHERE id = ? AND revoked_at IS NULL AND expires_at > ?`,
+  ).bind(cappedExpiry, row.id, cappedExpiry)));
+  return targets.length;
+};
+
+const resolveDesktopSessionTtlDays = (env: Bindings, configured: unknown) => {
+  const value = Number(configured);
+  if (!Number.isFinite(value) || value < MIN_SESSION_TTL_DAYS) return getSessionMaxAgeDays(env);
+  return Math.floor(clampNumber(value, MIN_SESSION_TTL_DAYS, MAX_DESKTOP_SESSION_TTL_DAYS));
+};
+
+/** Instance-wide desktop-client lifetime, falling back to the deploy default. */
+export const getDesktopSessionTtlDays = async (db: DatabaseAdapter, env: Bindings) => {
+  let configured: unknown = null;
+  try {
+    const row = await db
+      .prepare(`SELECT desktop_session_ttl_days FROM instance_settings WHERE id = 'instance'`)
+      .first<{ desktop_session_ttl_days: number | null }>();
+    configured = row?.desktop_session_ttl_days ?? null;
+  } catch {
+    // A deployment that has not run the migration yet still signs clients in;
+    // it just uses the environment default.
+    configured = null;
+  }
+  return resolveDesktopSessionTtlDays(env, configured);
+};
+
+export const getLoginSessionPolicy = (
+  env: Bindings,
+  ttlDays: number | null | undefined,
+  accountType: string | null | undefined,
+  desktopTtlDays: unknown = null,
+) => ({
+  sessionTtlDays: resolveUserSessionTtlDays(env, { session_ttl_days: ttlDays ?? null }),
+  desktopSessionTtlDays: resolveDesktopSessionTtlDays(env, desktopTtlDays),
+  defaultSessionTtlDays: getSessionMaxAgeDays(env),
+  minSessionTtlDays: MIN_SESSION_TTL_DAYS,
+  maxSessionTtlDays: MAX_SESSION_TTL_DAYS,
+  mutable: !isGroupAccount(accountType),
+});
 
 export const setSessionCookie = (c: AppContext, token: string, maxAge: number) => {
   setCookie(c, SESSION_COOKIE, token, {
@@ -399,17 +544,24 @@ export const getBearerToken = (c: AppContext) => {
   return scheme.toLowerCase() === "bearer" && token ? token : null;
 };
 
-const getSessionMaxAge = (env: Bindings) => {
-  const days = clampNumber(Number(env.EDGE_EVER_SESSION_TTL_DAYS ?? DEFAULT_SESSION_TTL_DAYS), 1, MAX_SESSION_TTL_DAYS);
-  return days * 24 * 60 * 60;
-};
+const getSessionMaxAgeDays = (env: Bindings) =>
+  Math.floor(clampNumber(
+    Number(env.EDGE_EVER_SESSION_TTL_DAYS ?? DEFAULT_SESSION_TTL_DAYS),
+    MIN_SESSION_TTL_DAYS,
+    MAX_SESSION_TTL_DAYS,
+  ));
 
 /** Shared group accounts sign in from many places at once, so they use their own TTL. */
-const getGroupSessionMaxAge = (env: Bindings) => {
-  const days = clampNumber(
+const getGroupSessionMaxAgeDays = (env: Bindings) =>
+  Math.floor(clampNumber(
     Number(env.EDGE_EVER_GROUP_SESSION_TTL_DAYS ?? DEFAULT_GROUP_SESSION_TTL_DAYS),
-    1,
+    MIN_SESSION_TTL_DAYS,
     MAX_SESSION_TTL_DAYS,
-  );
-  return days * 24 * 60 * 60;
+  ));
+
+/** Personal retention choice, falling back to the instance default when unset. */
+const resolveUserSessionTtlDays = (env: Bindings, user: { session_ttl_days?: number | null }) => {
+  const configured = Number(user.session_ttl_days);
+  if (!Number.isFinite(configured) || configured < MIN_SESSION_TTL_DAYS) return getSessionMaxAgeDays(env);
+  return Math.floor(clampNumber(configured, MIN_SESSION_TTL_DAYS, MAX_SESSION_TTL_DAYS));
 };

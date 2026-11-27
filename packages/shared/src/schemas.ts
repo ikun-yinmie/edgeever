@@ -25,9 +25,12 @@ export const NotebookUpdateSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+export const MemoStatusSchema = z.enum(["in_progress", "completed", "cancelled"]);
+
 export const MemoCreateSchema = z.object({
   creationId: z.string().trim().min(1).max(160).optional(),
   notebookId: z.string().trim().min(1),
+  status: MemoStatusSchema.nullable().optional(),
   title: z.string().trim().max(160).optional(),
   contentJson: z.unknown().optional(),
   contentMarkdown: z.string().optional(),
@@ -44,6 +47,7 @@ export const MemoUpdateSchema = z.object({
   title: z.string().trim().max(160).optional(),
   isPinned: z.boolean().optional(),
   theme: z.string().trim().max(64).nullable().optional(),
+  status: MemoStatusSchema.nullable().optional(),
   contentJson: z.unknown().optional(),
   contentMarkdown: z.string().optional(),
   tags: z.array(z.string()).optional(),
@@ -171,6 +175,13 @@ export const LoginSchema = z.object({
   username: z.string().trim().min(1).max(80),
   password: z.string().min(1).max(512),
   deviceId: z.string().trim().min(16).max(160).optional(),
+  // Native shells report their terminal explicitly; browsers are classified
+  // from their user agent when this is missing.
+  clientKind: z.enum(["desktop", "web", "mobile"]).optional(),
+});
+
+export const LoginSessionPolicyUpdateSchema = z.object({
+  sessionTtlDays: z.number().int().min(1).max(400),
 });
 
 export const LoginDeviceSessionUpdateSchema = z.object({
@@ -291,6 +302,13 @@ export const ShareServerEntrySchema = z.object({
   label: z.string().trim().max(60).nullable().optional(),
 });
 
+export const FeedbackSubmitSchema = z.object({
+  requestId: z.string().uuid(),
+  content: z.string().trim().min(1).max(5000),
+  replyTo: z.string().trim().email().max(200).nullable().optional(),
+  systemInfo: z.string().trim().max(6000).nullable().optional(),
+});
+
 export const InstanceAdminSettingsUpdateSchema = z
   .object({
     registrationEnabled: z.boolean().optional(),
@@ -317,6 +335,9 @@ export const InstanceAdminSettingsUpdateSchema = z
       .nullable()
       .optional(),
     smtpFromName: z.string().trim().max(80).nullable().optional(),
+    feedbackEnabled: z.boolean().optional(),
+    feedbackRecipientEmail: z.string().trim().toLowerCase().email().max(200).nullable().optional(),
+    contactEmail: z.string().trim().toLowerCase().email().max(200).nullable().optional(),
     shareMissingMessage: z.string().trim().max(500).nullable().optional(),
     editorShortcuts: z
       .record(
@@ -350,6 +371,8 @@ export const InstanceAdminSettingsUpdateSchema = z
     abuseGuardEnabled: z.boolean().optional(),
     codeIpHourlyLimit: z.number().int().min(1).max(1000).optional(),
     codeIpDailyLimit: z.number().int().min(1).max(10000).optional(),
+    // Admin-owned lifetime for desktop-client sessions (personal accounts).
+    desktopSessionTtlDays: z.number().int().min(1).max(3650).nullable().optional(),
     emailAllowlistEnabled: z.boolean().optional(),
     emailAllowlist: z.string().max(4000).nullable().optional(),
     emailBlocklist: z.string().max(4000).nullable().optional(),

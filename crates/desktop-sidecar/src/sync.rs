@@ -70,7 +70,7 @@ fn reset_sync_mirror(database: &Connection) -> Result<(), String> {
          WHERE id NOT IN (SELECT id FROM _edgeever_bootstrap_preserved_notebooks);
          DELETE FROM _edgeever_sidecar_meta
          WHERE key IN ('sync.cursor', 'sync.identity', 'sync.last_synced_at')
-            OR key LIKE 'memo.remap-base:%';
+            OR key LIKE 'memo.remap-base:%' OR key LIKE 'memo.status-ack:%';
          INSERT INTO _edgeever_sidecar_meta (key, value, updated_at)
          VALUES ('sync.bootstrap.reset_pending', '1', strftime('%Y-%m-%dT%H:%M:%fZ','now'))
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;",
@@ -153,7 +153,7 @@ pub(crate) fn sync_outbox_list(database: &Connection, params: &Value) -> Result<
          FROM _edgeever_sidecar_outbox o
          WHERE (o.status = 'pending' OR (o.status = 'error' AND o.retryable = 1 AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))
            AND NOT (
-             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash', 'memo.move', 'memo.pinBatch', 'memo.setTheme')
+             o.kind IN ('memo.delete', 'memo.restore', 'memo.deleteBatch', 'memo.emptyTrash', 'memo.move', 'memo.pinBatch', 'memo.setTheme', 'memo.status')
              AND EXISTS (
                SELECT 1 FROM _edgeever_sidecar_outbox c
                WHERE c.kind = 'memo.create'
@@ -217,6 +217,19 @@ fn replace_exact_string(value: &mut Value, from: &str, to: &str) {
         }
         _ => {}
     }
+}
+
+fn memo_ack_snapshot(database: &Connection, remote: Option<Value>) -> Option<Value> {
+    remote.map(|mut memo| {
+        if let Some(id) = memo.get("id").and_then(Value::as_str) {
+            if let Ok(local) = memo_value(database, id, true) {
+                // Keep the acknowledged cloud content base, but expose the
+                // protected status to renderer acknowledgement listeners.
+                memo["status"] = local.get("status").cloned().unwrap_or(Value::Null);
+            }
+        }
+        memo
+    })
 }
 
 pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<Value, String> {
@@ -292,7 +305,7 @@ pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<V
         return Ok(json!({
             "ok": true,
             "superseded": true,
-            "memo": remote_memo,
+            "memo": memo_ack_snapshot(database, remote_memo),
             "notebook": remote_notebook,
             "template": remote_template
         }));
@@ -315,7 +328,32 @@ pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<V
                 object.insert("placeholderEntityId".to_owned(), json!(entity_id));
             }
         }
+        // A coalesced successor has the same id but a newer version. Its
+        // status is still pending and must participate in the override.
+        if kind == "memo.status" && superseded {
+            apply_params
+                .as_object_mut()
+                .unwrap()
+                .remove("ignoreOutboxId");
+        }
         apply_sync_changes(database, &apply_params)?;
+        if kind == "memo.status" && !superseded {
+            let previous_id = memo_status_ack(database, &remote_id)
+                .and_then(|ack| ack.get("outboxId").and_then(Value::as_i64))
+                .unwrap_or(0);
+            if id >= previous_id {
+                set_meta(
+                    database,
+                    &memo_status_ack_key(&remote_id),
+                    &json!({
+                        "outboxId": id,
+                        "status": remote.get("status").cloned().unwrap_or(Value::Null),
+                        "updatedAt": remote.get("updatedAt").cloned().unwrap_or(Value::Null)
+                    })
+                    .to_string(),
+                )?;
+            }
+        }
     }
     if kind == "memo.create" || kind == "memo.merge" {
         if let Some(remote) = remote_memo.as_ref() {
@@ -523,7 +561,7 @@ pub(crate) fn sync_outbox_ack(database: &Connection, params: &Value) -> Result<V
             .map_err(|e| e.to_string())?
     };
     Ok(
-        json!({ "ok": true, "superseded": deleted == 0, "memo": remote_memo, "notebook": remote_notebook, "template": remote_template }),
+        json!({ "ok": true, "superseded": deleted == 0, "memo": memo_ack_snapshot(database, remote_memo), "notebook": remote_notebook, "template": remote_template }),
     )
 }
 
@@ -865,6 +903,116 @@ fn pending_memo_theme_override(
     Ok(Some(theme))
 }
 
+fn memo_status_ack_key(memo_id: &str) -> String {
+    format!("memo.status-ack:{memo_id}")
+}
+
+fn memo_status_ack(database: &Connection, memo_id: &str) -> Option<Value> {
+    meta_value(database, &memo_status_ack_key(memo_id))
+        .and_then(|value| serde_json::from_str(&value).ok())
+}
+
+/// The outer option distinguishes no pending override from an explicit clear.
+/// Intent order follows outbox ids, not wall time (several edits may share a
+/// millisecond). An ack fence also protects against older responses arriving
+/// after the newer status row has already left the outbox.
+fn pending_memo_status_override(
+    tx: &Transaction<'_>,
+    ignore_outbox_id: Option<i64>,
+    entity_id: &str,
+    placeholder_entity_id: Option<&str>,
+    memo: &Value,
+) -> Result<Option<Option<String>>, String> {
+    let acknowledged = memo_status_ack(tx, entity_id);
+    let acknowledged_id = acknowledged
+        .as_ref()
+        .and_then(|ack| ack.get("outboxId"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let status_ack_id = if let Some(id) = ignore_outbox_id {
+        tx.query_row(
+            "SELECT id FROM _edgeever_sidecar_outbox WHERE id = ?1 AND kind = 'memo.status'",
+            [id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(0)
+    } else {
+        0
+    };
+    let payload: Option<String> = tx
+        .query_row(
+            "SELECT payload_json FROM _edgeever_sidecar_outbox
+         WHERE kind = 'memo.status' AND id > ?1
+           AND (entity_id = ?2 OR (?3 IS NOT NULL AND entity_id = ?3))
+         ORDER BY id DESC LIMIT 1",
+            rusqlite::params![
+                acknowledged_id.max(status_ack_id),
+                entity_id,
+                placeholder_entity_id
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if let Some(payload) = payload {
+        let payload: Value = serde_json::from_str(&payload).map_err(|e| e.to_string())?;
+        return Ok(Some(
+            payload
+                .get("status")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        ));
+    }
+    if let Some(ack) = acknowledged {
+        let older_ack = ignore_outbox_id.is_some_and(|id| id < acknowledged_id);
+        let older_snapshot = memo.get("updatedAt").and_then(Value::as_str).unwrap_or("")
+            < ack.get("updatedAt").and_then(Value::as_str).unwrap_or("");
+        if older_ack || (status_ack_id == 0 && older_snapshot) {
+            return Ok(Some(
+                ack.get("status").and_then(Value::as_str).map(str::to_owned),
+            ));
+        }
+    }
+    Ok(None)
+}
+
+fn record_memo_status_snapshot(
+    tx: &Transaction<'_>,
+    entity_id: &str,
+    memo: &Value,
+    ignore_outbox_id: Option<i64>,
+) -> Result<(), String> {
+    let previous = memo_status_ack(tx, entity_id);
+    let outbox_id = previous
+        .as_ref()
+        .and_then(|value| value.get("outboxId"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let updated_at = memo.get("updatedAt").and_then(Value::as_str).unwrap_or("");
+    let previous_updated_at = previous
+        .as_ref()
+        .and_then(|value| value.get("updatedAt"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if !ignore_outbox_id.is_some_and(|id| id < outbox_id) && updated_at >= previous_updated_at {
+        // Remote freshness is separate from local updated_at, which can move
+        // forward for unrelated offline content/theme edits or clock skew.
+        set_meta(
+            tx,
+            &memo_status_ack_key(entity_id),
+            &json!({
+                "outboxId": outbox_id,
+                "status": memo.get("status").cloned().unwrap_or(Value::Null),
+                "updatedAt": updated_at,
+            })
+            .to_string(),
+        )?;
+    }
+    Ok(())
+}
+
 fn apply_one_sync_change(
     tx: &Transaction<'_>,
     change: &Value,
@@ -1016,6 +1164,24 @@ fn apply_one_sync_change(
         pending_memo_theme_override(tx, ignore_outbox_id, &entity_id, placeholder_entity_id)?
             .unwrap_or_else(|| memo.get("theme").and_then(Value::as_str).map(str::to_owned))
     };
+    let status = if rebuilding {
+        memo.get("status")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    } else {
+        pending_memo_status_override(
+            tx,
+            ignore_outbox_id,
+            &entity_id,
+            placeholder_entity_id,
+            memo,
+        )?
+        .unwrap_or_else(|| {
+            memo.get("status")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+    };
     let source_memo_ids = memo
         .get("sourceMemoIds")
         .and_then(Value::as_array)
@@ -1045,7 +1211,7 @@ fn apply_one_sync_change(
         .unwrap_or_else(|| json!({"type":"doc","content":[]}));
     let requested_notebook_id = string_param(memo, "notebookId")?;
     let notebook_id = resolve_sync_notebook_id(tx, &requested_notebook_id)?;
-    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, is_pinned, theme, is_archived, is_deleted, source_memo_ids, merge_source_count, merged_into_memo_id, created_at, updated_at, deleted_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) ON CONFLICT(id) DO UPDATE SET notebook_id=excluded.notebook_id, title=excluded.title, excerpt=excluded.excerpt, tags_json=excluded.tags_json, is_pinned=excluded.is_pinned, theme=excluded.theme, is_archived=excluded.is_archived, is_deleted=excluded.is_deleted, source_memo_ids=excluded.source_memo_ids, merge_source_count=excluded.merge_source_count, merged_into_memo_id=excluded.merged_into_memo_id, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at", rusqlite::params![entity_id, notebook_id, memo.get("title").and_then(Value::as_str), string_param(memo, "excerpt")?, tags, memo.get("isPinned").and_then(Value::as_bool).unwrap_or(false) as i64, theme, memo.get("isArchived").and_then(Value::as_bool).unwrap_or(false) as i64, memo.get("isDeleted").and_then(Value::as_bool).unwrap_or(false) as i64, source_ids, memo.get("mergeSourceCount").and_then(Value::as_i64).unwrap_or(0), merge_target, string_param(memo, "createdAt")?, string_param(memo, "updatedAt")?, memo.get("deletedAt").and_then(Value::as_str)]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO memos (id, notebook_id, title, excerpt, tags_json, is_pinned, theme, is_archived, is_deleted, source_memo_ids, merge_source_count, merged_into_memo_id, created_at, updated_at, deleted_at, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16) ON CONFLICT(id) DO UPDATE SET notebook_id=excluded.notebook_id, title=excluded.title, excerpt=excluded.excerpt, tags_json=excluded.tags_json, is_pinned=excluded.is_pinned, theme=excluded.theme, is_archived=excluded.is_archived, is_deleted=excluded.is_deleted, source_memo_ids=excluded.source_memo_ids, merge_source_count=excluded.merge_source_count, merged_into_memo_id=excluded.merged_into_memo_id, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, status=excluded.status", rusqlite::params![entity_id, notebook_id, memo.get("title").and_then(Value::as_str), string_param(memo, "excerpt")?, tags, memo.get("isPinned").and_then(Value::as_bool).unwrap_or(false) as i64, theme, memo.get("isArchived").and_then(Value::as_bool).unwrap_or(false) as i64, memo.get("isDeleted").and_then(Value::as_bool).unwrap_or(false) as i64, source_ids, memo.get("mergeSourceCount").and_then(Value::as_i64).unwrap_or(0), merge_target, string_param(memo, "createdAt")?, string_param(memo, "updatedAt")?, memo.get("deletedAt").and_then(Value::as_str), status]).map_err(|e| e.to_string())?;
     tx.execute("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_text, content_hash, revision) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(memo_id) DO UPDATE SET content_json=excluded.content_json, content_markdown=excluded.content_markdown, content_text=excluded.content_text, content_hash=excluded.content_hash, revision=excluded.revision, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')", rusqlite::params![entity_id, content_json.to_string(), string_param(memo, "contentMarkdown")?, string_param(memo, "contentText")?, string_param(memo, "contentHash")?, memo.get("revision").and_then(Value::as_i64).unwrap_or(0)]).map_err(|e| e.to_string())?;
     for source_id in source_memo_ids.iter().filter_map(Value::as_str) {
         tx.execute(
@@ -1054,6 +1220,7 @@ fn apply_one_sync_change(
         )
         .map_err(|e| e.to_string())?;
     }
+    record_memo_status_snapshot(tx, &entity_id, memo, ignore_outbox_id)?;
     Ok(())
 }
 
@@ -1084,8 +1251,452 @@ pub(crate) fn apply_sync_changes(database: &Connection, params: &Value) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::replace_exact_string;
-    use serde_json::json;
+    use super::*;
+    use crate::database::{ensure_sidecar_schema, open_database};
+    use crate::memo::{delete_memo, list_memos, set_memo_status, update_memo};
+    use std::{fs, path::PathBuf};
+
+    fn migrations_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../migrations")
+    }
+
+    fn test_database() -> Connection {
+        let database = Connection::open_in_memory().unwrap();
+        ensure_sidecar_schema(&database).unwrap();
+        let mut paths: Vec<_> = fs::read_dir(migrations_path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("sql"))
+            .collect();
+        paths.sort();
+        for path in paths {
+            database
+                .execute_batch(&fs::read_to_string(path).unwrap())
+                .unwrap();
+        }
+        database
+    }
+
+    fn remote_memo(id: &str, status: Value, updated_at: &str) -> Value {
+        json!({
+            "id": id, "notebookId": "nb_inbox", "title": "Remote note",
+            "excerpt": "body", "tags": [], "isPinned": false, "isArchived": false,
+            "isDeleted": false, "revision": 0, "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": updated_at, "deletedAt": null, "contentJson": crate::markdown_doc("body"),
+            "contentMarkdown": "body", "contentText": "body", "contentHash": "hash",
+            "sourceMemoIds": [], "mergeSourceCount": 0, "mergedIntoMemoId": null, "status": status
+        })
+    }
+
+    fn apply_remote(database: &Connection, memo: Value) {
+        apply_sync_changes(
+            database,
+            &json!({ "changes": [{
+            "entityType": "memo", "operation": "upsert", "entityId": memo["id"], "memo": memo
+        }] }),
+        )
+        .unwrap();
+    }
+
+    fn status_items(database: &Connection, memo_id: &str) -> Vec<Value> {
+        sync_outbox_list(database, &json!({ "includeConflicts": true, "limit": 200 })).unwrap()
+            ["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["kind"] == "memo.status" && item["entityId"] == memo_id)
+            .cloned()
+            .collect()
+    }
+
+    fn set_status(database: &Connection, memo_id: &str, status: Value) -> Value {
+        set_memo_status(database, &json!({ "memoId": memo_id, "status": status })).unwrap()
+    }
+
+    fn ack_status(database: &Connection, item: &Value, status: Value, updated_at: &str) -> Value {
+        sync_outbox_ack(
+            database,
+            &json!({
+                "id": item["id"], "version": item["version"],
+                "remoteMemo": remote_memo(item["entityId"].as_str().unwrap(), status, updated_at)
+            }),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn memo_status_defaults_to_null_and_missing_update_is_a_noop() {
+        let mut database = test_database();
+        let memo = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "body" }),
+        )
+        .unwrap();
+        let id = memo["id"].as_str().unwrap();
+        assert_eq!(memo["status"], Value::Null);
+        set_status(&database, id, json!("completed"));
+        let before = status_items(&database, id);
+        assert_eq!(
+            set_memo_status(&database, &json!({ "memoId": id })).unwrap()["status"],
+            "completed"
+        );
+        assert_eq!(status_items(&database, id), before);
+        for invalid in [json!("unknown"), json!(false), json!(1)] {
+            assert!(
+                set_memo_status(&database, &json!({ "memoId": id, "status": invalid })).is_err()
+            );
+        }
+        let request = serde_json::from_value(json!({ "id": 1, "method": "memo.setStatus", "params": { "memoId": id, "status": null } })).unwrap();
+        let result = crate::rpc::handle(
+            request,
+            &mut database,
+            &std::env::temp_dir(),
+            &migrations_path(),
+        )
+        .unwrap();
+        assert_eq!(result["memo"]["status"], Value::Null);
+        let listed = list_memos(&database, &json!({})).unwrap();
+        let summary = listed["memos"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|memo| memo["id"] == id)
+            .unwrap();
+        assert_eq!(summary.get("status"), Some(&Value::Null));
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["contentMarkdown"],
+            "body"
+        );
+    }
+
+    #[test]
+    fn memo_status_coalesces_multiple_edits_and_keeps_explicit_clear() {
+        let database = test_database();
+        let id = "memo_status_edits";
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-01T00:00:00.000Z"),
+        );
+        for status in [
+            json!("in_progress"),
+            json!("completed"),
+            json!("cancelled"),
+            Value::Null,
+        ] {
+            set_status(&database, id, status.clone());
+            apply_remote(
+                &database,
+                remote_memo(id, json!("in_progress"), "2026-01-02T00:00:00.000Z"),
+            );
+            assert_eq!(memo_value(&database, id, false).unwrap()["status"], status);
+        }
+        let items = status_items(&database, id);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["version"], 4);
+        assert_eq!(items[0]["payload"].get("status"), Some(&Value::Null));
+        let listed = list_memos(&database, &json!({})).unwrap();
+        assert_eq!(
+            listed["memos"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|memo| memo["id"] == id)
+                .unwrap()["status"],
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn memo_status_old_ack_preserves_a_coalesced_successor_version() {
+        let database = test_database();
+        let id = "memo_status_version";
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-01T00:00:00.000Z"),
+        );
+        set_status(&database, id, json!("completed"));
+        let old = status_items(&database, id)[0].clone();
+        set_status(&database, id, Value::Null);
+        assert_eq!(
+            ack_status(
+                &database,
+                &old,
+                json!("completed"),
+                "2026-01-02T00:00:00.000Z"
+            )["superseded"],
+            true
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        let items = status_items(&database, id);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["version"], 2);
+        assert_eq!(items[0]["status"], "pending");
+        ack_status(
+            &database,
+            &items[0],
+            Value::Null,
+            "2026-01-03T00:00:00.000Z",
+        );
+        assert!(status_items(&database, id).is_empty());
+        apply_remote(
+            &database,
+            remote_memo(id, json!("completed"), "2026-01-02T00:00:00.000Z"),
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn memo_status_inflight_ack_preserves_newer_pending_clear_and_response() {
+        let database = test_database();
+        let id = "memo_status_inflight";
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-01T00:00:00.000Z"),
+        );
+        set_status(&database, id, json!("completed"));
+        let old = status_items(&database, id)[0].clone();
+        sync_outbox_claim(&database, &old).unwrap();
+        set_status(&database, id, Value::Null);
+        let response = ack_status(
+            &database,
+            &old,
+            json!("completed"),
+            "2026-01-02T00:00:00.000Z",
+        );
+        assert_eq!(response["memo"]["status"], Value::Null);
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        let items = status_items(&database, id);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["payload"].get("status"), Some(&Value::Null));
+        ack_status(
+            &database,
+            &items[0],
+            Value::Null,
+            "2026-01-03T00:00:00.000Z",
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn memo_status_remote_snapshots_are_monotonic_and_legacy_omission_is_null() {
+        let database = test_database();
+        let id = "memo_status_remote_clock";
+        apply_remote(
+            &database,
+            remote_memo(id, json!("completed"), "2026-01-02T00:00:00.000Z"),
+        );
+        let mut legacy = remote_memo(id, Value::Null, "2026-01-03T00:00:00.000Z");
+        legacy.as_object_mut().unwrap().remove("status");
+        apply_remote(&database, legacy);
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        apply_remote(
+            &database,
+            remote_memo(id, json!("completed"), "2026-01-02T00:00:00.000Z"),
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        apply_remote(
+            &database,
+            remote_memo(id, json!("cancelled"), "2026-01-04T00:00:00.000Z"),
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            "cancelled"
+        );
+    }
+
+    #[test]
+    fn memo_status_inflight_older_ack_cannot_revert_a_newer_ack() {
+        let database = test_database();
+        let id = "memo_status_ack_order";
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-01T00:00:00.000Z"),
+        );
+        set_status(&database, id, json!("in_progress"));
+        let old = status_items(&database, id)[0].clone();
+        assert_eq!(sync_outbox_claim(&database, &old).unwrap()["claimed"], true);
+        set_status(&database, id, json!("completed"));
+        set_status(&database, id, Value::Null);
+        let successor = status_items(&database, id)[0].clone();
+        assert_ne!(old["id"], successor["id"]);
+        ack_status(
+            &database,
+            &successor,
+            Value::Null,
+            "2026-01-03T00:00:00.000Z",
+        );
+        // A failed older request must not be reused for a new edit behind the
+        // acknowledged fence; that edit needs a fresh intent id.
+        sync_outbox_fail(&database, &json!({ "id": old["id"], "version": old["version"], "error": "offline" })).unwrap();
+        set_status(&database, id, Value::Null);
+        let latest = status_items(&database, id).last().unwrap().clone();
+        assert!(latest["id"].as_i64().unwrap() > successor["id"].as_i64().unwrap());
+        // Out-of-order delivery must not let the still-queued older intent win.
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-03T00:00:00.000Z"),
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        ack_status(
+            &database,
+            &old,
+            json!("in_progress"),
+            "2026-01-02T00:00:00.000Z",
+        );
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            Value::Null
+        );
+        ack_status(&database, &latest, Value::Null, "2026-01-04T00:00:00.000Z");
+        assert!(status_items(&database, id).is_empty());
+    }
+
+    #[test]
+    fn memo_status_remaps_pending_clear_when_create_is_acknowledged() {
+        let database = test_database();
+        let local = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "body" }),
+        )
+        .unwrap();
+        let id = local["id"].as_str().unwrap();
+        set_status(&database, id, json!("completed"));
+        set_status(&database, id, Value::Null);
+        let ready = sync_outbox_list(&database, &json!({ "limit": 200 })).unwrap();
+        assert!(!ready["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["kind"] == "memo.status"));
+        let create = ready["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["kind"] == "memo.create")
+            .unwrap();
+        let remote_id = "memo_status_remapped";
+        sync_outbox_ack(&database, &json!({ "id": create["id"], "version": create["version"], "remoteMemo": remote_memo(remote_id, json!("in_progress"), "2026-01-02T00:00:00.000Z") })).unwrap();
+        assert_eq!(
+            memo_value(&database, remote_id, false).unwrap()["status"],
+            Value::Null
+        );
+        assert!(memo_value(&database, id, true).is_err());
+        let item = &status_items(&database, remote_id)[0];
+        assert_eq!(item["payload"]["memoId"], remote_id);
+        assert_eq!(item["payload"].get("status"), Some(&Value::Null));
+        assert!(sync_outbox_list(&database, &json!({})).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["kind"] == "memo.status"));
+    }
+
+    #[test]
+    fn memo_status_content_ack_keeps_newer_status_and_unsent_delete_cancels_it() {
+        let database = test_database();
+        let id = "memo_status_content_ack";
+        apply_remote(
+            &database,
+            remote_memo(id, Value::Null, "2026-01-01T00:00:00.000Z"),
+        );
+        update_memo(
+            &database,
+            &json!({ "memoId": id, "title": "Edit", "contentMarkdown": "edit", "tags": [] }),
+        )
+        .unwrap();
+        let update = sync_outbox_list(&database, &json!({})).unwrap()["items"][0].clone();
+        set_status(&database, id, json!("cancelled"));
+        sync_outbox_ack(&database, &json!({ "id": update["id"], "version": update["version"], "remoteMemo": remote_memo(id, Value::Null, "2026-01-02T00:00:00.000Z") })).unwrap();
+        assert_eq!(
+            memo_value(&database, id, false).unwrap()["status"],
+            "cancelled"
+        );
+        let local = create_memo(&database, &json!({ "notebookId": "nb_inbox" })).unwrap();
+        let local_id = local["id"].as_str().unwrap();
+        set_status(&database, local_id, json!("completed"));
+        delete_memo(&database, &json!({ "memoId": local_id })).unwrap();
+        assert!(status_items(&database, local_id).is_empty());
+    }
+
+    #[test]
+    fn memo_status_upgrades_a_real_legacy_database_without_changing_existing_notes() {
+        let temporary = std::env::temp_dir().join(crate::now_id("edgeever-status-upgrade"));
+        let legacy_migrations = temporary.join("legacy-migrations");
+        let data = temporary.join("data");
+        fs::create_dir_all(&legacy_migrations).unwrap();
+        for entry in fs::read_dir(migrations_path()).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_str().unwrap();
+            if name.ends_with(".sql") && name < "0074" {
+                fs::copy(&path, legacy_migrations.join(name)).unwrap();
+            }
+        }
+        let old = open_database(&data, &legacy_migrations).unwrap();
+        let has_status: bool = old
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('memos') WHERE name = 'status')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!has_status);
+        old.execute("INSERT INTO memos (id, notebook_id, title, excerpt) VALUES ('memo_legacy_status', 'nb_inbox', 'Legacy note', 'body')", []).unwrap();
+        old.execute("INSERT INTO memo_contents (memo_id, content_json, content_markdown, content_text, content_hash) VALUES ('memo_legacy_status', '{\"type\":\"doc\",\"content\":[]}', 'legacy body', 'legacy body', 'legacy_hash')", []).unwrap();
+        crate::enqueue_change(
+            &old,
+            "memo.update",
+            "memo_legacy_status",
+            &json!({ "memoId": "memo_legacy_status", "title": "Legacy queued" }),
+        )
+        .unwrap();
+        drop(old);
+        let upgraded = open_database(&data, &migrations_path()).unwrap();
+        let memo = memo_value(&upgraded, "memo_legacy_status", false).unwrap();
+        assert_eq!(memo.get("status"), Some(&Value::Null));
+        assert_eq!(memo["title"], "Legacy note");
+        assert_eq!(memo["contentMarkdown"], "legacy body");
+        assert_eq!(
+            sync_outbox_list(&upgraded, &json!({})).unwrap()["items"][0]["payload"]["title"],
+            "Legacy queued"
+        );
+        let column: (i64, Option<String>) = upgraded.query_row(
+            "SELECT \"notnull\", dflt_value FROM pragma_table_info('memos') WHERE name = 'status'", [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!(column.0, 0);
+        assert!(column.1.is_none() || column.1.as_deref() == Some("NULL"));
+        set_status(&upgraded, "memo_legacy_status", json!("completed"));
+        drop(upgraded);
+        let reopened = open_database(&data, &migrations_path()).unwrap();
+        assert_eq!(
+            memo_value(&reopened, "memo_legacy_status", false).unwrap()["status"],
+            "completed"
+        );
+        assert_eq!(status_items(&reopened, "memo_legacy_status").len(), 1);
+        drop(reopened);
+        fs::remove_dir_all(temporary).unwrap();
+    }
 
     #[test]
     fn replaces_remapped_memo_ids_in_nested_batch_payloads() {

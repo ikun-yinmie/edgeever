@@ -51,6 +51,7 @@ import {
   MEMO_EDITOR_TOP_ROW_CLASS_NAME,
 } from "@/components/MemoEditorChromeDensity";
 import { MemoTitleInput } from "@/components/MemoTitleInput";
+import { MemoStatusBadge } from "@/components/MemoStatusBadge";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -74,6 +75,7 @@ import { EditorParagraphFormatItems } from "./EditorParagraphFormatMenu";
 import { EDITOR_PARAGRAPH_LINE_HEIGHT_CHANGED, readEditorParagraphLineHeight } from "@/lib/editor-paragraph-preference";
 import { readEditorCursor, writeEditorCursor } from "@/lib/editor-cursor-memory";
 import { EditorOutline } from "./EditorOutline";
+import type { EditorDocumentState } from "./editor/editor-document-state";
 import { MemoTasksDialog } from "./dialogs/MemoTasksDialog";
 import { collectMemoTasks, updateMemoTaskDocument, type MemoTask, type MemoTaskMark } from "@/lib/memo-tasks";
 import { setMemoTaskMark } from "@/lib/memo-task-editor";
@@ -167,6 +169,7 @@ import {
   resolveMemoContentDoc,
   type Notebook,
   type MemoDetail,
+  type MemoStatus,
   type MemoSummary,
   type MemoEditSession,
   type TiptapDoc,
@@ -540,6 +543,15 @@ const RichEditorPane = ({
   } = useEditorSaveStatus();
   const [storageSaveError, setStorageSaveError] = useState(false);
   const [hydratedEditorMemoId, setHydratedEditorMemoId] = useState<string | null>(null);
+  const [editorDocumentState, setEditorDocumentState] = useState<EditorDocumentState | null>(null);
+  const publishEditorDocument = useCallback((currentEditor: Editor | null, documentKey: string) => {
+    if (!isEditorReady(currentEditor)) return;
+    setEditorDocumentState((current) => ({
+      editor: currentEditor,
+      documentKey,
+      version: (current?.version ?? 0) + 1,
+    }));
+  }, []);
 
   useEffect(() => {
     setStorageSaveError(false);
@@ -940,6 +952,9 @@ const RichEditorPane = ({
       if (hydratedMemoIdRef.current === previousMemoId) {
         hydratedMemoIdRef.current = nextMemoId;
         setHydratedEditorMemoId(nextMemoId);
+        setEditorDocumentState((current) => current?.documentKey === previousMemoId
+          ? { ...current, documentKey: nextMemoId }
+          : current);
       }
       if (editSessionRef.current?.memoId === previousMemoId) {
         editSessionRef.current = {
@@ -2710,6 +2725,7 @@ const RichEditorPane = ({
       appliedEditorSourceKeyRef.current = null;
       resetMarkdownMode();
       setHydratedEditorMemoId(null);
+      setEditorDocumentState(null);
       editingMemoIdRef.current = null;
       setHasUnsavedChanges(false);
       setTitle("");
@@ -2811,6 +2827,7 @@ const RichEditorPane = ({
       appliedEditorSourceKeyRef.current = immediateDraft.sourceKey;
       hydratedMemoIdRef.current = memo.id;
       setHydratedEditorMemoId(memo.id);
+      publishEditorDocument(currentEditor, memo.id);
     }
 
     // While the user still has unsaved keystrokes, ignore memo prop churn entirely
@@ -2851,6 +2868,7 @@ const RichEditorPane = ({
       previousMemo.tags.every((tag, index) => tag === memo.tags[index])
     ) {
       memoRef.current = memo;
+      publishEditorDocument(currentEditor, memo.id);
       if (!requiresLocalEditSession(memo)) {
         void api.createMemoEditSession(memo.id).then((response) => {
           if (cancelled || editingMemoIdRef.current !== memo.id) return;
@@ -2875,6 +2893,7 @@ const RichEditorPane = ({
       appliedEditorSourceKeyRef.current = `collab:${memo.id}:${memo.revision}`;
       hydratedMemoIdRef.current = memo.id;
       setHydratedEditorMemoId(memo.id);
+      publishEditorDocument(currentEditor, memo.id);
       editSessionRef.current = null;
       if (!hasUnsavedChangesRef.current) {
         setTitle(memo.title ?? "");
@@ -2987,6 +3006,7 @@ const RichEditorPane = ({
       if (sourceAlreadyApplied || editorMarkdownMatches) {
         editingMemoIdRef.current = memo.id;
         appliedEditorSourceKeyRef.current = sourceKey;
+        publishEditorDocument(currentEditor, memo.id);
         if (queuedUpdate) {
           const nextState = syncStatusToSaveState(queuedUpdate.status);
           setSaveState(nextState);
@@ -3062,6 +3082,7 @@ const RichEditorPane = ({
       appliedEditorSourceKeyRef.current = sourceKey;
       hydratedMemoIdRef.current = memo.id;
       setHydratedEditorMemoId(memo.id);
+      publishEditorDocument(currentEditor, memo.id);
 
       if (requiresLocalEditSession(memo)) {
         editSessionRef.current = createLocalEditSession(memo);
@@ -3595,6 +3616,19 @@ const RichEditorPane = ({
     [onSaved, repository]
   );
 
+  const memoStatusMutation = useMutation({
+    mutationFn: async (status: MemoStatus | null) => {
+      const currentMemo = memoRef.current;
+      if (!currentMemo || effectiveReadOnly || currentMemo.isDeleted) return null;
+      return repository.setMemoStatus(currentMemo.id, status);
+    },
+    onSuccess: async (updatedMemo) => {
+      if (!updatedMemo) return;
+      if (memoRef.current?.id === updatedMemo.id) memoRef.current = updatedMemo;
+      await onSaved(updatedMemo);
+    },
+  });
+
   const pluginEditorMemoId = memo?.id ?? null;
   useEffect(() => {
     if (!editor || !pluginEditorMemoId || effectiveReadOnly || hydratedEditorMemoId !== pluginEditorMemoId) {
@@ -4102,6 +4136,7 @@ const RichEditorPane = ({
       window.setTimeout(() => {
         hydratingRef.current = false;
       }, 0);
+      publishEditorDocument(currentEditor, remoteMemo.id);
     }
 
     if (requiresLocalEditSession(remoteMemo)) {
@@ -4949,7 +4984,8 @@ const RichEditorPane = ({
           MEMO_EDITOR_TITLE_REGION_CLASS_NAME,
           (desktopFocusMode || editorContentAlignment === "center") && "mx-auto max-w-[960px]"
         )}>
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
             <MemoTitleInput
               value={title}
               readOnly={effectiveReadOnly}
@@ -4960,6 +4996,8 @@ const RichEditorPane = ({
               }}
               placeholder={t("common.untitledMemo")}
             />
+            </div>
+            <MemoStatusBadge status={memo.status} />
           </div>
           <MemoEditorMetadataRow
             contentMarkdown={currentMarkdownForAi}
@@ -5025,6 +5063,8 @@ const RichEditorPane = ({
             onPickMathFormula={() => openMathFormula()}
             memoTheme={effectiveReadOnly ? undefined : memoEditorTheme}
             onMemoThemeChange={effectiveReadOnly ? undefined : handleMemoThemeChange}
+            memoStatus={memo.status}
+            onMemoStatusChange={effectiveReadOnly ? undefined : memoStatusMutation.mutateAsync}
           />
         )}
         <EditorSaveRecoveryBanner
@@ -5314,6 +5354,8 @@ const RichEditorPane = ({
           {!isMobileViewport && !useMobilePlainTextEditor && !useMarkdownSourceEditor && phonePreviewOpen && (
             <EditorPhonePreview
               editor={editor}
+              documentKey={memo?.id}
+              documentState={editorDocumentState}
               title={getEditableMemoTitle(memo?.title)}
               scrollContainer={editorScrollContainer}
               onScrollerChange={setPhonePreviewScroller}
@@ -5334,6 +5376,7 @@ const RichEditorPane = ({
           editor={editor}
           scrollContainer={editorScrollContainer}
           documentKey={memo?.id}
+          documentState={editorDocumentState}
           className="bottom-20"
         />
       )}
@@ -5345,6 +5388,7 @@ const RichEditorPane = ({
           previewContainer={phonePreviewOpen && phonePreviewStageVisible ? phonePreviewScroller : null}
           collapsed={editorOutlineCollapsed}
           documentKey={memo?.id}
+          documentState={editorDocumentState}
           shortcutLabel={formatShortcutBinding(shortcutSettings.toggleOutline)}
           docked
           onCollapsedChange={handleEditorOutlineCollapsedChange}

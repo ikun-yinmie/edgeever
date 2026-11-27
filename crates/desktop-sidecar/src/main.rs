@@ -63,18 +63,26 @@ fn enqueue_change(
             return Ok(());
         }
     }
-    if kind == "memo.setTheme" {
-        // A note carries at most one theme, so repeated changes coalesce into
-        // the newest payload instead of piling up outbox rows.
-        let existing: Option<i64> = database
+    if kind == "memo.setTheme" || kind == "memo.status" {
+        // Coalesce metadata into the latest queued row only. Never reuse an
+        // older row behind an in-flight write: outbox order is intent order.
+        let existing: Option<(i64, String)> = database
             .query_row(
-                "SELECT id FROM _edgeever_sidecar_outbox WHERE kind = 'memo.setTheme' AND entity_id = ?1 AND status IN ('pending', 'error', 'conflict') ORDER BY id LIMIT 1",
-                [entity_id],
-                |row| row.get(0),
+                "SELECT id, status FROM _edgeever_sidecar_outbox WHERE kind = ?1 AND entity_id = ?2 ORDER BY id DESC LIMIT 1",
+                rusqlite::params![kind, entity_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        if let Some(outbox_id) = existing {
+        let acknowledged_id = if kind == "memo.status" {
+            meta_value(database, &format!("memo.status-ack:{entity_id}"))
+                .and_then(|value| serde_json::from_str::<Value>(&value).ok())
+                .and_then(|value| value.get("outboxId").and_then(Value::as_i64))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        if let Some((outbox_id, _)) = existing.filter(|(id, status)| *id > acknowledged_id && status != "syncing") {
             database
                 .execute(
                     "UPDATE _edgeever_sidecar_outbox
@@ -403,6 +411,8 @@ mod tests {
                    excerpt TEXT NOT NULL,
                    tags_json TEXT NOT NULL,
                    is_pinned INTEGER NOT NULL,
+                   theme TEXT,
+                   status TEXT DEFAULT NULL,
                    is_archived INTEGER NOT NULL,
                    is_deleted INTEGER NOT NULL,
                    source_memo_ids TEXT NOT NULL,
@@ -424,6 +434,7 @@ mod tests {
                  INSERT INTO notebooks (id, slug) VALUES ('notebook-1', 'notes'), ('nb_inbox', 'inbox');",
             )
             .unwrap();
+        crate::database::ensure_sidecar_schema(&database).unwrap();
 
         let memo =
             |id: &str, merged_into: Option<&str>, source_ids: Vec<&str>, notebook_id: &str| {
@@ -513,6 +524,7 @@ mod tests {
     #[test]
     fn sync_apply_recreates_inbox_and_orders_notebooks_before_memos() {
         let database = Connection::open_in_memory().unwrap();
+        crate::database::ensure_sidecar_schema(&database).unwrap();
         database
             .execute_batch(
                 "PRAGMA foreign_keys = ON;
@@ -536,6 +548,8 @@ mod tests {
                    excerpt TEXT NOT NULL,
                    tags_json TEXT NOT NULL,
                    is_pinned INTEGER NOT NULL,
+                   theme TEXT,
+                   status TEXT DEFAULT NULL,
                    is_archived INTEGER NOT NULL,
                    is_deleted INTEGER NOT NULL,
                    source_memo_ids TEXT NOT NULL,
@@ -687,6 +701,7 @@ mod tests {
     #[test]
     fn sync_apply_falls_back_to_renamed_workspace_inbox() {
         let database = Connection::open_in_memory().unwrap();
+        crate::database::ensure_sidecar_schema(&database).unwrap();
         database
             .execute_batch(
                 "PRAGMA foreign_keys = ON;
@@ -710,6 +725,8 @@ mod tests {
                    excerpt TEXT NOT NULL,
                    tags_json TEXT NOT NULL,
                    is_pinned INTEGER NOT NULL,
+                   theme TEXT,
+                   status TEXT DEFAULT NULL,
                    is_archived INTEGER NOT NULL,
                    is_deleted INTEGER NOT NULL,
                    source_memo_ids TEXT NOT NULL,
@@ -834,6 +851,8 @@ mod tests {
                    excerpt TEXT NOT NULL,
                    tags_json TEXT NOT NULL,
                    is_pinned INTEGER NOT NULL,
+                   theme TEXT,
+                   status TEXT DEFAULT NULL,
                    is_archived INTEGER NOT NULL,
                    is_deleted INTEGER NOT NULL,
                    source_memo_ids TEXT NOT NULL,

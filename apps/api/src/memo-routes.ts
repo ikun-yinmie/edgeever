@@ -11,6 +11,7 @@ import {
   type MemoDetail,
   type MemoEditSession,
   type MemoRevision,
+  type MemoStatus,
   type MemoUpdateInput,
   type TiptapDoc,
 } from "@edgeever/shared";
@@ -47,6 +48,7 @@ type MemoRouteDependencies = {
     input: {
       creationId?: string;
       notebookId: string;
+      status?: MemoStatus | null;
       title?: string;
       contentMarkdown?: string;
       tags?: string[];

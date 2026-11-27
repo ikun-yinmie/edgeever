@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getClientDisplaySizeParts } from "@edgeever/shared";
 import type { DeploymentMetadata } from "@edgeever/shared/deployment-metadata";
-import { Activity, CircleCheck, CircleX, Cloud, Copy, ExternalLink, Info, LoaderCircle, MonitorSmartphone, RefreshCw, RotateCcw } from "lucide-react";
+import { Activity, CircleCheck, CircleX, Cloud, Copy, ExternalLink, Info, LoaderCircle, MonitorSmartphone, Pause, Play, RefreshCw, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { detectWebClientKind } from "@/lib/client-environment";
 import { api, getConfiguredDesktopApiBaseUrl, type InstanceHealth } from "@/lib/api";
 import { copyHtmlToClipboard } from "@/lib/clipboard";
 import { resolveSystemInfoDeploymentMetadata } from "@/lib/deployment-metadata";
-import { getDesktopUpdateDownloadLabel } from "@/lib/desktop-update-progress";
+import { getDesktopUpdateDownloadLabel, getDesktopUpdatePausedLabel } from "@/lib/desktop-update-progress";
 import { resolveDeploymentPlatform } from "@/lib/instance-runtime";
 import {
   getClientRuntimeDiagnostics,
@@ -337,6 +337,14 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
       void desktopUpdateStatusQuery.refetch();
     },
   });
+  const desktopUpdatePauseMutation = useMutation({
+    mutationFn: async () => {
+      await desktopBridge!.pauseUpdateDownload?.();
+    },
+    onSettled: () => {
+      void desktopUpdateStatusQuery.refetch();
+    },
+  });
   const desktopUpdateInstallMutation = useMutation({
     mutationFn: async () => {
       const result = await desktopBridge!.installUpdate();
@@ -469,7 +477,9 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
       ? t("systemInfo.desktopUpdateInstalling")
       : desktopUpdateState === "downloading"
         ? getDesktopUpdateDownloadLabel(desktopUpdateStatusQuery.data?.downloadProgress, t)
-        : desktopUpdateState === "available"
+        : desktopUpdateState === "paused"
+          ? getDesktopUpdatePausedLabel(desktopUpdateStatusQuery.data?.downloadProgress, t)
+          : desktopUpdateState === "available"
           ? t(desktopUpdateCheckMutation.isPending || desktopUpdateDownloadMutation.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
           : desktopUpdateState === "downloaded"
             ? t("systemInfo.desktopUpdateReady")
@@ -483,7 +493,8 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
 
   const handleDesktopUpdate = () => {
     if (desktopUpdateState === "downloaded") desktopUpdateInstallMutation.mutate();
-    else if (desktopUpdateState === "available") desktopUpdateDownloadMutation.mutate();
+    else if (desktopUpdateState === "downloading") desktopUpdatePauseMutation.mutate();
+    else if (desktopUpdateState === "available" || desktopUpdateState === "paused") desktopUpdateDownloadMutation.mutate();
     else desktopUpdateCheckMutation.mutate();
   };
 
@@ -540,23 +551,29 @@ export const SystemInfoPanel = ({ active = true }: { active?: boolean }) => {
                   variant="outline"
                   className="h-7 bg-card px-2.5 text-xs shadow-xs hover:bg-slate-50"
                   type="button"
-                  disabled={desktopUpdateBusy || desktopUpdateState === "downloading"}
+                  disabled={desktopUpdateBusy}
                   onClick={handleDesktopUpdate}
                 >
-                  {desktopUpdateBusy || desktopUpdateState === "downloading"
+                  {desktopUpdateBusy
                     ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                     : desktopUpdateState === "downloaded"
                       ? <RotateCcw className="h-3.5 w-3.5" />
-                      : <RefreshCw className="h-3.5 w-3.5" />}
+                      : desktopUpdateState === "downloading"
+                        ? <Pause className="h-3.5 w-3.5" />
+                        : desktopUpdateState === "paused"
+                          ? <Play className="h-3.5 w-3.5" />
+                          : <RefreshCw className="h-3.5 w-3.5" />}
                   {desktopUpdateState === "downloaded"
                     ? t("systemInfo.desktopUpdateRestart")
                     : desktopUpdateState === "downloading"
-                      ? t("systemInfo.desktopUpdateDownloading")
-                      : desktopUpdateState === "available"
-                        ? t("desktopUpdate.download")
-                        : desktopUpdateCheckMutation.isPending
-                          ? t("systemInfo.desktopUpdateChecking")
-                          : t("systemInfo.desktopCheckForUpdates")}
+                      ? t("desktopUpdate.pause")
+                      : desktopUpdateState === "paused"
+                        ? t("desktopUpdate.resume")
+                        : desktopUpdateState === "available"
+                          ? t("desktopUpdate.download")
+                          : desktopUpdateCheckMutation.isPending
+                            ? t("systemInfo.desktopUpdateChecking")
+                            : t("systemInfo.desktopCheckForUpdates")}
                 </Button>
               ) : isClient && desktopAvailable ? (
                 <Button

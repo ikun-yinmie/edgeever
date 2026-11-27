@@ -307,7 +307,8 @@ const acknowledge = async (
   remoteTemplate?: DesktopRpcResponses["template.list"]["templates"][number],
 ) => {
   if (remoteNotebook) await applyRemoteNotebook(remoteNotebook);
-  await request("sync.outbox.ack", { id: item.id, version: item.version, remoteMemo, remoteNotebook, remoteTemplate });
+  const result = await request("sync.outbox.ack", { id: item.id, version: item.version, remoteMemo, remoteNotebook, remoteTemplate });
+  return result.memo ?? remoteMemo;
 };
 
 export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: StagedResourceRewrite[]) => {
@@ -324,11 +325,13 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
       title: String(payload.title ?? ""),
       contentMarkdown: typeof payload.contentMarkdown === "string" ? payload.contentMarkdown : undefined,
       tags: Array.isArray(payload.tags) ? payload.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      ...(payload.status === null || payload.status === "in_progress" || payload.status === "completed" || payload.status === "cancelled"
+        ? { status: payload.status }
+        : {}),
       createdAt: typeof payload.createdAt === "string" ? payload.createdAt : undefined,
       updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : undefined,
     });
-    await acknowledge(item, data.memo);
-    return data.memo;
+    return await acknowledge(item, data.memo);
   }
 
   if (item.kind === "memo.update") {
@@ -360,8 +363,7 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
         localRevisions,
       });
       if (recovery === "ack") {
-        await acknowledge(item, remote.memo);
-        return remote.memo;
+        return await acknowledge(item, remote.memo);
       }
       if (recovery !== "rebase") {
         throw new ApiRequestError(
@@ -386,8 +388,7 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
       tags: Array.isArray(payload.tags) ? payload.tags.filter((tag): tag is string => typeof tag === "string") : [],
       allowDestructiveOverwrite: payload.allowDestructiveOverwrite === true,
     });
-    await acknowledge(item, data.memo);
-    return data.memo;
+    return await acknowledge(item, data.memo);
   }
 
   if (item.kind === "memo.delete") {
@@ -468,14 +469,32 @@ export const syncOutboxItem = async (item: DesktopOutboxItem, stagedRewrites: St
     return null;
   }
 
+  if (item.kind === "memo.status") {
+    const memoId = String(payload.memoId ?? item.entityId);
+    const status = payload.status;
+    // An absent/invalid field must never turn into an unintended clear.
+    if (status !== null && status !== "in_progress" && status !== "completed" && status !== "cancelled") {
+      throw new Error("Invalid memo status in desktop outbox");
+    }
+    let data: { memo: MemoDetail } | null = null;
+    try {
+      data = await api.updateMemo(memoId, { status });
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || error.status !== 404) {
+        throw error;
+      }
+    }
+    await acknowledge(item, data?.memo);
+    return null;
+  }
+
   if (item.kind === "memo.merge") {
     const data = await api.mergeMemos({
       memoIds: Array.isArray(payload.memoIds) ? payload.memoIds.filter((memoId): memoId is string => typeof memoId === "string") : [],
       notebookId: typeof payload.notebookId === "string" ? payload.notebookId : undefined,
       title: typeof payload.title === "string" ? payload.title : undefined,
     });
-    await acknowledge(item, data.memo);
-    return data.memo;
+    return await acknowledge(item, data.memo);
   }
 
   if (item.kind === "notebook.create") {

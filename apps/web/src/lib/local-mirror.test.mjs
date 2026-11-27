@@ -21,6 +21,8 @@ const {
   applyLocalMemoMove,
   applyLocalMemoPin,
   applyLocalMemoTheme,
+  applyLocalMemoStatus,
+  putLocalMemoIfNotStale,
   applyLocalMemoDeleteBatch,
   applyLocalEmptyTrash,
   updateLocalNotebook,
@@ -43,6 +45,7 @@ const {
   syncLocalMirror,
 } = await import("./local-mirror.ts");
 const { api } = await import("./api.ts");
+const { queueLocalAction } = await import("./sync-queue.ts");
 const { setSyncPause } = await import("./sync-preferences.ts");
 const { getCachedLocalResourceBytes } = await import("./local-resource-cache.ts");
 
@@ -83,6 +86,114 @@ const seedNotebook = (scope, id) => putLocalNotebook(scope, {
 });
 
 describe("local mirror", () => {
+  test("defaults old and new notes to no status and preserves summary metadata", async () => {
+    const scope = createLocalDataScope("https://notes.example.org", "user-1");
+    await seedNotebook(scope, "inbox");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    expect(memo.status).toBeNull();
+    const { status: _status, ...legacy } = memo;
+    await localDb.memos.put({ ...legacy, scope });
+    expect((await getLocalMemo(scope, memo.id)).status).toBeNull();
+    expect((await listLocalMemos(scope, {})).memos[0].status).toBeNull();
+    await putLocalMemo(scope, { ...memo, theme: "letter", status: "in_progress" });
+    expect((await listLocalMemos(scope, {})).memos[0]).toMatchObject({ theme: "letter", status: "in_progress" });
+  });
+
+  test("preserves omitted status, honors null, and rejects older status snapshots after a clear", async () => {
+    const scope = createLocalDataScope("https://notes.example.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    const selected = await applyLocalMemoStatus(scope, memo.id, "completed");
+    await putLocalMemo(scope, { ...selected, status: undefined, title: "Unrelated update" });
+    expect((await getLocalMemo(scope, memo.id)).status).toBe("completed");
+    await putLocalMemo(scope, { ...selected, status: null });
+    expect((await getLocalMemo(scope, memo.id)).status).toBeNull();
+    const cleared = await applyLocalMemoStatus(scope, memo.id, null);
+    await putLocalMemoIfNotStale(scope, { ...selected, status: "completed" });
+    expect((await getLocalMemo(scope, memo.id))).toMatchObject({ status: null, updatedAt: cleared.updatedAt });
+    // A content autosave may still hold the detail from before the clear.
+    const saved = await putLocalMemoUpdate(scope, selected, { title: "Saved content", contentJson: memo.contentJson, tags: [] });
+    expect(saved.status).toBeNull();
+    expect((await getLocalMemo(scope, memo.id)).status).toBeNull();
+  });
+
+  for (const bootstrap of [false, true]) {
+    for (const status of ["in_progress", "completed", "cancelled", null]) {
+      test(`overlays queued status ${status} during ${bootstrap ? "bootstrap" : "incremental pull"}`, async () => {
+        const scope = createLocalDataScope("https://notes.example.org", "user-1");
+        await seedNotebook(scope, "inbox");
+        const created = await createLocalMemo(scope, { notebookId: "inbox" });
+        const memo = { ...created, id: "remote-status", status: "completed" };
+        await putLocalMemo(scope, memo);
+        await applyLocalMemoStatus(scope, memo.id, status);
+        await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status });
+        const original = { syncBootstrap: api.syncBootstrap, syncChanges: api.syncChanges };
+        const stale = { ...memo, revision: 9, title: "New remote content", updatedAt: "2099-01-01T00:00:00.000Z" };
+        if (!bootstrap) {
+          await localDb.syncMeta.bulkPut([
+            { scope, key: "cursor", value: "1", updatedAt: memo.updatedAt },
+            { scope, key: "identity", value: "workspace", updatedAt: memo.updatedAt },
+          ]);
+        }
+        api.syncBootstrap = async () => ({ notebooks: [], memos: [stale], snapshotCursor: 2, syncIdentity: "workspace", nextAfterId: null });
+        api.syncChanges = async () => ({ changes: [{ entityType: "memo", entityId: memo.id, operation: "upsert", memo: stale }], cursor: 2, serverCursor: 2, hasMore: false, syncIdentity: "workspace" });
+        try {
+          await syncLocalMirror(scope);
+          expect((await getLocalMemo(scope, memo.id))).toMatchObject({ status, title: "New remote content", revision: 9 });
+        } finally {
+          api.syncBootstrap = original.syncBootstrap;
+          api.syncChanges = original.syncChanges;
+        }
+      });
+    }
+  }
+
+  test("keeps an acknowledged clear when an older pull response arrives after the queue is empty", async () => {
+    const scope = createLocalDataScope("https://notes.example.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    const remote = { ...memo, id: "late-status-pull", status: "completed", revision: 1 };
+    await putLocalMemo(scope, remote);
+    await localDb.syncMeta.bulkPut([
+      { scope, key: "cursor", value: "1", updatedAt: memo.updatedAt },
+      { scope, key: "identity", value: "workspace", updatedAt: memo.updatedAt },
+    ]);
+    const original = { syncChanges: api.syncChanges, updateMemo: api.updateMemo };
+    let started;
+    let release;
+    const startedPromise = new Promise((resolve) => { started = resolve; });
+    const response = new Promise((resolve) => { release = resolve; });
+    api.syncChanges = async () => { started(); return response; };
+    api.updateMemo = async () => ({ memo: { ...remote, status: null, updatedAt: "2099-01-01T00:00:00.000Z" } });
+    const stalePage = { changes: [{ entityType: "memo", entityId: remote.id, operation: "upsert", memo: remote }], cursor: 2, serverCursor: 2, hasMore: false, syncIdentity: "workspace" };
+    try {
+      const pulling = syncLocalMirror(scope);
+      await startedPromise;
+      await applyLocalMemoStatus(scope, remote.id, null);
+      await queueLocalAction(scope, "memo.status", remote.id, { memoId: remote.id, status: null });
+      const { syncQueuedChanges } = await import("./sync-queue.ts");
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1 });
+      expect(await localDb.syncQueue.count()).toBe(0);
+      release(stalePage);
+      await pulling;
+      expect((await getLocalMemo(scope, remote.id))).toMatchObject({ status: null, updatedAt: "2099-01-01T00:00:00.000Z" });
+      await syncLocalMirror(scope);
+      expect((await getLocalMemo(scope, remote.id)).status).toBeNull();
+    } finally {
+      release(stalePage);
+      api.syncChanges = original.syncChanges;
+      api.updateMemo = original.updateMemo;
+    }
+  });
+
+  test("preserves a cleared temporary status when create acknowledgement is applied twice", async () => {
+    const scope = createLocalDataScope("https://notes.example.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await applyLocalMemoStatus(scope, memo.id, "completed");
+    await applyLocalMemoStatus(scope, memo.id, null);
+    const remote = { ...memo, id: "remote-cleared-status", status: "completed", revision: 1 };
+    expect((await replaceLocalMemoId(scope, memo.id, remote)).status).toBeNull();
+    expect((await replaceLocalMemoId(scope, memo.id, remote)).status).toBeNull();
+  });
+
   test("records a durable mapping when a new memo receives its remote id", async () => {
     const scope = createLocalDataScope("https://notes.example.org", "user-1");
     const localMemo = await createLocalMemo(scope, { notebookId: "inbox", title: "New note" });

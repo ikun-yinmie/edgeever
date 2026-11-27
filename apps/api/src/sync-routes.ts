@@ -1,4 +1,4 @@
-import type { MemoDetail } from "@edgeever/shared";
+import type { MemoDetail, MemoStatus } from "@edgeever/shared";
 import type { Hono } from "hono";
 import type { AppEnv } from "./api-context";
 import { inboxNotebookIdentitySql, mapNotebook, type NotebookRow } from "./notebook-service";
@@ -20,6 +20,7 @@ export type SyncMemoDetailRow = {
   excerpt: string;
   tags_json: string;
   theme: string | null;
+  status?: MemoStatus | null;
   is_pinned: number;
   is_archived: number;
   is_deleted: number;
@@ -115,7 +116,7 @@ export const registerSyncRoutes = (
          ORDER BY n.sort_order ASC, n.name ASC`,
       ).bind(workspaceId).all<NotebookRow>(),
       context.env.storage.db.prepare(
-        `SELECT m.id, ${syncMemoNotebookIdSql} AS notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+        `SELECT m.id, ${syncMemoNotebookIdSql} AS notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
                 m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
                 mc.content_json, mc.content_markdown, mc.content_text, mc.content_hash,
                 m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -255,7 +256,7 @@ export const registerSyncRoutes = (
       Promise.all(splitSyncDetailIds(memoIds).map((batch) => {
         const placeholders = batch.map(() => "?").join(", ");
         return context.env.storage.db.prepare(
-          `SELECT m.id, ${syncMemoNotebookIdSql} AS notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+          `SELECT m.id, ${syncMemoNotebookIdSql} AS notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
                   m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, mc.revision,
                   mc.content_json, mc.content_markdown, mc.content_text, mc.content_hash,
                   m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id

@@ -16,6 +16,7 @@ beforeEach(() => {
   for (const path of globSync("migrations/*.sql").sort().filter((path) => path < "migrations/0068")) {
     sqlite.exec(readFileSync(path, "utf8"));
   }
+  sqlite.exec(readFileSync("migrations/0074_memo_status.sql", "utf8"));
   notebookId = sqlite.query("SELECT id FROM notebooks WHERE workspace_id = 'ws_default' AND is_deleted = 0 LIMIT 1").get().id;
   db = createSelfHostedStorageAdapter(sqlite, ".unused-test-resources").db;
 });

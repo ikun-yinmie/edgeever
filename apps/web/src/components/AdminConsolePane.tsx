@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, BookUser, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, Share2, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
+import { ArrowLeft, BookUser, Database, Globe, Keyboard, KeyRound, Mail, MessageSquareText, MonitorSmartphone, Share2, ShieldCheck, UserPlus, Users, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router";
 import { GroupManagementCard } from "@/components/settings/GroupManagementCard";
 import { GroupAccountsCard } from "@/components/settings/GroupAccountsCard";
+import { DesktopClientSettingsCard } from "@/components/settings/DesktopClientSettingsCard";
 import { EditorShortcutsAdminCard } from "@/components/settings/EditorShortcutsAdminCard";
 import { AppShortcutsAdminCard } from "@/components/settings/AppShortcutsAdminCard";
 import { ObjectStorageCard } from "@/components/settings/ObjectStorageCard";
@@ -22,6 +23,7 @@ type AdminTabKey =
   | "members"
   | "member-notes"
   | "site"
+  | "client"
   | "share"
   | "groups"
   | "invites"
@@ -58,6 +60,7 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     : [];
   const tabs: AdminTab[] = [
     { key: "site", label: t("adminConsole.navSite"), icon: Globe },
+    { key: "client", label: t("adminConsole.navClient"), icon: MonitorSmartphone },
     { key: "share", label: t("adminConsole.navShare"), icon: Share2 },
     { key: "members", label: t("adminConsole.navMembers"), icon: Users },
     ...ownerOnlyMemberNotesTab,
@@ -73,6 +76,8 @@ export const AdminConsolePane = ({ user }: { user: AuthUser | null }) => {
     switch (activeTab) {
       case "site":
         return <SiteSettingsCard />;
+      case "client":
+        return <DesktopClientSettingsCard />;
       case "share":
         return <ShareServerSettingsCard />;
       case "member-notes":

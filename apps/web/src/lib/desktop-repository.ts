@@ -287,6 +287,11 @@ export const createDesktopRepository = (): EdgeEverRepository => ({
     notifySyncQueueDeferred();
     return { memo: await repairDisplayedMemo(result.memo) };
   },
+  setMemoStatus: async (memoId, status) => {
+    const result = await request("memo.setStatus", { memoId, status });
+    notifySyncQueueDeferred();
+    return repairDisplayedMemo(result.memo);
+  },
   mergeMemos: async (input) => {
     const result = await request("memo.merge", input);
     window.dispatchEvent(new CustomEvent("edgeever:sync-queue-changed"));

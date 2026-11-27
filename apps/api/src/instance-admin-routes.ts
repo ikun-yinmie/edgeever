@@ -10,6 +10,7 @@ import type { Hono } from "hono";
 import { audit, auditStatement } from "./audit";
 import type { AppContext, AppEnv, AuthContext } from "./api-context";
 import { hashPassword } from "./auth-crypto";
+import { capDesktopSessionsToRetention } from "./auth-service";
 import { evaluateEmailPolicy, parseEmailPolicyEntries } from "./email-policy";
 import { createId, isoNow } from "./entity-utils";
 import { apiError, badRequest, conflict, forbidden, tooManyRequests, unauthorized } from "./http-errors";
@@ -357,7 +358,7 @@ export const registerInstanceAdminRoutes = (
           {
             host: settings.smtp_host,
             port: settings.smtp_port ?? 587,
-            secure: settings.smtp_port === 465,
+            secure: Boolean(settings.smtp_secure),
             username: settings.smtp_username,
             password: smtpPassword,
             fromAddress: settings.smtp_from_address,
@@ -547,6 +548,9 @@ export const registerInstanceAdminRoutes = (
     "smtpFromAddress",
     "smtpFromName",
     "smtpPassword",
+    "feedbackEnabled",
+    "feedbackRecipientEmail",
+    "contactEmail",
   ] as const;
 
   app.get("/api/v1/admin/instance-settings", async (context) => {
@@ -605,6 +609,24 @@ export const registerInstanceAdminRoutes = (
       }
       const database = context.env.storage.db;
       const currentSettings = await getInstanceSettingsRow(database);
+      const feedbackDeliveryChanged = [
+        input.feedbackEnabled, input.feedbackRecipientEmail, input.smtpHost, input.smtpPort,
+        input.smtpSecure, input.smtpUsername, input.smtpPassword, input.smtpFromAddress,
+      ].some((value) => value !== undefined);
+      const feedbackEnabled = input.feedbackEnabled ?? Boolean(currentSettings.feedback_enabled);
+      if (feedbackEnabled && feedbackDeliveryChanged) {
+        const host = input.smtpHost !== undefined ? input.smtpHost : currentSettings.smtp_host;
+        const from = input.smtpFromAddress !== undefined ? input.smtpFromAddress : currentSettings.smtp_from_address;
+        const recipient = input.feedbackRecipientEmail !== undefined
+          ? input.feedbackRecipientEmail : currentSettings.feedback_recipient_email;
+        const username = input.smtpUsername !== undefined ? input.smtpUsername : currentSettings.smtp_username;
+        const password = input.smtpPassword !== undefined
+          ? input.smtpPassword : await getSmtpPassword(context.env, currentSettings);
+        if (!host?.trim() || !from || !EMAIL_PATTERN.test(from) || !recipient || !EMAIL_PATTERN.test(recipient)
+          || (username?.trim() && !password)) {
+          return apiError(context, "feedback_not_configured", "Configure SMTP delivery and a feedback recipient before enabling feedback.", 400);
+        }
+      }
       const updates: string[] = [];
       const binds: unknown[] = [];
       const auditPayload: Record<string, unknown> = {};
@@ -674,7 +696,11 @@ export const registerInstanceAdminRoutes = (
       if (input.smtpUsername !== undefined) setColumn("smtp_username", input.smtpUsername, "smtpUsername");
       if (input.smtpFromAddress !== undefined) setColumn("smtp_from_address", input.smtpFromAddress, "smtpFromAddress");
       if (input.smtpFromName !== undefined) setColumn("smtp_from_name", input.smtpFromName, "smtpFromName");
+      if (input.feedbackEnabled !== undefined) setColumn("feedback_enabled", input.feedbackEnabled ? 1 : 0, "feedbackEnabled");
+      if (input.feedbackRecipientEmail !== undefined) setColumn("feedback_recipient_email", input.feedbackRecipientEmail, "feedbackRecipientEmail");
+      if (input.contactEmail !== undefined) setColumn("contact_email", input.contactEmail, "contactEmail");
       if (input.shareMissingMessage !== undefined) setColumn("share_missing_message", input.shareMissingMessage, "shareMissingMessage");
+      if (input.desktopSessionTtlDays !== undefined) setColumn("desktop_session_ttl_days", input.desktopSessionTtlDays, "desktopSessionTtlDays");
       if (input.siteName !== undefined) setColumn("site_name", input.siteName, "siteName");
       if (input.siteDescription !== undefined) setColumn("site_description", input.siteDescription, "siteDescription");
       if (input.siteIcon !== undefined) {
@@ -715,6 +741,15 @@ export const registerInstanceAdminRoutes = (
 
       updates.push("updated_at = ?");
       binds.push(isoNow(), INSTANCE_SETTINGS_ID);
+
+      // Lowering the desktop lifetime also trims desktop sessions that would
+      // outlive it, instead of only applying to future sign-ins.
+      if (typeof input.desktopSessionTtlDays === "number") {
+        auditPayload.cappedDesktopSessions = await capDesktopSessionsToRetention(
+          database,
+          input.desktopSessionTtlDays,
+        );
+      }
 
       await database.batch([
         database.prepare(

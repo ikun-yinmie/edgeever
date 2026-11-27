@@ -158,6 +158,7 @@ interface EdgeEverDesktopBridge {
   setUpdatePreferences(value: DesktopUpdatePreferenceInput): Promise<DesktopUpdatePreferences>;
   checkUpdate(): Promise<DesktopUpdateStatus>;
   downloadUpdate(): Promise<unknown>;
+  pauseUpdateDownload?(): Promise<{ paused: boolean }>;
   installUpdate(): Promise<DesktopUpdateInstallResult>;
   relaunch?(): Promise<{ scheduled: boolean }>;
   onUpdateStatus(callback: (status: DesktopUpdateStatus) => void): () => void;
@@ -206,7 +207,7 @@ type DesktopMarkdownMirrorResult = DesktopMarkdownMirrorStatus & {
 };
 
 interface DesktopUpdateStatus {
-  state: "idle" | "available" | "downloading" | "downloaded";
+  state: "idle" | "available" | "downloading" | "paused" | "downloaded";
   // Optional for compatibility with desktop bridges from older releases.
   downloadProgress?: {
     percent: number | null;
@@ -226,6 +227,8 @@ interface DesktopUpdateStatus {
   downloadUrl?: string;
   releasePageUrl?: string;
   assetName?: string | null;
+  // False on macOS, where electron-updater keeps its own installer promise.
+  pauseSupported?: boolean;
   // "verification": a newer build exists but its signed manifest failed, so the
   // restart path is unavailable and the release download is the way forward.
   downloadBlocked?: "verification" | null;

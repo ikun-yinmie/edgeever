@@ -12,6 +12,7 @@ import {
   isMemoEditBindingValid,
   normalizeTags,
   type MemoDetail,
+  type MemoStatus,
   type MemoEditSession,
   type MemoSummary,
   type MemoUpdateInput,
@@ -254,7 +255,7 @@ export const searchMemoSummaries = async (
              FROM raw_matches
              GROUP BY memo_id
            )
-           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+           SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
                   m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
                   c.content_text
            FROM search_matches s
@@ -273,7 +274,7 @@ export const searchMemoSummaries = async (
 
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -301,7 +302,7 @@ export const listMemosForMcp = async (
   if (options.includeContent) {
     const rows = await db
       .prepare(
-        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+        `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
                 m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
                 c.content_json, c.content_markdown, c.content_text, c.content_hash,
                 m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -327,7 +328,7 @@ export const listMemosForMcp = async (
 
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -358,7 +359,7 @@ export const getMemoDetailRow = async (
 ): Promise<MemoDetailRow | null> =>
   db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_json, c.content_markdown, c.content_text, c.content_hash,
               m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -578,7 +579,7 @@ export const getMemosForBulkAction = async (db: DatabaseAdapter, workspaceId: st
   const placeholders = uniqueMemoIds.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_text
        FROM memos m
@@ -827,7 +828,7 @@ export const mergeMemosRecord = async (
   const placeholders = uniqueMemoIds.map(() => "?").join(", ");
   const rows = await db
     .prepare(
-      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme,
+      `SELECT m.id, m.notebook_id, m.title, m.excerpt, m.tags_json, m.is_pinned, m.theme, m.status,
               m.is_archived, m.is_deleted, m.created_at, m.updated_at, m.deleted_at, c.revision,
               c.content_json, c.content_markdown, c.content_text, c.content_hash,
               m.source_memo_ids, m.merge_source_count, m.merged_into_memo_id
@@ -972,7 +973,7 @@ const getCreatedMemo = async (db: DatabaseAdapter, workspaceId: string, creation
 export const createMemoRecord = async (
   db: DatabaseAdapter,
   workspaceId: string,
-  input: { creationId?: string; notebookId: string; title?: string; contentJson?: unknown; contentMarkdown?: string; tags?: string[]; createdAt?: string; updatedAt?: string },
+  input: { creationId?: string; notebookId: string; title?: string; status?: MemoStatus | null; contentJson?: unknown; contentMarkdown?: string; tags?: string[]; createdAt?: string; updatedAt?: string },
   actor: { actorType: "user" | "agent"; actorId: string | null },
   actorLabel: string
 ): Promise<MemoDetail> => {
@@ -1001,10 +1002,10 @@ export const createMemoRecord = async (
     db
       .prepare(
         `INSERT INTO memos (
-          id, workspace_id, notebook_id, title, excerpt, tags_json, created_by, updated_by, created_at, updated_at
-        ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ? FROM notebooks WHERE id = ? AND workspace_id = ? AND is_deleted = 0`
+          id, workspace_id, notebook_id, title, excerpt, tags_json, status, created_by, updated_by, created_at, updated_at
+        ) SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM notebooks WHERE id = ? AND workspace_id = ? AND is_deleted = 0`
       )
-      .bind(id, workspaceId, title, excerpt, JSON.stringify(tags), actorLabel, actorLabel, createdAt, updatedAt, input.notebookId, workspaceId),
+      .bind(id, workspaceId, title, excerpt, JSON.stringify(tags), input.status ?? null, actorLabel, actorLabel, createdAt, updatedAt, input.notebookId, workspaceId),
     db
       .prepare(
         `INSERT INTO memo_contents (
@@ -1342,6 +1343,7 @@ const commitMemoUpdate = async (
 
   const isPinned = input.isPinned ?? Boolean(current.is_pinned);
   const theme = input.theme === undefined ? current.theme ?? null : normalizeMemoTheme(input.theme);
+  const status = input.status === undefined ? current.status ?? null : input.status;
   const hasContentUpdate =
     input.notebookId !== undefined ||
     input.title !== undefined ||
@@ -1356,7 +1358,8 @@ const commitMemoUpdate = async (
   if (!hasContentUpdate) {
     const pinChanged = input.isPinned !== undefined && isPinned !== Boolean(current.is_pinned);
     const themeChanged = input.theme !== undefined && theme !== (current.theme ?? null);
-    if (!pinChanged && !themeChanged) {
+    const statusChanged = input.status !== undefined && status !== (current.status ?? null);
+    if (!pinChanged && !themeChanged && !statusChanged) {
       if (commit) await db.batch([...commit.before, ...commit.after(id)]);
       const memo = await getMemoDetail(db, workspaceId, id);
 
@@ -1372,18 +1375,18 @@ const commitMemoUpdate = async (
       db
         .prepare(
           `UPDATE memos
-           SET is_pinned = ?, theme = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
+           SET is_pinned = ?, theme = ?, status = CASE WHEN ? THEN ? ELSE status END, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
            WHERE id = ? AND workspace_id = ? AND is_deleted = 0`
         )
-        .bind(isPinned ? 1 : 0, theme, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId),
+        .bind(isPinned ? 1 : 0, theme, input.status !== undefined ? 1 : 0, status, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId),
       auditStatement(
         db,
         actor.actorType,
         actor.actorId,
-        pinChanged ? (isPinned ? "memo.pin" : "memo.unpin") : "memo.theme",
+        pinChanged ? (isPinned ? "memo.pin" : "memo.unpin") : themeChanged ? "memo.theme" : "memo.status",
         "memo",
         id,
-        themeChanged ? { theme } : {},
+        { ...(themeChanged ? { theme } : {}), ...(statusChanged ? { status } : {}) },
       ),
       ...(commit?.after(id) ?? []),
     ]);
@@ -1432,6 +1435,7 @@ const commitMemoUpdate = async (
     && JSON.stringify(tags) === current.tags_json
     && isPinned === Boolean(current.is_pinned)
     && theme === (current.theme ?? null)
+    && status === (current.status ?? null)
     && contentHash === current.content_hash
     && input.createdAt === undefined
     && input.updatedAt === undefined;
@@ -1486,11 +1490,11 @@ const commitMemoUpdate = async (
     db
       .prepare(
         `UPDATE memos
-         SET notebook_id = ?, title = ?, excerpt = ?, tags_json = ?, is_pinned = ?, theme = ?, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
+         SET notebook_id = ?, title = ?, excerpt = ?, tags_json = ?, is_pinned = ?, theme = ?, status = CASE WHEN ? THEN ? ELSE status END, updated_by = ?, updated_at = ?, created_at = COALESCE(?, created_at)
          WHERE id = ? AND workspace_id = ? AND is_deleted = 0
            AND EXISTS (SELECT 1 FROM notebooks n WHERE n.id = ? AND n.workspace_id = ? AND n.is_deleted = 0)`
       )
-      .bind(notebookId, title, excerpt, JSON.stringify(tags), isPinned ? 1 : 0, theme, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId, notebookId, workspaceId),
+      .bind(notebookId, title, excerpt, JSON.stringify(tags), isPinned ? 1 : 0, theme, input.status !== undefined ? 1 : 0, status, actorLabel, updatedAt, input.createdAt ?? null, id, workspaceId, notebookId, workspaceId),
     db
       .prepare(
         `UPDATE memo_contents

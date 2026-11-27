@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 
 const source = readFileSync(new URL("./SystemInfoPanel.tsx", import.meta.url), "utf8");
-const feedbackSource = readFileSync(new URL("./FeedbackLink.tsx", import.meta.url), "utf8");
+const feedbackSource = readFileSync(new URL("./FeedbackDialog.tsx", import.meta.url), "utf8");
 const syncIssueSource = readFileSync(new URL("../DesktopSyncIssuesDialog.tsx", import.meta.url), "utf8");
 
 describe("system information client/instance version hint", () => {
@@ -26,8 +26,11 @@ describe("system information diagnostic fields", () => {
     expect(source).toContain(".filter((item) => !item.localOnly)");
     expect(feedbackSource).toContain("getShareableWebSystemInfoItems");
     expect(feedbackSource.replaceAll("getShareableWebSystemInfoItems", "")).not.toContain("getWebSystemInfoItems");
-    expect(syncIssueSource).toContain("getShareableWebSystemInfoItems");
-    expect(syncIssueSource.replaceAll("getShareableWebSystemInfoItems", "")).not.toContain("getWebSystemInfoItems");
+    // Sync diagnostics now travel through the shared feedback dialog, so the
+    // sync dialog must not assemble its own (unfiltered) system info list.
+    expect(syncIssueSource).toContain("<FeedbackDialog");
+    expect(syncIssueSource).not.toContain("getWebSystemInfoItems");
+    expect(syncIssueSource).not.toContain("buildGitHubFeedbackUrl");
   });
 
   test("includes current device model from client runtime diagnostics", () => {

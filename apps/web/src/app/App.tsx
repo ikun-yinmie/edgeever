@@ -15,6 +15,7 @@ import {
   clearCachedDesktopSession,
   getConfiguredDesktopApiBaseUrl,
   getCachedDesktopSession,
+  resolveLoginClientKind,
   saveDesktopApiBaseUrl,
   selectActiveDesktopApiBaseUrl,
 } from "@/lib/api";
@@ -298,7 +299,14 @@ const AuthenticatedWorkspace = () => {
       : null;
   const loginError = problem
     ? {
-        message: t(getLoginProblemMessageKey(problem), "status" in problem ? { status: problem.status } : undefined),
+        message: t(
+          getLoginProblemMessageKey(problem),
+          problem.kind === "terminalIpConflict"
+            ? { terminal: t(`loginDevices.terminal_${resolveLoginClientKind()}`) }
+            : "status" in problem
+              ? { status: problem.status }
+              : undefined,
+        ),
         diagnosticCode: problem.diagnosticCode,
         rayId: problem.rayId,
       }

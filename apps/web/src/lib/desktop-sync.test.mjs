@@ -406,7 +406,7 @@ describe("desktop batch outbox sync", () => {
       },
     };
     try {
-      await body();
+      await body(acked);
     } finally {
       if (previousWindow === undefined) delete globalThis.window;
       else globalThis.window = previousWindow;
@@ -525,6 +525,78 @@ describe("desktop batch outbox sync", () => {
       }, [])).rejects.toThrow("Temporarily unavailable");
     } finally {
       api.updateMemo = originalUpdateMemo;
+    }
+  }));
+
+  test.each(["in_progress", "completed", "cancelled", null])("pushes status %s as metadata and acknowledges its exact version", (status) => withSidecar(async (acked) => {
+    const previous = api.updateMemo;
+    const updates = [];
+    const remoteMemo = { id: "memo_status", status };
+    api.updateMemo = async (memoId, patch) => {
+      updates.push({ memoId, patch });
+      return { memo: remoteMemo };
+    };
+    try {
+      await syncOutboxItem({
+        id: 31, kind: "memo.status", entityId: "memo_placeholder",
+        payload: { memoId: "memo_status", status }, attemptCount: 0, version: 4,
+      }, []);
+      expect(updates).toEqual([{ memoId: "memo_status", patch: { status } }]);
+      expect(acked).toEqual([{ id: 31, version: 4, remoteMemo }]);
+    } finally {
+      api.updateMemo = previous;
+    }
+  })());
+
+  test.each([undefined, "invalid", false])("does not interpret malformed status %s as a clear", (status) => withSidecar(async (acked) => {
+    const previous = api.updateMemo;
+    let updates = 0;
+    api.updateMemo = async () => { updates += 1; return {}; };
+    try {
+      await expect(syncOutboxItem({
+        id: 32, kind: "memo.status", entityId: "memo_status",
+        payload: { status }, attemptCount: 0, version: 1,
+      }, [])).rejects.toThrow("Invalid memo status");
+      expect(updates).toBe(0);
+      expect(acked).toEqual([]);
+    } finally {
+      api.updateMemo = previous;
+    }
+  })());
+
+  test("returns the sidecar-protected status to renderer ack listeners", withSidecar(async () => {
+    const previous = api.createMemo;
+    const request = globalThis.window.edgeeverDesktop.sidecarRequest;
+    const remoteMemo = { id: "memo_remapped", status: "completed", revision: 7, contentHash: "remote_hash" };
+    api.createMemo = async () => ({ memo: remoteMemo });
+    globalThis.window.edgeeverDesktop.sidecarRequest = async (method) => {
+      expect(method).toBe("sync.outbox.ack");
+      return { memo: { ...remoteMemo, status: null } };
+    };
+    try {
+      const result = await syncOutboxItem({
+        id: 34, kind: "memo.create", entityId: "memo_local_status", payload: { notebookId: "nb_inbox" }, attemptCount: 0, version: 1,
+      }, []);
+      expect(result).toEqual({ ...remoteMemo, status: null });
+    } finally {
+      api.createMemo = previous;
+      globalThis.window.edgeeverDesktop.sidecarRequest = request;
+    }
+  }));
+
+  test("acknowledges status for a gone note but retries a transient error", withSidecar(async (acked) => {
+    const previous = api.updateMemo;
+    const item = { id: 33, kind: "memo.status", entityId: "memo_gone", payload: { status: null }, attemptCount: 0, version: 2 };
+    try {
+      api.updateMemo = async () => { throw new ApiRequestError("Not found", 404, "not_found"); };
+      await syncOutboxItem(item, []);
+      expect(acked).toEqual([{ id: 33, version: 2, remoteMemo: undefined }]);
+      acked.length = 0;
+      api.updateMemo = async () => { throw new ApiRequestError("Unavailable", 503); };
+      await expect(syncOutboxItem(item, [])).rejects.toThrow("Unavailable");
+      expect(acked).toEqual([]);
+    } finally {
+      api.updateMemo = previous;
     }
   }));
 

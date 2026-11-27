@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, LoaderCircle, Network, RefreshCw, RotateCcw } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, LoaderCircle, Network, Pause, Play, RefreshCw, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import {
   type DesktopProxyProtocol,
   type DesktopProxySettings,
 } from "@/lib/desktop-proxy";
-import { getDesktopUpdateDownloadLabel } from "@/lib/desktop-update-progress";
+import { getDesktopUpdateDownloadLabel, getDesktopUpdatePausedLabel } from "@/lib/desktop-update-progress";
 import { cn } from "@/lib/utils";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -92,6 +92,17 @@ const DesktopUpdateCardContent = () => {
     },
   });
 
+  // Pausing closes the socket but keeps the bytes on disk, so the same button
+  // can continue later, even after switching the update proxy.
+  const pauseUpdate = useMutation({
+    mutationFn: async () => {
+      await bridge.pauseUpdateDownload?.();
+    },
+    onSettled: () => {
+      void statusQuery.refetch();
+    },
+  });
+
   const installUpdate = useMutation({
     mutationFn: async () => {
       const result = await bridge.installUpdate();
@@ -104,6 +115,7 @@ const DesktopUpdateCardContent = () => {
   const status = statusQuery.data;
   const available = status?.state === "available" && !status.downloadBlocked;
   const downloading = status?.state === "downloading";
+  const paused = status?.state === "paused";
   const downloaded = status?.state === "downloaded";
   const autoUpdateSupported = preferences?.autoUpdateSupported !== false;
   const proxySupported = typeof bridge.getProxySettings === "function" && typeof bridge.setProxySettings === "function";
@@ -112,7 +124,7 @@ const DesktopUpdateCardContent = () => {
   const updateError = status?.error ?? null;
   const networkFailed = updateError?.kind === "network";
   const checkFailed = checkFailedOnce || statusQuery.isError;
-  const shouldRevealUpdateDetails = available || downloading || downloaded
+  const shouldRevealUpdateDetails = available || downloading || paused || downloaded
     || installUpdate.isError
     || networkFailed
     || checkFailed
@@ -191,29 +203,33 @@ const DesktopUpdateCardContent = () => {
         ? t("desktopUpdate.ready")
         : downloading
           ? getDesktopUpdateDownloadLabel(status?.downloadProgress, t)
-          : available
-            ? t(checkUpdate.isPending || downloadUpdate.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
-            : checkUpdate.isPending
-              ? t("desktopUpdate.checking")
-              : manualDownloadRequired
-                ? t("desktopUpdate.manualDownloadTitle", { version: latestVersionTag ?? currentVersionTag })
-                : networkFailed
-                  ? t("desktopUpdate.failedNetwork")
-                  : checkFailed || updateError
-                    ? t("desktopUpdate.failed")
-                    : checkedOnce || Boolean(status?.latestVersion)
-                      ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
-                      : null;
+          : paused
+            ? getDesktopUpdatePausedLabel(status?.downloadProgress, t)
+            : available
+              ? t(checkUpdate.isPending || downloadUpdate.isPending ? "desktopUpdate.confirming" : "desktopUpdate.available")
+              : checkUpdate.isPending
+                ? t("desktopUpdate.checking")
+                : manualDownloadRequired
+                  ? t("desktopUpdate.manualDownloadTitle", { version: latestVersionTag ?? currentVersionTag })
+                  : networkFailed
+                    ? t("desktopUpdate.failedNetwork")
+                    : checkFailed || updateError
+                      ? t("desktopUpdate.failed")
+                      : checkedOnce || Boolean(status?.latestVersion)
+                        ? t("desktopUpdate.upToDate", { version: latestVersionTag ?? currentVersionTag })
+                        : null;
 
   const actionLabel = downloaded
     ? t("desktopUpdate.restart")
     : downloading
       ? t("desktopUpdate.downloading")
-      : available
-        ? t("desktopUpdate.download")
-        : checkUpdate.isPending
-          ? t("desktopUpdate.checking")
-          : t("desktopUpdate.check");
+      : paused
+        ? t("desktopUpdate.resume")
+        : available
+          ? t("desktopUpdate.download")
+          : checkUpdate.isPending
+            ? t("desktopUpdate.checking")
+            : t("desktopUpdate.check");
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
@@ -256,11 +272,23 @@ const DesktopUpdateCardContent = () => {
                   size="sm"
                   variant="outline"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || paused}
                   onClick={() => void bridge.relaunch?.()}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   {t("desktopUpdate.relaunchApp")}
+                </Button>
+              ) : null}
+              {downloading && status?.pauseSupported !== false && typeof bridge.pauseUpdateDownload === "function" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  disabled={pauseUpdate.isPending}
+                  onClick={() => pauseUpdate.mutate()}
+                >
+                  <Pause className="h-3.5 w-3.5" />
+                  {t("desktopUpdate.pause")}
                 </Button>
               ) : null}
               <Button
@@ -270,7 +298,7 @@ const DesktopUpdateCardContent = () => {
                 disabled={busy || !autoUpdateSupported || (statusQuery.isError && !status)}
                 onClick={() => {
                   if (downloaded) installUpdate.mutate();
-                  else if (available) downloadUpdate.mutate();
+                  else if (available || paused) downloadUpdate.mutate();
                   else checkUpdate.mutate();
                 }}
               >
@@ -278,7 +306,9 @@ const DesktopUpdateCardContent = () => {
                   ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   : downloaded
                     ? <RotateCcw className="h-3.5 w-3.5" />
-                    : <RefreshCw className="h-3.5 w-3.5" />}
+                    : paused
+                      ? <Play className="h-3.5 w-3.5" />
+                      : <RefreshCw className="h-3.5 w-3.5" />}
                 {actionLabel}
               </Button>
             </div>
@@ -307,9 +337,11 @@ const DesktopUpdateCardContent = () => {
                 ? <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 : manualDownloadRequired
                   ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                  : installUpdate.isPending || checkUpdate.isPending || downloadUpdate.isPending || downloading
-                    ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                    : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
+                  : paused
+                    ? <Pause className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    : installUpdate.isPending || checkUpdate.isPending || downloadUpdate.isPending || downloading
+                      ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
               {statusLabel}
             </p>
           ) : null}

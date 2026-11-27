@@ -8,10 +8,10 @@ import {
   getOutlineDisplaySegments,
   getOutlineParentPositions,
   type OutlineItem,
-  type OutlineTextSegment,
   type OutlineTreeItem,
 } from "@/lib/editor-outline";
-import { getEditorOutlineItems } from "@/lib/editor-outline-editor";
+import type { EditorDocumentState } from "./editor/editor-document-state";
+import { useEditorOutlineItems } from "./editor/useEditorOutlineItems";
 import { cn } from "@/lib/utils";
 import { EDITOR_OUTLINE_WIDTH } from "@/lib/workspace-ui";
 
@@ -24,6 +24,7 @@ type EditorOutlineProps = {
   /** Identifies the open document so a new note starts with its nested
    * headings collapsed again. */
   documentKey?: string;
+  documentState?: EditorDocumentState | null;
   /** Public share pages scroll with the window instead of an editor pane. */
   trackWindowScroll?: boolean;
   /** Docked mode: the outline lives as an independent column beside the
@@ -48,26 +49,6 @@ const getPreviewHeadingElements = (container: HTMLDivElement | null) => {
   );
 };
 
-const sameOutlineSegments = (left: OutlineTextSegment[] | undefined, right: OutlineTextSegment[] | undefined) => {
-  if (!left || !right) {
-    return left === right;
-  }
-
-  return left.length === right.length && left.every((segment, index) => {
-    const other = right[index];
-    return other?.text === segment.text && other.strike === segment.strike;
-  });
-};
-
-const sameOutlineItems = (left: OutlineItem[], right: OutlineItem[]) =>
-  left.length === right.length && left.every((item, index) => {
-    const other = right[index];
-    return other?.level === item.level
-      && other.pos === item.pos
-      && other.text === item.text
-      && sameOutlineSegments(other.segments, item.segments);
-  });
-
 export const EditorOutline = ({
   editor,
   scrollContainer = null,
@@ -75,13 +56,14 @@ export const EditorOutline = ({
   collapsed,
   shortcutLabel = "",
   documentKey,
+  documentState,
   trackWindowScroll = false,
   docked = false,
   className,
   onCollapsedChange,
 }: EditorOutlineProps) => {
   const { t } = useTranslation();
-  const [items, setItems] = useState<OutlineItem[]>([]);
+  const { items, ready, sampled } = useEditorOutlineItems(editor, documentKey, documentState);
   const [activePos, setActivePos] = useState<number | null>(null);
   const [collapsedPositions, setCollapsedPositions] = useState<Set<number>>(() => new Set());
   const scrollTrackingPausedUntilRef = useRef(0);
@@ -129,16 +111,6 @@ export const EditorOutline = ({
     return visible;
   }, [activeChain, collapsedPositions]);
 
-  const refresh = useCallback(() => {
-    if (!editor || editor.isDestroyed) {
-      setItems([]);
-      return;
-    }
-
-    const nextItems = getEditorOutlineItems(editor);
-    setItems((currentItems) => (sameOutlineItems(currentItems, nextItems) ? currentItems : nextItems));
-  }, [editor]);
-
   const updateActiveItem = useCallback(() => {
     if (!editor || editor.isDestroyed || items.length === 0) {
       setActivePos(null);
@@ -155,60 +127,37 @@ export const EditorOutline = ({
   }, [editor, items]);
 
   useEffect(() => {
-    refresh();
-    if (!editor) {
-      return;
-    }
-
-    editor.on("update", refresh);
+    if (!editor || !ready) return;
     editor.on("selectionUpdate", updateActiveItem);
-    return () => {
-      editor.off("update", refresh);
-      editor.off("selectionUpdate", updateActiveItem);
-    };
-  }, [editor, refresh, updateActiveItem]);
+    return () => { editor.off("selectionUpdate", updateActiveItem); };
+  }, [editor, ready, updateActiveItem]);
+
+  useEffect(() => {
+    initializedDocumentKeyRef.current = null;
+    scrollTrackingPausedUntilRef.current = 0;
+    setActivePos(null);
+    setCollapsedPositions(new Set());
+  }, [documentKey, editor]);
 
   useEffect(() => {
     updateActiveItem();
   }, [updateActiveItem]);
 
   useEffect(() => {
+    if (!sampled) return;
     const availablePositions = new Set(items.map((item) => item.pos));
     setCollapsedPositions((current) => {
       const next = new Set([...current].filter((pos) => availablePositions.has(pos)));
       return next.size === current.size ? current : next;
     });
-  }, [items]);
+  }, [items, sampled]);
 
   useEffect(() => {
-    if (!editor || editor.isDestroyed) {
-      return;
-    }
-
     const key = documentKey ?? "editor";
-    if (initializedDocumentKeyRef.current === key) {
-      return;
-    }
-
-    // Defer a tick so a note switch has swapped in the new document before the
-    // default collapse set is derived from its headings.
-    const frame = window.setTimeout(() => {
-      if (!editor || editor.isDestroyed) {
-        return;
-      }
-
-      const nextTree = buildOutlineTree(getEditorOutlineItems(editor));
-      if (nextTree.length === 0) {
-        // Empty or still-hydrating document: retry when headings arrive.
-        return;
-      }
-
-      initializedDocumentKeyRef.current = key;
-      setCollapsedPositions(new Set(getOutlineParentPositions(nextTree)));
-    }, 0);
-
-    return () => window.clearTimeout(frame);
-  }, [documentKey, editor, items.length]);
+    if (!ready || items.length === 0 || initializedDocumentKeyRef.current === key) return;
+    initializedDocumentKeyRef.current = key;
+    setCollapsedPositions(new Set(getOutlineParentPositions(buildOutlineTree(items))));
+  }, [documentKey, editor, items, ready]);
 
   const resolveHeadingElement = useCallback((item: OutlineItem): HTMLElement | null => {
     if (previewContainer) {

@@ -169,6 +169,11 @@ export const LoginDevicesCard = ({ authRequired, isLoggingOut, onLogout }: Login
                             {t("loginDevices.current")}
                           </span>
                         ) : null}
+                        {session.clientKind ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                            {t(`loginDevices.terminal_${session.clientKind}`)}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-0.5 truncate text-xs text-slate-500" title={session.userAgent ?? undefined}>{details}</p>
                       {location ? <p className="mt-0.5 truncate text-xs text-slate-500">{t("loginDevices.location", { location })}</p> : null}

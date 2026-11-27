@@ -25,6 +25,8 @@ export const memoToSummary = (memo: MemoDetail): MemoSummary => ({
   ...getDiagramSummary(memo.contentMarkdown),
   tags: memo.tags,
   isPinned: memo.isPinned,
+  theme: memo.theme,
+  status: memo.status ?? null,
   isArchived: memo.isArchived,
   isDeleted: memo.isDeleted,
   revision: memo.revision,

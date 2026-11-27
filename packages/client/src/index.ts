@@ -23,6 +23,7 @@ import type {
   AuthSession,
   LoginInput,
   LoginDeviceSession,
+  LoginSessionPolicy,
   InstanceUser,
   CreatedApiToken,
   JsonBackupMemo,
@@ -36,6 +37,7 @@ import type {
   MemoEditSession,
   MemoRevision,
   MemoSummary,
+  MemoStatus,
   MemoShare,
   MemoTemplate,
   ScheduledTask,
@@ -329,6 +331,7 @@ export type SharedWithMeMemo = {
   id: string;
   title: string | null;
   excerpt: string;
+  status?: MemoStatus | null;
   updatedAt: string;
   groupId: string;
   groupName: string;
@@ -342,6 +345,7 @@ export type SharedNotebookMemo = {
   id: string;
   title: string | null;
   excerpt: string;
+  status?: MemoStatus | null;
   updatedAt: string;
   createdAt: string;
   notebookId: string;
@@ -381,11 +385,15 @@ export type InstanceAdminSettings = {
   smtpUsername: string | null;
   smtpFromAddress: string | null;
   smtpFromName: string | null;
+  feedbackEnabled: boolean;
+  feedbackRecipientEmail: string | null;
+  contactEmail: string | null;
   shareMissingMessage: string | null;
   shareServers: ShareServerEntry[] | null;
   defaultShareServerUrl: string | null;
   editorShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   appShortcuts: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
+  desktopSessionTtlDays: number | null;
   siteName: string | null;
   siteDescription: string | null;
   siteIcon: string | null;
@@ -400,6 +408,20 @@ export type SiteBranding = {
 
 export type SiteBrandingResponse = {
   site: SiteBranding;
+};
+
+export type FeedbackConfigResponse = {
+  feedback: {
+    enabled: boolean;
+    contactEmail: string | null;
+  };
+};
+
+export type FeedbackSubmitPayload = {
+  requestId: string;
+  content: string;
+  replyTo?: string | null;
+  systemInfo?: string | null;
 };
 
 export type InstanceAdminSettingsResponse = {
@@ -436,6 +458,9 @@ export type InstanceAdminSettingsUpdatePayload = {
   smtpPassword?: string | null;
   smtpFromAddress?: string | null;
   smtpFromName?: string | null;
+  feedbackEnabled?: boolean;
+  feedbackRecipientEmail?: string | null;
+  contactEmail?: string | null;
   shareMissingMessage?: string | null;
   shareServers?: ShareServerEntry[] | null;
   defaultShareServerUrl?: string | null;
@@ -444,6 +469,7 @@ export type InstanceAdminSettingsUpdatePayload = {
   siteIcon?: string | null;
   editorShortcuts?: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
   appShortcuts?: Record<string, { key: string; ctrlOrMeta: boolean; shift: boolean; alt: boolean }> | null;
+  desktopSessionTtlDays?: number | null;
 };
 
 export type RegistrationCodeResponse = {
@@ -1111,6 +1137,15 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     revokeOtherLoginDeviceSessions: () =>
       request<{ ok: true }>("/api/v1/auth/sessions", { method: "DELETE" }),
 
+    getLoginSessionPolicy: () =>
+      request<LoginSessionPolicy>("/api/v1/auth/session-policy"),
+
+    updateLoginSessionPolicy: (payload: { sessionTtlDays: number }) =>
+      request<LoginSessionPolicy>("/api/v1/auth/session-policy", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+
     login: (payload: LoginInput) =>
       request<AuthSession>("/api/v1/auth/login", {
         method: "POST",
@@ -1495,6 +1530,22 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
 
     getSiteBranding: () => request<SiteBrandingResponse>("/api/v1/public/site"),
 
+    getFeedbackConfig: () => request<FeedbackConfigResponse>("/api/v1/public/feedback"),
+
+    submitFeedback: async (payload: FeedbackSubmitPayload) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45_000);
+      try {
+        return await request<{ ok: true }>("/api/v1/feedback", {
+          method: "POST",
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+
     requestRegistrationCode: (payload: { email: string; deviceId?: string }) =>
       request<RegistrationCodeResponse>("/api/v1/public/registration/code", {
         method: "POST",
@@ -1857,6 +1908,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     createMemo: (payload: {
       creationId?: string;
       notebookId: string;
+      status?: MemoStatus | null;
       title?: string;
       contentJson?: TiptapDoc;
       contentMarkdown?: string;
@@ -2278,6 +2330,7 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
         title?: string;
         isPinned?: boolean;
         theme?: string | null;
+        status?: MemoStatus | null;
         contentJson?: TiptapDoc;
         contentMarkdown?: string;
         tags?: string[];

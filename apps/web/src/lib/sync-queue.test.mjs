@@ -6,7 +6,7 @@ globalThis.IDBKeyRange = IDBKeyRange;
 
 const { localDb } = await import("./local-db.ts");
 const { ApiRequestError, api } = await import("./api.ts");
-const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources } = await import("./local-mirror.ts");
+const { createLocalDataScope, createLocalMemo, getLocalMemo, putLocalMemo, replaceLocalMemoId, createLocalResource, listLocalResources, applyLocalMemoStatus, putLocalMemoIfNotStale } = await import("./local-mirror.ts");
 const { discardWebConflicts, forceUploadWebConflicts, getLocalActionQueueId, getMemoCreateQueueId, getMemoDeleteQueueId, getMemoUpdateQueueId, queueLocalAction, queueMemoCreate, queueMemoDelete, queueMemoUpdate, shouldRetryMissingMemoBatch, syncQueuedChanges } = await import("./sync-queue.ts");
 const { setSyncPause } = await import("./sync-preferences.ts");
 
@@ -745,6 +745,164 @@ describe("web batch action recovery", () => {
       expect(await localDb.syncQueue.count()).toBe(0);
     } finally {
       api.updateMemo = originalUpdateMemo;
+    }
+  }));
+
+  for (const status of ["in_progress", "completed", "cancelled", null, undefined]) {
+    test(`flushes explicit status ${status} without dropping an unsaved content draft`, withOnline(async () => {
+      const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+      const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+      await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status });
+      const draft = { memoId: memo.id, title: "Unsaved", contentJson: memo.contentJson, tagsText: "", updatedAt: memo.updatedAt };
+      await localDb.drafts.put(draft);
+      const original = api.updateMemo;
+      const updates = [];
+      api.updateMemo = async (memoId, patch) => { updates.push({ memoId, patch }); return { memo: { ...memo, ...patch } }; };
+      try {
+        expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, failed: 0 });
+        expect(updates).toEqual(status === undefined ? [] : [{ memoId: memo.id, patch: { status } }]);
+        expect(await localDb.syncQueue.count()).toBe(0);
+        expect(await localDb.drafts.get(memo.id)).toEqual(draft);
+      } finally {
+        api.updateMemo = original;
+      }
+    }));
+  }
+
+  for (const nextStatus of ["cancelled", null]) {
+    test(`keeps successor status ${nextStatus} when an older acknowledgement arrives`, withOnline(async () => {
+      const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+      const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+      await applyLocalMemoStatus(scope, memo.id, "completed");
+      await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: "completed" });
+      const original = api.updateMemo;
+      let started;
+      let release;
+      const startedPromise = new Promise((resolve) => { started = resolve; });
+      const response = new Promise((resolve) => { release = resolve; });
+      const updates = [];
+      api.updateMemo = async (_memoId, patch) => {
+        updates.push(patch);
+        if (updates.length === 1) { started(); await response; }
+        return { memo: { ...memo, ...patch, updatedAt: "2099-01-01T00:00:00.000Z" } };
+      };
+      try {
+        const syncing = syncQueuedChanges({ scope });
+        await startedPromise;
+        await applyLocalMemoStatus(scope, memo.id, nextStatus);
+        await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: nextStatus });
+        release();
+        await syncing;
+        expect((await getLocalMemo(scope, memo.id)).status).toBe(nextStatus);
+        expect(await localDb.syncQueue.get(getLocalActionQueueId(scope, "memo.status", memo.id))).toMatchObject({ payload: { status: nextStatus }, status: "pending", claimId: null });
+        expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, failed: 0 });
+        expect(updates).toEqual([{ status: "completed" }, { status: nextStatus }]);
+        expect((await getLocalMemo(scope, memo.id)).status).toBe(nextStatus);
+        // This response was fetched before the clear, but delivered after ack.
+        await putLocalMemoIfNotStale(scope, { ...memo, status: "completed" });
+        expect((await getLocalMemo(scope, memo.id)).status).toBe(nextStatus);
+      } finally {
+        release();
+        api.updateMemo = original;
+      }
+    }));
+  }
+
+  test("projects a newer clear into an older content acknowledgement before callbacks", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const created = await createLocalMemo(scope, { notebookId: "inbox" });
+    const memo = { ...created, id: "content-ack-status", status: "completed", revision: 1, contentHash: "hash-1" };
+    await putLocalMemo(scope, memo);
+    await queueMemoUpdate({ memoId: memo.id, expectedRevision: 1, expectedContentHash: "hash-1", editSessionId: "edit-status", title: "Saved", contentJson: memo.contentJson, tags: [] }, scope);
+    const original = { createMemoEditSession: api.createMemoEditSession, updateMemo: api.updateMemo };
+    api.createMemoEditSession = async () => ({ editSession: { id: "edit-status", baseRevision: 1, baseContentHash: "hash-1" } });
+    api.updateMemo = async () => {
+      await applyLocalMemoStatus(scope, memo.id, null);
+      await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: null });
+      return { memo: { ...memo, title: "Saved", revision: 2, contentHash: "hash-2" } };
+    };
+    try {
+      let acknowledged;
+      expect(await syncQueuedChanges({
+        scope,
+        onSynced: async (remote) => { acknowledged = remote; await putLocalMemo(scope, remote); },
+      })).toMatchObject({ synced: 1, failed: 0 });
+      expect(acknowledged).toMatchObject({ status: null, revision: 2, title: "Saved" });
+      expect((await getLocalMemo(scope, memo.id)).status).toBeNull();
+      expect(await localDb.syncQueue.get(getLocalActionQueueId(scope, "memo.status", memo.id))).toMatchObject({ payload: { status: null } });
+    } finally {
+      api.createMemoEditSession = original.createMemoEditSession;
+      api.updateMemo = original.updateMemo;
+    }
+  }));
+
+  test("keeps a newer clear when the older status request fails", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await applyLocalMemoStatus(scope, memo.id, "completed");
+    await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: "completed" });
+    const original = api.updateMemo;
+    api.updateMemo = async () => {
+      await applyLocalMemoStatus(scope, memo.id, null);
+      await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: null });
+      throw new TypeError("old request failed");
+    };
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ failed: 0 });
+      expect(await localDb.syncQueue.get(getLocalActionQueueId(scope, "memo.status", memo.id))).toMatchObject({ status: "pending", payload: { status: null }, attemptCount: 0 });
+      expect((await getLocalMemo(scope, memo.id)).status).toBeNull();
+    } finally {
+      api.updateMemo = original;
+    }
+  }));
+
+  test("drops status for a missing note and cancels status for an unattempted create", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, { temporaryId: memo.id, notebookId: "inbox", title: "", tags: [] });
+    await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: "in_progress" });
+    await queueMemoDelete(scope, { memoId: memo.id, permanent: false });
+    expect(await localDb.syncQueue.count()).toBe(0);
+    await queueLocalAction(scope, "memo.status", "missing-status", { memoId: "missing-status", status: null });
+    const original = api.updateMemo;
+    api.updateMemo = async () => { throw new ApiRequestError("Missing", 404, "not_found"); };
+    try {
+      expect(await syncQueuedChanges({ scope })).toMatchObject({ synced: 1, failed: 0 });
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.updateMemo = original;
+    }
+  }));
+
+  test("remaps status atomically before the create callback and coalesces a subsequent clear", withOnline(async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    const memo = await createLocalMemo(scope, { notebookId: "inbox" });
+    await queueMemoCreate(scope, { temporaryId: memo.id, notebookId: "inbox", title: "", tags: [] });
+    await applyLocalMemoStatus(scope, memo.id, "completed");
+    await queueLocalAction(scope, "memo.status", memo.id, { memoId: memo.id, status: "completed" });
+    const original = { createMemo: api.createMemo, updateMemo: api.updateMemo };
+    const remote = { ...memo, id: "remote-status-remap", revision: 1 };
+    const updates = [];
+    api.createMemo = async () => ({ memo: remote });
+    api.updateMemo = async (memoId, patch) => { updates.push({ memoId, patch }); return { memo: { ...remote, ...patch } }; };
+    try {
+      expect(await syncQueuedChanges({
+        scope,
+        onSynced: async (_remote, item) => {
+          if (item.kind !== "memo.create") return;
+          expect((await localDb.idMappings.get([scope, memo.id])).remoteId).toBe(remote.id);
+          expect((await getLocalMemo(scope, remote.id)).status).toBe("completed");
+          expect(await localDb.syncQueue.get(getLocalActionQueueId(scope, "memo.status", memo.id))).toBeUndefined();
+          await applyLocalMemoStatus(scope, remote.id, null);
+          await queueLocalAction(scope, "memo.status", remote.id, { memoId: remote.id, status: null });
+        },
+      })).toMatchObject({ synced: 2, failed: 0 });
+      expect(updates).toEqual([{ memoId: remote.id, patch: { status: null } }]);
+      expect((await getLocalMemo(scope, remote.id)).status).toBeNull();
+      expect(await localDb.syncQueue.count()).toBe(0);
+    } finally {
+      api.createMemo = original.createMemo;
+      api.updateMemo = original.updateMemo;
     }
   }));
 

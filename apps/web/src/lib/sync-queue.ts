@@ -6,6 +6,7 @@ import {
   isMemoSyncBaseCurrent,
   summarizeSyncQueue,
   type MemoDetail,
+  type MemoStatus,
   type MemoTemplate,
   type Notebook,
   type Resource,
@@ -157,7 +158,7 @@ const cancelUnsyncedMemoCreate = async (scope: string, memoId: string) => {
     const dependents = (await localDb.syncQueue.toArray()).filter(
       (item) => item.memoId === memoId
         && (item.scope === scope || !item.scope)
-        && (item.kind === "memo.update" || item.kind === "memo.restore" || item.kind === "memo.setTheme")
+        && (item.kind === "memo.update" || item.kind === "memo.restore" || item.kind === "memo.setTheme" || item.kind === "memo.status")
         && item.status !== "syncing",
     );
     for (const item of dependents) {
@@ -234,13 +235,16 @@ const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo:
   // Batch actions (move/delete/pin/merge) keep their memo ids in `payload.memoIds`
   // instead of `memoId`, so matching on `memoId` alone left them pointing at a
   // temporary id the server never saw and rejected with `missing_memos`.
-  const items = (await localDb.syncQueue.toArray()).filter((item) => {
-    if (item.scope !== scope || item.kind === "memo.create") return false;
-    if (item.memoId === temporaryId) return true;
-    const payload = item.payload as { memoIds?: unknown };
-    return Array.isArray(payload.memoIds) && payload.memoIds.includes(temporaryId);
-  });
-  await localDb.transaction("rw", [localDb.syncQueue, localDb.drafts], async () => {
+  const { replaceLocalMemoId } = await import("@/lib/local-mirror");
+  await localDb.transaction("rw", [localDb.syncQueue, localDb.drafts, localDb.memos, localDb.idMappings], async () => {
+    // Resolve ids and move the mirror in one transaction with status writes.
+    // A selection during the create RTT must land wholly before or after this.
+    const items = (await localDb.syncQueue.toArray()).filter((item) => {
+      if (item.scope !== scope || item.kind === "memo.create") return false;
+      if (item.memoId === temporaryId) return true;
+      const payload = item.payload as { memoIds?: unknown };
+      return Array.isArray(payload.memoIds) && payload.memoIds.includes(temporaryId);
+    });
     for (const item of items) {
       const payload = { ...item.payload } as Record<string, unknown>;
       const isDirect = item.memoId === temporaryId;
@@ -263,10 +267,15 @@ const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo:
           ? getMemoDeleteQueueId(nextMemoId)
           : item.kind === "memo.restore"
             ? getMemoRestoreQueueId(nextMemoId)
-            : isBatchActionKind(item.kind)
+            : isBatchActionKind(item.kind) || item.kind === "memo.status"
               ? getLocalActionQueueId(scope, item.kind, nextMemoId)
               : item.id;
+      const successor = nextId !== item.id ? await localDb.syncQueue.get(nextId) : undefined;
       if (nextId !== item.id) await localDb.syncQueue.delete(item.id);
+      if (item.kind === "memo.status" && successor && successor.updatedAt >= item.updatedAt) {
+        remappedIds.push(nextId);
+        continue;
+      }
       await localDb.syncQueue.put({
         ...item,
         id: nextId,
@@ -326,6 +335,7 @@ const remapQueuedMemoId = async (scope: string, temporaryId: string, remoteMemo:
       }
       await localDb.drafts.delete(temporaryId);
     }
+    await replaceLocalMemoId(scope, temporaryId, remoteMemo);
   });
   return remappedIds;
 };
@@ -582,7 +592,8 @@ const waitsForOpenCreate = (item: SyncQueueItem, openCreateIds: Set<string>) =>
     || item.kind === "memo.restore"
     || item.kind === "memo.moveBatch"
     || item.kind === "memo.pinBatch"
-    || item.kind === "memo.setTheme")
+    || item.kind === "memo.setTheme"
+    || item.kind === "memo.status")
   && referencesOpenCreateMemo(item, openCreateIds);
 
 const runQueuedChanges = async (options: {
@@ -660,7 +671,7 @@ const runQueuedChanges = async (options: {
     result.attempted += 1;
 
     try {
-      const memo = await syncQueueItem(item);
+      let memo = await syncQueueItem(item);
       if (item.kind === "memo.create" && memo && item.scope) {
         const remappedIds = await remapQueuedMemoId(item.scope, item.memoId, memo as MemoDetail);
         // Dependent delete/update/restore items were renamed to the durable id;
@@ -680,6 +691,10 @@ const runQueuedChanges = async (options: {
         }
       }
       const acknowledgement = await acknowledgeClaimedQueueItem(item, memo);
+      if (memo && "contentHash" in memo && item.scope && acknowledgement !== "stale") {
+        const { projectLocalMemoMetadata } = await import("@/lib/local-mirror");
+        memo = await projectLocalMemoMetadata(item.scope, memo as MemoDetail);
+      }
       if (memo && item.kind === "memo.update" && acknowledgement !== "stale") {
         await options.onMemoAcknowledged?.(memo as MemoDetail, item, acknowledgement);
       }
@@ -783,7 +798,7 @@ const acknowledgeClaimedQueueItem = (item: SyncQueueItem, result: SyncQueueResul
 
     if (current?.claimId === item.claimId && current.status === "syncing") {
       await localDb.syncQueue.delete(item.id);
-      if (item.kind !== "memo.create") {
+      if (item.kind !== "memo.create" && item.kind !== "memo.status") {
         const draft = await localDb.drafts.get(item.memoId);
         if (!draft || item.kind !== "memo.update" || isDraftCoveredByMemoUpdate(item, draft)) {
           await localDb.drafts.delete(item.memoId);
@@ -793,6 +808,12 @@ const acknowledgeClaimedQueueItem = (item: SyncQueueItem, result: SyncQueueResul
         const stored = await localDb.memos.get([item.scope, item.memoId]);
         if (stored && memo.revision > stored.revision) {
           await localDb.memos.put({ ...stored, revision: memo.revision, contentHash: memo.contentHash });
+        }
+      }
+      if (item.kind === "memo.status" && item.scope && result && "contentHash" in result) {
+        const stored = await localDb.memos.get([item.scope, item.memoId]);
+        if (stored && Date.parse(result.updatedAt) > Date.parse(stored.updatedAt)) {
+          await localDb.memos.put({ ...stored, updatedAt: result.updatedAt });
         }
       }
       return "completed";
@@ -944,6 +965,7 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
       contentJson: payload.contentJson,
       contentMarkdown: payload.contentMarkdown,
       tags: payload.tags,
+      ...(payload.status !== undefined ? { status: payload.status } : {}),
       createdAt: payload.createdAt,
       updatedAt: payload.updatedAt,
     });
@@ -1063,6 +1085,17 @@ const syncQueueItem = async (item: SyncQueueItem): Promise<SyncQueueResult> => {
       }
     }
     return null;
+  }
+  if (item.kind === "memo.status") {
+    const payload = item.payload as { memoId?: string; status?: MemoStatus | null };
+    // Legacy/malformed omitted fields are no-ops; only explicit null clears.
+    if (payload.status === undefined) return null;
+    try {
+      return (await api.updateMemo(payload.memoId ?? item.memoId, { status: payload.status })).memo;
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || error.status !== 404) throw error;
+      return null;
+    }
   }
   if (item.kind === "memo.merge") {
     const payload = item.payload as LocalActionPayload;

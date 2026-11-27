@@ -56,7 +56,7 @@ describe("editor outline collapsing", () => {
     expect(outlineSource).toContain("getOutlineParentPositions");
     expect(outlineSource).toContain("documentKey?: string");
     expect(outlineSource).toContain("initializedDocumentKeyRef");
-    expect(outlineSource).toContain("setCollapsedPositions(new Set(getOutlineParentPositions(nextTree)))");
+    expect(outlineSource).toContain("setCollapsedPositions(new Set(getOutlineParentPositions(buildOutlineTree(items))))");
   });
 
   test("offers one-click collapse-all and expand-all in both header layouts", () => {

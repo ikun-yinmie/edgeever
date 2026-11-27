@@ -12,11 +12,14 @@ import releaseSummary from "../../../release-summary.json";
 import {
   authenticateRequest,
   authenticateSession,
+  capSessionsToRetention,
   createSession,
   getBearerToken,
+  getDesktopSessionTtlDays,
   getInstanceAuthMode,
   getInstanceUser,
   getLoginAttemptKeys,
+  getLoginSessionPolicy,
   revokeSession,
   setSessionCookie,
   tooManyLoginAttempts,
@@ -123,6 +126,7 @@ import { registerGroupRoutes } from "./group-routes";
 import { resolveMemberNotesResourceRow } from "./member-notes-service";
 import { registerMemberNotesRoutes } from "./member-notes-routes";
 import { registerInstanceAdminRoutes } from "./instance-admin-routes";
+import { registerFeedbackRoutes } from "./feedback-routes";
 import { registerUserRoutes,
 
 } from "./user-routes";
@@ -254,11 +258,14 @@ registerPublicShareRoutes(app);
 registerAuthRoutes(app, {
   authenticateRequest: (...args) => authenticateRequest(...args),
   authenticateSession: (...args) => authenticateSession(...args),
+  capSessionsToRetention: (...args) => capSessionsToRetention(...args),
   createSession: (...args) => createSession(...args),
   ensureUserWorkspace: (...args) => ensureUserWorkspace(...args),
   getBearerToken: (...args) => getBearerToken(...args),
+  getDesktopSessionTtlDays: (...args) => getDesktopSessionTtlDays(...args),
   getInstanceAuthMode: (...args) => getInstanceAuthMode(...args),
   getLoginAttemptKeys: (...args) => getLoginAttemptKeys(...args),
+  getLoginSessionPolicy: (...args) => getLoginSessionPolicy(...args),
   isDemoEnvironment: (environment) => isDemoMode(environment) || isLocalDemoSeedEnabled(environment),
   isDemoMode: (...args) => isDemoMode(...args),
   revokeSession: (...args) => revokeSession(...args),
@@ -271,6 +278,9 @@ registerUserRoutes(app, {
   getInstanceUser: (...args) => getInstanceUser(...args),
 });
 registerInstanceAdminRoutes(app, {
+  authenticateRequest: (...args) => authenticateRequest(...args),
+});
+registerFeedbackRoutes(app, {
   authenticateRequest: (...args) => authenticateRequest(...args),
 });
 

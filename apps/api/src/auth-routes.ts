@@ -2,6 +2,8 @@ import {
   ChangePasswordSchema,
   LoginDeviceSessionUpdateSchema,
   LoginSchema,
+  LoginSessionPolicyUpdateSchema,
+  type LoginSessionPolicy,
 } from "@edgeever/shared";
 import { zValidator } from "@hono/zod-validator";
 import type { Hono } from "hono";
@@ -27,6 +29,7 @@ import type {
 import { hashPassword, verifyPassword } from "./auth-crypto";
 import type { InstanceAuthMode } from "./auth-state";
 import { isoNow } from "./entity-utils";
+import { isGroupAccount } from "./group-account-service";
 import {
   apiError,
   authNotConfigured,
@@ -43,6 +46,7 @@ export type UserRow = {
   display_name: string | null;
   is_disabled: number;
   account_type: "user" | "group" | null;
+  session_ttl_days?: number | null;
 };
 
 type LoginSession = {
@@ -59,7 +63,13 @@ type UserWorkspace = {
 type AuthRouteDependencies = {
   authenticateRequest: (context: AppContext, touch: boolean) => Promise<AuthContext | null>;
   authenticateSession: (context: AppContext, touch: boolean) => Promise<AuthContext | null>;
-  createSession: (context: AppContext, user: UserRow, requestedDeviceId?: string) => Promise<LoginSession>;
+  capSessionsToRetention: (database: DatabaseAdapter, userId: string, ttlDays: number) => Promise<number>;
+  createSession: (
+    context: AppContext,
+    user: UserRow,
+    requestedDeviceId?: string,
+    requestedClientKind?: string,
+  ) => Promise<LoginSession>;
   ensureUserWorkspace: (
     database: DatabaseAdapter,
     userId: string,
@@ -67,8 +77,15 @@ type AuthRouteDependencies = {
     locale?: string | null,
   ) => Promise<UserWorkspace>;
   getBearerToken: (context: AppContext) => string | null;
+  getDesktopSessionTtlDays: (database: DatabaseAdapter, environment: Bindings) => Promise<number>;
   getInstanceAuthMode: (environment: Bindings) => Promise<InstanceAuthMode>;
   getLoginAttemptKeys: (context: AppContext, username: string) => Promise<LoginAttemptKey[]>;
+  getLoginSessionPolicy: (
+    environment: Bindings,
+    ttlDays: number | null | undefined,
+    accountType: string | null | undefined,
+    desktopTtlDays?: number | null,
+  ) => LoginSessionPolicy;
   isDemoEnvironment: (environment: Bindings) => boolean;
   isDemoMode: (environment: Bindings) => boolean;
   revokeSession: (database: DatabaseAdapter, token: string) => Promise<void>;
@@ -134,7 +151,7 @@ export const registerAuthRoutes = (
 
     const now = isoNow();
     const rows = await context.env.storage.db.prepare(
-      `SELECT id, device_id, user_agent, device_label, ip_address, ip_country, ip_region, expires_at, created_at, last_seen_at
+      `SELECT id, device_id, client_kind, user_agent, device_label, ip_address, ip_country, ip_region, expires_at, created_at, last_seen_at
        FROM sessions
        WHERE user_id = ?
          AND revoked_at IS NULL
@@ -237,6 +254,84 @@ export const registerAuthRoutes = (
     return context.json({ ok: true });
   });
 
+  app.get("/api/v1/auth/session-policy", async (context) => {
+    const auth = await requireInteractiveSession(context, dependencies.authenticateRequest);
+    if (!auth) return unauthorized(context, "An interactive user session is required.");
+
+    const user = await context.env.storage.db.prepare(
+      `SELECT session_ttl_days, account_type FROM users WHERE id = ?`,
+    ).bind(auth.actorId).first<{ session_ttl_days: number | null; account_type: string | null }>();
+    if (!user) return unauthorized(context, "An interactive user session is required.");
+
+    const desktopTtlDays = await dependencies.getDesktopSessionTtlDays(
+      context.env.storage.db,
+      context.env,
+    );
+    return context.json(dependencies.getLoginSessionPolicy(
+      context.env,
+      user.session_ttl_days,
+      user.account_type,
+      desktopTtlDays,
+    ));
+  });
+
+  app.put(
+    "/api/v1/auth/session-policy",
+    zValidator("json", LoginSessionPolicyUpdateSchema),
+    async (context) => {
+      const auth = await requireInteractiveSession(context, dependencies.authenticateRequest);
+      if (!auth) return unauthorized(context, "An interactive user session is required.");
+
+      const input = context.req.valid("json");
+      const user = await context.env.storage.db.prepare(
+        `SELECT session_ttl_days, account_type FROM users WHERE id = ?`,
+      ).bind(auth.actorId).first<{ session_ttl_days: number | null; account_type: string | null }>();
+      if (!user) return unauthorized(context, "An interactive user session is required.");
+      // Shared group accounts are intentionally multi-person and use the
+      // instance-wide group lifetime, so they cannot opt into a shorter one.
+      if (isGroupAccount(user.account_type)) {
+        return apiError(
+          context,
+          "shared_account_session_policy",
+          "Shared accounts use the instance-wide session lifetime.",
+          400,
+        );
+      }
+
+      const now = isoNow();
+      await context.env.storage.db.prepare(
+        `UPDATE users SET session_ttl_days = ?, updated_at = ? WHERE id = ?`,
+      ).bind(input.sessionTtlDays, now, auth.actorId).run();
+      // The setting is a retention limit, so it also trims live browser/mobile
+      // sessions that would otherwise outlive the new window.
+      const cappedSessions = await dependencies.capSessionsToRetention(
+        context.env.storage.db,
+        auth.actorId,
+        input.sessionTtlDays,
+      );
+      await audit(
+        context.env.storage.db,
+        "user",
+        auth.actorId,
+        "auth.session_policy_update",
+        "user",
+        auth.actorId,
+        { sessionTtlDays: input.sessionTtlDays, cappedSessions },
+      );
+
+      const desktopTtlDays = await dependencies.getDesktopSessionTtlDays(
+        context.env.storage.db,
+        context.env,
+      );
+      return context.json(dependencies.getLoginSessionPolicy(
+        context.env,
+        input.sessionTtlDays,
+        user.account_type,
+        desktopTtlDays,
+      ));
+    },
+  );
+
   app.post("/api/v1/auth/login", zValidator("json", LoginSchema), async (context) => {
     const authMode = await dependencies.getInstanceAuthMode(context.env);
     if (authMode === "unconfigured") return authNotConfigured(context);
@@ -282,7 +377,7 @@ export const registerAuthRoutes = (
       user.username,
       context.req.header("accept-language"),
     );
-    const session = await dependencies.createSession(context, user, input.deviceId);
+    const session = await dependencies.createSession(context, user, input.deviceId, input.clientKind);
     dependencies.setSessionCookie(context, session.token, session.maxAge);
 
     const now = isoNow();

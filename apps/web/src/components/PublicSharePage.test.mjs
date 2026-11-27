@@ -64,7 +64,7 @@ describe("PublicSharePage outline", () => {
     expect(source).toContain("editor={shareEditor}");
     expect(mobileOutlineSource).toContain('data-mobile-outline-trigger="true"');
     expect(mobileOutlineSource).toContain('data-mobile-outline-sheet="true"');
-    expect(mobileOutlineSource).toContain("getEditorOutlineItems");
+    expect(mobileOutlineSource).toContain("useEditorOutlineItems");
     expect(mobileOutlineSource).toContain("window.scrollTo");
     expect(mobileOutlineSource).toContain('t("editor.outlineShort")');
   });

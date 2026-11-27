@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { Mail } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export const EmailSettingsCard = () => {
   const { t } = useTranslation();
   const { draft, isLoading, isSaving, savedAt, saveError, update, save } = useInstanceAdminSettings();
   const [smtpPassword, setSmtpPassword] = useState("");
+  const [feedbackErrors, setFeedbackErrors] = useState<{ recipient?: string; contact?: string }>({});
 
   if (isLoading || !draft) {
     return (
@@ -39,8 +41,23 @@ export const EmailSettingsCard = () => {
   }
 
   const handleSave = () => {
+    const recipient = draft.feedbackRecipientEmail?.trim() || null;
+    const contact = draft.contactEmail?.trim() || null;
+    const errors = {
+      ...(draft.feedbackEnabled && !recipient
+        ? { recipient: t("adminConsole.feedbackRecipientRequired") }
+        : recipient && !z.email().max(200).safeParse(recipient).success
+          ? { recipient: t("adminConsole.feedbackRecipientInvalid") } : {}),
+      ...(contact && !z.email().max(200).safeParse(contact).success
+        ? { contact: t("adminConsole.contactEmailInvalid") } : {}),
+    };
+    setFeedbackErrors(errors);
+    if (Object.keys(errors).length) return;
     save(
       {
+        feedbackEnabled: draft.feedbackEnabled ?? false,
+        feedbackRecipientEmail: recipient,
+        contactEmail: contact,
         smtpHost: draft.smtpHost,
         smtpPort: draft.smtpPort,
         smtpSecure: draft.smtpSecure,
@@ -126,8 +143,48 @@ export const EmailSettingsCard = () => {
         </div>
         <div className="flex items-center justify-between gap-4">
           <p className="text-xs text-slate-500">{t("adminConsole.smtpSecureHint")}</p>
-          <Switch checked={draft.smtpSecure} onCheckedChange={(checked) => update({ smtpSecure: checked })} />
+          <Switch aria-label={t("adminConsole.smtpSecureLabel")} checked={draft.smtpSecure} onCheckedChange={(checked) => update({ smtpSecure: checked })} />
         </div>
+
+        <section className="space-y-3 border-t border-slate-100 pt-5">
+          <h3 className={SECTION_CLASSNAME}>{t("adminConsole.feedbackSection")}</h3>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{t("adminConsole.feedbackEnabled")}</p>
+              <p className="text-xs text-slate-500">{t("adminConsole.feedbackEnabledHint")}</p>
+            </div>
+            <Switch
+              aria-label={t("adminConsole.feedbackEnabled")}
+              checked={draft.feedbackEnabled ?? false}
+              onCheckedChange={(checked) => { update({ feedbackEnabled: checked }); setFeedbackErrors({}); }}
+            />
+          </div>
+          <Field label={t("adminConsole.feedbackRecipientEmail")}>
+            <Input
+              aria-describedby="feedback-recipient-hint feedback-recipient-error"
+              aria-invalid={Boolean(feedbackErrors.recipient)}
+              className="h-9"
+              onChange={(event) => { update({ feedbackRecipientEmail: event.target.value || null }); setFeedbackErrors((current) => ({ ...current, recipient: undefined })); }}
+              type="email"
+              value={draft.feedbackRecipientEmail ?? ""}
+            />
+          </Field>
+          <p className="text-xs text-slate-500" id="feedback-recipient-hint">{t("adminConsole.feedbackRecipientHint")}</p>
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{t("adminConsole.feedbackLimitHint")}</p>
+          {feedbackErrors.recipient ? <p className="text-xs text-rose-600" id="feedback-recipient-error" role="alert">{feedbackErrors.recipient}</p> : null}
+          <Field label={t("adminConsole.contactEmail")}>
+            <Input
+              aria-describedby="feedback-contact-hint feedback-contact-error"
+              aria-invalid={Boolean(feedbackErrors.contact)}
+              className="h-9"
+              onChange={(event) => { update({ contactEmail: event.target.value || null }); setFeedbackErrors((current) => ({ ...current, contact: undefined })); }}
+              type="email"
+              value={draft.contactEmail ?? ""}
+            />
+          </Field>
+          <p className="text-xs text-slate-500" id="feedback-contact-hint">{t("adminConsole.contactEmailHint")}</p>
+          {feedbackErrors.contact ? <p className="text-xs text-rose-600" id="feedback-contact-error" role="alert">{feedbackErrors.contact}</p> : null}
+        </section>
 
         <section className="space-y-3 border-t border-slate-100 pt-5">
           <h3 className={SECTION_CLASSNAME}>{t("adminConsole.abuseSection")}</h3>
@@ -137,6 +194,7 @@ export const EmailSettingsCard = () => {
               <p className="text-xs text-slate-500">{t("adminConsole.abuseGuardEnabledHint")}</p>
             </div>
             <Switch
+              aria-label={t("adminConsole.abuseGuardEnabled")}
               checked={draft.abuseGuardEnabled}
               onCheckedChange={(checked) => update({ abuseGuardEnabled: checked })}
             />

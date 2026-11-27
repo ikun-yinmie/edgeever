@@ -1,4 +1,4 @@
-import type { MemoDetail, MemoSummary, MemoTemplate, Notebook, ResourceListItem, ResourceStorageSummary } from "./types";
+import type { MemoDetail, MemoStatus, MemoSummary, MemoTemplate, Notebook, ResourceListItem, ResourceStorageSummary } from "./types";
 import type { TiptapDoc } from "./content";
 
 export const DESKTOP_SIDECAR_PROTOCOL_VERSION = 3;
@@ -47,6 +47,7 @@ export const DESKTOP_RPC_METHODS = [
   "memo.emptyTrash",
   "memo.pinBatch",
   "memo.setTheme",
+  "memo.setStatus",
   "memo.merge",
   "memo.list",
   "memo.get",
@@ -84,6 +85,7 @@ export type DesktopMemoCreateParams = {
   contentMarkdown?: string;
   contentText?: string;
   tags?: string[];
+  status?: import("./types").MemoStatus | null;
 };
 
 export type DesktopMemoUpdateParams = {
@@ -118,6 +120,7 @@ export type DesktopRpcResponses = {
   "memo.emptyTrash": { ok: true; deleted: number };
   "memo.pinBatch": { ok: true; updated: number };
   "memo.setTheme": { memo: MemoDetail };
+  "memo.setStatus": { memo: MemoDetail };
   "memo.merge": { memo: MemoDetail };
   "memo.list": { memos: MemoSummary[]; totalCount: number; nextCursor: string | null };
   "memo.get": {
@@ -178,6 +181,7 @@ export type DesktopRpcParams = {
   "memo.emptyTrash": Record<string, never>;
   "memo.pinBatch": { memoIds: string[]; isPinned: boolean };
   "memo.setTheme": { memoId: string; theme: string | null };
+  "memo.setStatus": { memoId: string; status: MemoStatus | null };
   "memo.merge": { memoIds: string[]; notebookId?: string; title?: string };
   "memo.list": DesktopMemoListParams;
   "memo.get": { memoId: string; includeDeleted?: boolean };
@@ -232,7 +236,7 @@ export type DesktopRpcContractIsComplete =
 
 export type DesktopOutboxItem = {
   id: number;
-  kind: "memo.create" | "memo.update" | "memo.delete" | "memo.restore" | "memo.move" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.setTheme" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "notebook.restore" | "template.create" | "template.update" | "template.delete" | "tag.rename" | "tag.delete";
+  kind: "memo.create" | "memo.update" | "memo.delete" | "memo.restore" | "memo.move" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.setTheme" | "memo.status" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "notebook.restore" | "template.create" | "template.update" | "template.delete" | "tag.rename" | "tag.delete";
   entityId: string;
   payload: Record<string, unknown>;
   attemptCount: number;

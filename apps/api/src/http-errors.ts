@@ -1,11 +1,12 @@
 import type { Context } from "hono";
 
-export const apiError = (c: Context, code: string, message: string, status: number) =>
+export const apiError = (c: Context, code: string, message: string, status: number, details?: unknown) =>
   c.json(
     {
       error: {
         code,
         message,
+        ...(details !== undefined ? { details } : {}),
       },
     },
     status as 400

@@ -16,6 +16,8 @@ export type Notebook = {
   updatedAt: string;
 };
 
+export type MemoStatus = "in_progress" | "completed" | "cancelled";
+
 export type MemoSummary = {
   id: string;
   notebookId: string;
@@ -29,6 +31,7 @@ export type MemoSummary = {
    * a named theme id is shared with everyone who can read it.
    */
   theme?: string | null;
+  status?: MemoStatus | null;
   isPinned: boolean;
   isArchived: boolean;
   isDeleted: boolean;
@@ -345,9 +348,12 @@ export type AuthSession = {
   sessionToken?: string;
 };
 
+export type SessionClientKind = "desktop" | "web" | "mobile";
+
 export type LoginDeviceSession = {
   id: string;
   userAgent: string | null;
+  clientKind?: SessionClientKind;
   label: string | null;
   ipAddress: string | null;
   ipCountry: string | null;
@@ -356,6 +362,20 @@ export type LoginDeviceSession = {
   createdAt: string;
   lastSeenAt: string;
   expiresAt: string;
+};
+
+/**
+ * Personal-center retention setting for browser and mobile logins. The desktop
+ * client always keeps the instance default so an edit session is never cut off.
+ */
+export type LoginSessionPolicy = {
+  sessionTtlDays: number;
+  /** Instance-wide desktop-client lifetime, owned by the admin console. */
+  desktopSessionTtlDays: number;
+  defaultSessionTtlDays: number;
+  minSessionTtlDays: number;
+  maxSessionTtlDays: number;
+  mutable: boolean;
 };
 
 export type ApiError = {

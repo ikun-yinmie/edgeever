@@ -1,4 +1,5 @@
 import type { TiptapDoc, TiptapNode, TiptapTextNode } from "./content";
+import type { MemoStatus } from "./types";
 import { parseMemoLinkHref } from "./note-links";
 
 /** A reachable base URL for this instance, optionally named for the picker. */
@@ -27,6 +28,7 @@ export type PublicMemoShare = {
   title: string | null;
   /** Per-note editor theme; `null`/missing renders with the viewer's default. */
   theme?: string | null;
+  status?: MemoStatus | null;
   contentJson: TiptapDoc;
   contentMarkdown: string;
   tags: string[];

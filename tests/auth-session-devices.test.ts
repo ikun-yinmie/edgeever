@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { LoginSchema } from "@edgeever/shared";
 import {
+  classifySessionUserAgent,
   groupLoginDeviceSessions,
+  resolveSessionClientKind,
   resolveSessionDeviceId,
   type LoginDeviceSessionRow,
 } from "../apps/api/src/auth-session-devices";
@@ -52,6 +54,7 @@ describe("login device sessions", () => {
       {
         id: "sess_current",
         userAgent: "EdgeEver/1.4.0",
+        clientKind: "desktop",
         label: "手机",
         ipAddress: "203.0.113.11",
         ipCountry: "CN",
@@ -62,5 +65,15 @@ describe("login device sessions", () => {
         expiresAt: "2027-07-18T00:00:00.000Z",
       },
     ]);
+  });
+
+  test("classifies terminals from the reported kind or the user agent", () => {
+    expect(classifySessionUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile")).toBe("mobile");
+    expect(classifySessionUserAgent("EdgeEver/1.0 CFNetwork/1490.0.4 Darwin/23.2.0")).toBe("mobile");
+    expect(classifySessionUserAgent("Mozilla/5.0 (Windows NT 10.0) EdgeEver/1.106.1 Chrome/130")).toBe("desktop");
+    expect(classifySessionUserAgent("Mozilla/5.0 (Windows NT 10.0) Chrome/130")).toBe("web");
+    expect(classifySessionUserAgent(null)).toBe("web");
+    expect(resolveSessionClientKind("mobile", "Mozilla/5.0 (Windows NT 10.0) Chrome/130")).toBe("mobile");
+    expect(resolveSessionClientKind("invalid", "Mozilla/5.0 (Windows NT 10.0) Chrome/130")).toBe("web");
   });
 });

@@ -45,6 +45,7 @@ export type MemoCreateSyncPayload = {
   contentJson?: TiptapDoc;
   contentMarkdown?: string;
   tags: string[];
+  status?: import("@edgeever/shared").MemoStatus | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -58,7 +59,7 @@ export type MemoRestoreSyncPayload = {
   memoId: string;
 };
 
-export type LocalActionKind = "tag.rename" | "tag.delete" | "memo.moveBatch" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.setTheme" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "template.create" | "template.update" | "template.delete" | "resource.create";
+export type LocalActionKind = "tag.rename" | "tag.delete" | "memo.moveBatch" | "memo.deleteBatch" | "memo.emptyTrash" | "memo.pinBatch" | "memo.setTheme" | "memo.status" | "memo.merge" | "notebook.create" | "notebook.update" | "notebook.delete" | "template.create" | "template.update" | "template.delete" | "resource.create";
 export type LocalActionPayload = Record<string, unknown>;
 
 export type SyncQueueStatus = "pending" | "syncing" | "conflict" | "error";

@@ -11,6 +11,7 @@ import {
   resolveMergedMemoTitle,
   type MemoDetail,
   type MemoRevision,
+  type MemoStatus,
   type MemoSummary,
   type MemoTemplate,
   type Notebook,
@@ -86,6 +87,8 @@ const toSummary = (memo: MemoDetail): MemoSummary => ({
   ...getDiagramSummary(memo.contentMarkdown),
   tags: memo.tags,
   isPinned: memo.isPinned,
+  theme: memo.theme,
+  status: memo.status ?? null,
   isArchived: memo.isArchived,
   isDeleted: memo.isDeleted,
   revision: memo.revision,
@@ -100,6 +103,7 @@ export type PendingMemoSyncState = {
   restoreIds: Set<string>;
   emptyTrashIds: Set<string>;
   themes: Map<string, string | null>;
+  statuses: Map<string, MemoStatus | null>;
 };
 
 /**
@@ -114,6 +118,7 @@ export const collectPendingMemoSyncState = async (scope: string): Promise<Pendin
     restoreIds: new Set(),
     emptyTrashIds: new Set(),
     themes: new Map(),
+    statuses: new Map(),
   };
 
   for (const item of await localDb.syncQueue.toArray()) {
@@ -131,6 +136,8 @@ export const collectPendingMemoSyncState = async (scope: string): Promise<Pendin
       state.restoreIds.add(payloadMemoId);
     } else if (item.kind === "memo.setTheme") {
       state.themes.set(payloadMemoId, typeof payload.theme === "string" ? payload.theme : null);
+    } else if (item.kind === "memo.status" && payload.status !== undefined) {
+      state.statuses.set(payloadMemoId, payload.status as MemoStatus | null);
     } else if (item.kind === "memo.deleteBatch") {
       for (const memoId of Array.isArray(payload.memoIds) ? payload.memoIds : []) {
         if (typeof memoId === "string") state.deleteIds.add(memoId);
@@ -153,26 +160,52 @@ export const shouldApplyRemoteMemoChange = (memo: MemoDetail, pending: PendingMe
   return true;
 };
 
-const applyPendingTheme = <T extends MemoDetail>(memo: T, pending: PendingMemoSyncState): T => {
+const applyPendingMemoMetadata = <T extends MemoDetail>(memo: T, pending: PendingMemoSyncState, existing?: MemoDetail | null): T => {
   const theme = pending.themes.get(memo.id);
-  return theme === undefined ? memo : { ...memo, theme };
+  // Metadata updates need not advance the content revision. Keep the local
+  // timestamp as a fence even after its queue item has been acknowledged.
+  const existingIsNewer = Boolean(existing && (
+    existing.revision > memo.revision || Date.parse(existing.updatedAt) > Date.parse(memo.updatedAt)
+  ));
+  const status = pending.statuses.has(memo.id)
+    ? pending.statuses.get(memo.id)!
+    : existing && (memo.status === undefined || existingIsNewer)
+      ? existing.status ?? null
+      : memo.status ?? null;
+  return {
+    ...memo,
+    ...(theme === undefined ? {} : { theme }),
+    status,
+    updatedAt: existing && Date.parse(existing.updatedAt) > Date.parse(memo.updatedAt) ? existing.updatedAt : memo.updatedAt,
+  };
 };
 
-const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDetail[]) => {
-  const pending = await collectPendingMemoSyncState(scope);
-  const now = new Date().toISOString();
-  const projectedMemos = memos.map((memo) => {
-    const projected = applyPendingTheme(memo, pending);
-    if ((pending.deleteIds.has(projected.id) || pending.emptyTrashIds.has(projected.id)) && !projected.isDeleted) {
-      return { ...projected, isDeleted: true, deletedAt: projected.deletedAt ?? now };
-    }
-    if (pending.restoreIds.has(projected.id) && projected.isDeleted) {
-      return { ...projected, isDeleted: false, deletedAt: null };
-    }
-    return projected;
-  });
+export const projectLocalMemoMetadata = (scope: string, memo: MemoDetail) =>
+  localDb.transaction("r", [localDb.memos, localDb.syncQueue], async () =>
+    applyPendingMemoMetadata(memo, await collectPendingMemoSyncState(scope), await getLocalMemo(scope, memo.id))
+  );
 
-  await localDb.transaction("rw", [localDb.notebooks, localDb.memos, localDb.revisions, localDb.resources], async () => {
+const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDetail[]) => {
+  await localDb.transaction("rw", [localDb.notebooks, localDb.memos, localDb.revisions, localDb.resources, localDb.syncQueue], async () => {
+    const pending = await collectPendingMemoSyncState(scope);
+    const existing = new Map((await localDb.memos.where("scope").equals(scope).toArray()).map((memo) => [memo.id, memo]));
+    const now = new Date().toISOString();
+    const projectedMemos = memos.map((memo) => {
+      const projected = applyPendingMemoMetadata(memo, pending, existing.get(memo.id));
+      if ((pending.deleteIds.has(projected.id) || pending.emptyTrashIds.has(projected.id)) && !projected.isDeleted) {
+        return { ...projected, isDeleted: true, deletedAt: projected.deletedAt ?? now };
+      }
+      if (pending.restoreIds.has(projected.id) && projected.isDeleted) {
+        return { ...projected, isDeleted: false, deletedAt: null };
+      }
+      return projected;
+    });
+    // A snapshot started before an offline create must not discard that note
+    // (and its status) before the create acknowledgement can remap it.
+    const snapshotIds = new Set(memos.map((memo) => memo.id));
+    for (const memo of existing.values()) {
+      if (isLocalMemoId(memo.id) && !snapshotIds.has(memo.id)) projectedMemos.push(memo);
+    }
     const pendingLocalResources = (await localDb.resources.where("scope").equals(scope).toArray())
       .filter((resource) => resource.id.startsWith("local_resource_"));
     await localDb.notebooks.where("scope").equals(scope).delete();
@@ -186,14 +219,15 @@ const replaceScope = async (scope: string, notebooks: Notebook[], memos: MemoDet
 };
 
 const applyChanges = async (scope: string, changes: SyncChangesResponse["changes"]) => {
-  const pending = await collectPendingMemoSyncState(scope);
-  await localDb.transaction("rw", [localDb.notebooks, localDb.memos], async () => {
+  await localDb.transaction("rw", [localDb.notebooks, localDb.memos, localDb.syncQueue], async () => {
+    const pending = await collectPendingMemoSyncState(scope);
     for (const change of changes) {
       if (change.entityType === "memo") {
         if (change.operation === "delete" || !change.memo) {
           await localDb.memos.delete([scope, change.entityId]);
         } else if (shouldApplyRemoteMemoChange(change.memo, pending)) {
-          await localDb.memos.put({ ...applyPendingTheme(change.memo, pending), scope });
+          const existing = await localDb.memos.get([scope, change.memo.id]);
+          await localDb.memos.put({ ...applyPendingMemoMetadata(change.memo, pending, existing), scope });
         }
         continue;
       }
@@ -372,15 +406,19 @@ export const listLocalMemos = async (scope: string, params: LocalMemoListParams)
   };
 };
 
-export const getLocalMemo = async (scope: string, memoId: string) => {
+export const getLocalMemo = async (scope: string, memoId: string): Promise<MemoDetail | null> => {
   const memo = await localDb.memos.get([scope, memoId]);
   if (!memo) return null;
   const { scope: _scope, ...detail } = memo;
-  return detail;
+  return { ...detail, status: detail.status ?? null };
 };
 
 export const putLocalMemo = async (scope: string, memo: MemoDetail) => {
-  await localDb.memos.put({ ...memo, scope });
+  await localDb.transaction("rw", [localDb.memos, localDb.syncQueue], async () => {
+    const pending = await collectPendingMemoSyncState(scope);
+    const existing = await localDb.memos.get([scope, memo.id]);
+    await localDb.memos.put({ ...applyPendingMemoMetadata(memo, pending, existing), scope });
+  });
 };
 
 /**
@@ -390,11 +428,12 @@ export const putLocalMemo = async (scope: string, memo: MemoDetail) => {
  * a return from the editor would render the note's pre-edit snapshot until
  * the next pull reaches it.
  */
-export const cacheSavedLocalMemo = async (scope: string, memo: MemoDetail) => {
-  const pending = await collectPendingMemoSyncState(scope);
-  if (!shouldApplyRemoteMemoChange(memo, pending)) return false;
-  return putLocalMemoIfNotStale(scope, applyPendingTheme(memo, pending));
-};
+export const cacheSavedLocalMemo = async (scope: string, memo: MemoDetail) =>
+  localDb.transaction("rw", [localDb.memos, localDb.syncQueue], async () => {
+    const pending = await collectPendingMemoSyncState(scope);
+    if (!shouldApplyRemoteMemoChange(memo, pending)) return false;
+    return putLocalMemoIfNotStale(scope, memo);
+  });
 
 /**
  * Write a confirmed snapshot without ever regressing the mirror row.
@@ -406,10 +445,11 @@ export const cacheSavedLocalMemo = async (scope: string, memo: MemoDetail) => {
  * between them.
  */
 export const putLocalMemoIfNotStale = async (scope: string, memo: MemoDetail) => {
-  return localDb.transaction("rw", localDb.memos, async () => {
+  return localDb.transaction("rw", [localDb.memos, localDb.syncQueue], async () => {
     const existing = await localDb.memos.get([scope, memo.id]);
     if (existing && existing.revision > memo.revision) return false;
-    await localDb.memos.put({ ...memo, scope });
+    const pending = await collectPendingMemoSyncState(scope);
+    await localDb.memos.put({ ...applyPendingMemoMetadata(memo, pending, existing), scope });
     return true;
   });
 };
@@ -424,6 +464,7 @@ export const createLocalMemo = async (
     contentMarkdown?: string;
     contentJson?: TiptapDoc;
     tags?: string[];
+    status?: MemoStatus | null;
     createdAt?: string;
     updatedAt?: string;
   },
@@ -439,6 +480,7 @@ export const createLocalMemo = async (
     excerpt: createExcerpt(contentText),
     tags: input.tags ?? [],
     isPinned: false,
+    status: input.status ?? null,
     isArchived: false,
     isDeleted: false,
     revision: 0,
@@ -494,11 +536,13 @@ export const observeLocalMemoIdMappings = (
 };
 
 export const replaceLocalMemoId = async (scope: string, temporaryId: string, memo: MemoDetail) => {
-  return localDb.transaction("rw", [localDb.memos, localDb.idMappings, localDb.drafts], async () => {
-    const [temporaryMemo, temporaryDraft, remoteDraft] = await Promise.all([
+  return localDb.transaction("rw", [localDb.memos, localDb.idMappings, localDb.drafts, localDb.syncQueue], async () => {
+    const [temporaryMemo, temporaryDraft, remoteDraft, existingRemote, pending] = await Promise.all([
       localDb.memos.get([scope, temporaryId]),
       localDb.drafts.get(temporaryId),
       localDb.drafts.get(memo.id),
+      localDb.memos.get([scope, memo.id]),
+      collectPendingMemoSyncState(scope),
     ]);
     const draft = selectNewestLocalDraft(temporaryDraft, remoteDraft);
     const localIsNewer = Boolean(temporaryMemo && Date.parse(temporaryMemo.updatedAt) > Date.parse(memo.updatedAt));
@@ -534,9 +578,15 @@ export const replaceLocalMemoId = async (scope: string, temporaryId: string, mem
       // the note may already carry a locally chosen theme whose setTheme action
       // is still queued. Keep that choice until its own acknowledgement lands.
       theme: memo.theme ?? temporaryMemo?.theme ?? null,
+      // A temporary note may have been cleared explicitly; never use ?? to
+      // choose between that local null and the create response's old status.
+      status: pending.statuses.has(temporaryId)
+        ? pending.statuses.get(temporaryId)!
+        : existingRemote ? existingRemote.status ?? null : temporaryMemo ? temporaryMemo.status ?? null : memo.status ?? null,
     };
+    const projected = applyPendingMemoMetadata(remappedMemo, pending, existingRemote);
 
-    await localDb.memos.put({ ...remappedMemo, scope });
+    await localDb.memos.put({ ...projected, scope });
     await localDb.memos.delete([scope, temporaryId]);
     if (draft) {
       await localDb.drafts.put({ ...draft, memoId: memo.id });
@@ -548,7 +598,7 @@ export const replaceLocalMemoId = async (scope: string, temporaryId: string, mem
       remoteId: memo.id,
       createdAt: new Date().toISOString(),
     });
-    return remappedMemo;
+    return projected;
   });
 };
 
@@ -558,8 +608,10 @@ export const putLocalMemoUpdate = async (
   input: { title: string; contentJson: TiptapDoc; contentMarkdown?: string; tags: string[] },
 ) => {
   const contentText = docToText(input.contentJson);
+  const current = await getLocalMemo(scope, memo.id);
   const updatedMemo: MemoDetail = {
     ...memo,
+    status: current ? current.status : memo.status ?? null,
     title: input.title.trim() || null,
     excerpt: createExcerpt(contentText),
     tags: input.tags,
@@ -863,6 +915,16 @@ export const applyLocalMemoPin = (scope: string, memoIds: string[], isPinned: bo
 
 export const applyLocalMemoTheme = async (scope: string, memoId: string, theme: string | null) => {
   await updateLocalMemos(scope, [memoId], (memo) => ({ ...memo, theme, updatedAt: new Date().toISOString() }));
+  return getLocalMemo(scope, memoId);
+};
+
+export const applyLocalMemoStatus = async (scope: string, memoId: string, status: MemoStatus | null) => {
+  await updateLocalMemos(scope, [memoId], (memo) => ({
+    ...memo,
+    status,
+    // Distinct choices made in one millisecond still need a freshness fence.
+    updatedAt: new Date(Math.max(Date.now(), Date.parse(memo.updatedAt) + 1)).toISOString(),
+  }));
   return getLocalMemo(scope, memoId);
 };
 

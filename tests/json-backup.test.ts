@@ -28,6 +28,7 @@ const memo: MemoDetail = {
   title: "Backup note",
   excerpt: "Hello",
   tags: ["backup"],
+  status: "completed",
   isPinned: false,
   isArchived: false,
   isDeleted: false,
@@ -151,6 +152,7 @@ describe("EdgeEver ZIP", () => {
     expect(backup.prompts).toEqual([prompt]);
     expect(backup.notebooks.map((item) => item.id)).toEqual(["nb_root", "nb_child"]);
     expect(backup.memos[0].memo.contentMarkdown).toBe(memo.contentMarkdown);
+    expect(backup.memos[0].memo.status).toBe("completed");
     expect(backup.archive).toBe(blob);
     expect(resourceChunks).toEqual([1, 2]);
     const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));

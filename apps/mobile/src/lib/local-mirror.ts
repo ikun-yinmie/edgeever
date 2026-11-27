@@ -436,6 +436,8 @@ const toMemoSummary = (memo: MemoDetail): MemoSummary => ({
   excerpt: memo.excerpt,
   tags: memo.tags,
   isPinned: memo.isPinned,
+  theme: memo.theme,
+  status: memo.status ?? null,
   isArchived: memo.isArchived,
   isDeleted: memo.isDeleted,
   revision: memo.revision,

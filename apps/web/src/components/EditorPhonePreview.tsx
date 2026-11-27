@@ -6,6 +6,7 @@ import { useEditorTheme, useMermaidTheme } from "@/components/ThemeProvider";
 import { embedMermaidForPreview } from "@/lib/phone-preview-mermaid";
 import { Switch } from "@/components/ui/switch";
 import { preparePublishArticle } from "@/lib/wechat-copy";
+import { isEditorDocumentReady, type EditorDocumentState } from "./editor/editor-document-state";
 import {
   readEditorPhonePreviewFollowPreference,
   writeEditorPhonePreviewFollowPreference,
@@ -22,6 +23,8 @@ export const PhonePreviewGlyph = ({ className }: { className?: string }) => (
 
 type EditorPhonePreviewProps = {
   editor: Editor | null;
+  documentKey?: string;
+  documentState?: EditorDocumentState | null;
   title?: string;
   scrollContainer?: HTMLDivElement | null;
   onScrollerChange?: (element: HTMLDivElement | null) => void;
@@ -64,22 +67,29 @@ const alignElement = (scroller: HTMLElement, target: HTMLElement, viewportTop: n
   scroller.scrollTop += delta;
 };
 
-export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerChange, className, editorTheme: editorThemeOverride }: EditorPhonePreviewProps) => {
+export const EditorPhonePreview = ({ editor, documentKey, documentState, title, scrollContainer, onScrollerChange, className, editorTheme: editorThemeOverride }: EditorPhonePreviewProps) => {
   const { t } = useTranslation();
   const { editorTheme: deviceEditorTheme } = useEditorTheme();
   const editorTheme = editorThemeOverride ?? deviceEditorTheme;
   const { mermaidTheme } = useMermaidTheme();
   const previewSyncGeneration = useRef(0);
-  const [markup, setMarkup] = useState({ html: "", style: "" });
+  const documentReady = isEditorDocumentReady(editor, documentKey, documentState);
+  const source = documentState ?? editor;
+  const [renderedMarkup, setMarkup] = useState<{
+    html: string;
+    style: string;
+    source: typeof source;
+    documentKey: string | undefined;
+  }>({ html: "", style: "", source: null, documentKey: undefined });
+  const markup = documentReady && renderedMarkup.source === source && renderedMarkup.documentKey === documentKey
+    ? renderedMarkup
+    : { html: "", style: "" };
   const [follow, setFollow] = useState(readEditorPhonePreviewFollowPreference);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const syncingRef = useRef(false);
 
   useEffect(() => {
-    if (!editor || editor.isDestroyed) {
-      setMarkup({ html: "", style: "" });
-      return;
-    }
+    if (!documentReady || !editor) return;
 
     const sync = () => {
       if (editor.isDestroyed) return;
@@ -88,12 +98,16 @@ export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerC
       setMarkup({
         html: root.innerHTML,
         style: root.getAttribute("style") ?? "",
+        source,
+        documentKey,
       });
       void embedMermaidForPreview(root, editor, mermaidTheme).then(() => {
         if (generation !== previewSyncGeneration.current) return;
         setMarkup({
           html: root.innerHTML,
           style: root.getAttribute("style") ?? "",
+          source,
+          documentKey,
         });
       });
     };
@@ -102,10 +116,11 @@ export const EditorPhonePreview = ({ editor, title, scrollContainer, onScrollerC
     editor.on("update", sync);
     editor.on("create", sync);
     return () => {
+      ++previewSyncGeneration.current;
       editor.off("update", sync);
       editor.off("create", sync);
     };
-  }, [editor, editorTheme, mermaidTheme]);
+  }, [documentKey, documentReady, editor, editorTheme, mermaidTheme, source]);
 
   useEffect(() => {
     previewRef.current?.setAttribute("style", markup.style);

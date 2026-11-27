@@ -14,6 +14,8 @@ export type {
   AiProviderUpdatePayload,
   CollaborationGroup,
   CollaborationGroupMember,
+  FeedbackConfigResponse,
+  FeedbackSubmitPayload,
   GroupShareSummary,
   InstanceAdminSettings,
   InstanceAdminSettingsUpdatePayload,
@@ -188,6 +190,18 @@ export const probeDesktopInstanceUrls = async (urls: string[]) => {
 };
 
 const createWebDeviceId = () => `web-${createClientUuid()}`;
+
+/**
+ * The server limits a personal account to one login per terminal, so the client
+ * names its terminal explicitly instead of relying on user-agent heuristics.
+ */
+export const resolveLoginClientKind = (): "desktop" | "mobile" | "web" => {
+  if (typeof window === "undefined") return "web";
+  if (window.edgeeverDesktop?.isAvailable) return "desktop";
+  return /iPhone|iPad|iPod|Android|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    ? "mobile"
+    : "web";
+};
 
 export const getOrCreateClientDeviceId = () => {
   try {
@@ -384,7 +398,11 @@ export const api = {
   },
 
   login: async (payload: { username: string; password: string }) => {
-    const session = await client.login({ ...payload, deviceId: getOrCreateClientDeviceId() });
+    const session = await client.login({
+      ...payload,
+      deviceId: getOrCreateClientDeviceId(),
+      clientKind: resolveLoginClientKind(),
+    });
     desktopSessionRejected = false;
     return session;
   },

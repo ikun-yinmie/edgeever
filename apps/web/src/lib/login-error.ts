@@ -14,6 +14,7 @@ export type LoginProblem = LoginProblemDetails & (
   | { kind: "invalidCredentials"; diagnosticCode: "invalid_credentials" }
   | { kind: "sessionExpired"; diagnosticCode: "session_expired" }
   | { kind: "loginRateLimited"; diagnosticCode: "login_rate_limited" }
+  | { kind: "terminalIpConflict"; diagnosticCode: "terminal_ip_conflict" }
   | { kind: "authNotConfigured"; diagnosticCode: "auth_not_configured" }
   | { kind: "databaseNotReady"; diagnosticCode: "database_not_ready" }
   | { kind: "passwordHashInvalid"; diagnosticCode: "password_hash_invalid" }
@@ -33,6 +34,7 @@ export type LoginProblemMessageKey =
   | "login.invalidCredentials"
   | "login.sessionExpired"
   | "login.loginRateLimited"
+  | "login.terminalIpConflict"
   | "login.authNotConfigured"
   | "login.databaseNotReady"
   | "login.passwordHashInvalid"
@@ -57,6 +59,7 @@ export const getLoginProblemMessageKey = (problem: LoginProblem): LoginProblemMe
     case "invalidCredentials": return "login.invalidCredentials";
     case "sessionExpired": return "login.sessionExpired";
     case "loginRateLimited": return "login.loginRateLimited";
+    case "terminalIpConflict": return "login.terminalIpConflict";
     case "authNotConfigured": return "login.authNotConfigured";
     case "databaseNotReady": return "login.databaseNotReady";
     case "passwordHashInvalid": return "login.passwordHashInvalid";
@@ -87,6 +90,9 @@ export const classifyLoginError = (error: unknown, phase: LoginErrorPhase): Logi
     }
     if (error.code === "password_hash_invalid") {
       return withRayId({ kind: "passwordHashInvalid", diagnosticCode: "password_hash_invalid" }, error);
+    }
+    if (error.code === "terminal_ip_conflict") {
+      return withRayId({ kind: "terminalIpConflict", diagnosticCode: "terminal_ip_conflict" }, error);
     }
     if (error.code === "login_rate_limited" || error.status === 429) {
       return withRayId({ kind: "loginRateLimited", diagnosticCode: "login_rate_limited" }, error);

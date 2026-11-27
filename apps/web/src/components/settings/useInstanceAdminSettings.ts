@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiRequestError, api, type InstanceAdminSettings, type InstanceAdminSettingsUpdatePayload } from "@/lib/api";
 
@@ -10,6 +11,7 @@ export const INSTANCE_ADMIN_SETTINGS_QUERY_KEY = ["instance-admin-settings"];
  * the partial PATCH never clobbers settings another tab is responsible for.
  */
 export const useInstanceAdminSettings = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({
     queryKey: INSTANCE_ADMIN_SETTINGS_QUERY_KEY,
@@ -30,9 +32,12 @@ export const useInstanceAdminSettings = () => {
       setSavedAt(Date.now());
       setSaveError(null);
       void queryClient.invalidateQueries({ queryKey: INSTANCE_ADMIN_SETTINGS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["public-feedback"] });
     },
     onError: (error) => {
-      setSaveError(error instanceof ApiRequestError ? error.message : String(error));
+      setSaveError(error instanceof ApiRequestError && error.code === "feedback_not_configured"
+        ? t("adminConsole.feedbackNotConfigured")
+        : error instanceof ApiRequestError ? error.message : String(error));
     },
   });
 

@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld("edgeeverDesktop", Object.freeze({
   setUpdatePreferences: (value) => ipcRenderer.invoke("desktop:set-update-preferences", value),
   checkUpdate: () => ipcRenderer.invoke("desktop:check-update"),
   downloadUpdate: () => ipcRenderer.invoke("desktop:download-update"),
+  pauseUpdateDownload: () => ipcRenderer.invoke("desktop:pause-update-download"),
   installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
   relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
   onUpdateStatus: (callback) => {

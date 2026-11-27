@@ -1624,6 +1624,7 @@ export const WorkspaceApp = ({
       contentMarkdown: memo.contentMarkdown,
       contentJson: memo.contentJson,
       tags: memo.tags,
+      status: memo.status ?? null,
     });
     await putLocalMemo(localDataScope, result.memo);
     cacheMemoDetail(queryClient, result.memo, "notebook");

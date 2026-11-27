@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MemoStatusSchema } from "./schemas";
 import type { TiptapDoc } from "./content";
 import {
   AI_ACTIONS,
@@ -106,6 +107,7 @@ const MemoDetailSchema = z.object({
   title: z.string().nullable(),
   excerpt: z.string(),
   tags: z.array(z.string()),
+  status: MemoStatusSchema.nullable().optional(),
   isPinned: z.boolean(),
   isArchived: z.boolean(),
   isDeleted: z.boolean(),

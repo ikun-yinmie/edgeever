@@ -1,9 +1,10 @@
-import type { LoginDeviceSession } from "@edgeever/shared";
+import type { LoginDeviceSession, SessionClientKind } from "@edgeever/shared";
 
 export type LoginDeviceSessionRow = {
   id: string;
   device_id: string | null;
   user_agent: string | null;
+  client_kind?: string | null;
   device_label: string | null;
   ip_address: string | null;
   ip_country: string | null;
@@ -12,6 +13,44 @@ export type LoginDeviceSessionRow = {
   created_at: string;
   last_seen_at: string | null;
 };
+
+export type SessionClientKindRow = {
+  id: string;
+  device_id?: string | null;
+  client_kind?: string | null;
+  user_agent: string | null;
+  ip_address: string | null;
+};
+
+/**
+ * A personal account is limited to one login per terminal, and that terminal is
+ * pinned to the IP it signed in from. Native apps report the kind explicitly
+ * (the desktop shell and the mobile app do not share a browser user agent
+ * shape); anything older is classified from its user agent.
+ */
+export const isSessionClientKind = (value: unknown): value is SessionClientKind =>
+  value === "desktop" || value === "web" || value === "mobile";
+
+export const classifySessionUserAgent = (userAgent: string | null): SessionClientKind => {
+  const ua = userAgent ?? "";
+  if (!ua.trim()) return "web";
+  // Apple's native networking stack reports "CFNetwork/Darwin" instead of a
+  // mobile browser token, so an iOS app would otherwise look like Electron.
+  if (/iPhone|iPad|iPod|Android|Mobile|IEMobile|Opera Mini|okhttp|CFNetwork|Darwin/i.test(ua)) return "mobile";
+  // Electron appends "<productName>/<version>" to the Chromium user agent.
+  if (/EdgeEver/i.test(ua)) return "desktop";
+  return "web";
+};
+
+export const resolveSessionClientKind = (
+  requestedClientKind: unknown,
+  userAgent: string | null,
+): SessionClientKind => (isSessionClientKind(requestedClientKind)
+  ? requestedClientKind
+  : classifySessionUserAgent(userAgent));
+
+export const sessionClientKind = (row: Pick<SessionClientKindRow, "client_kind" | "user_agent">) =>
+  isSessionClientKind(row.client_kind) ? row.client_kind : classifySessionUserAgent(row.user_agent);
 
 export const resolveSessionDeviceId = (
   requestedDeviceId: string | undefined,
@@ -46,6 +85,7 @@ export const groupLoginDeviceSessions = (
   return [...grouped.values()].map(({ representative, createdAt, lastSeenAt }) => ({
     id: representative.id,
     userAgent: representative.user_agent,
+    clientKind: sessionClientKind(representative),
     label: representative.device_label,
     ipAddress: representative.ip_address,
     ipCountry: representative.ip_country,

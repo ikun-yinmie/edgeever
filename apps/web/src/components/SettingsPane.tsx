@@ -31,6 +31,7 @@ import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { DesktopUpdateCard } from "./settings/DesktopUpdateCard";
 import { DesktopBrandingCard } from "./settings/DesktopBrandingCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
+import { LoginSessionPolicyCard } from "./settings/LoginSessionPolicyCard";
 import { EvernoteImportGuideCard } from "./settings/EvernoteImportGuideCard";
 import { FeedbackLink } from "./settings/FeedbackLink";
 import { ProductHuntLink } from "./settings/ProductHuntLink";
@@ -207,6 +208,7 @@ export const SettingsPane = ({
               editorContentAlignment={editorContentAlignment}
               onEditorContentAlignmentChange={onEditorContentAlignmentChange}
             />
+            <LoginSessionPolicyCard authRequired={authRequired} accountType={user?.accountType} />
             <DesktopUpdateCard />
             <DesktopBrandingCard />
             {isOwner ? (

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CloudDownload, CloudUpload, ExternalLink, LoaderCircle, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import { buildGitHubFeedbackUrl, type DesktopOutboxItem, type Notebook } from "@edgeever/shared";
+import { AlertTriangle, CloudDownload, CloudUpload, LoaderCircle, MessageSquare, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import type { DesktopOutboxItem, Notebook } from "@edgeever/shared";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppConfirmDialog } from "@/components/dialogs/ConfirmDialogs";
+import { FeedbackDialog } from "@/components/settings/FeedbackDialog";
 import { SyncControlCard } from "@/components/settings/SyncControlCard";
-import { getShareableWebSystemInfoItems } from "@/components/settings/SystemInfoCard";
 import { api, getConfiguredDesktopApiBaseUrl } from "@/lib/api";
 import {
   createDesktopSyncDiagnosticText,
@@ -63,6 +63,7 @@ export const DesktopSyncIssuesDialog = ({
   const [pullConfirm, setPullConfirm] = useState(false);
   const [uploadConfirm, setUploadConfirm] = useState(false);
   const [uploadResult, setUploadResult] = useState<DesktopUploadAllResult | null>(null);
+  const [reporting, setReporting] = useState(false);
   const instanceUrl = getConfiguredDesktopApiBaseUrl();
   const healthQuery = useQuery({
     queryKey: ["instance-health", instanceUrl],
@@ -105,24 +106,21 @@ export const DesktopSyncIssuesDialog = ({
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "medium" }),
     [i18n.language],
   );
-  const reportIssueUrl = useMemo(() => buildGitHubFeedbackUrl({
-    contentHeading: t("notebookPane.syncDetails.reportContentHeading"),
-    contentPrompt: t("notebookPane.syncDetails.reportContentPrompt"),
-    diagnostics: {
-      heading: t("notebookPane.syncDetails.reportDiagnosticsHeading"),
-      notice: t("notebookPane.syncDetails.reportDiagnosticsNotice"),
-      text: createDesktopSyncDiagnosticText(items, globalIssue),
-    },
-    privacyNotice: t("feedback.privacyNotice"),
-    systemInfo: getShareableWebSystemInfoItems(t, i18n.language, {
-      clientRuntime: clientRuntimeQuery.data,
-      instance: healthQuery.data?.health,
-      instanceVersion: releaseQuery.data?.version,
-    }),
-    systemInfoHeading: t("feedback.systemInfoHeading"),
-    systemInfoNotice: t("feedback.systemInfoNotice"),
-    titlePrefix: t("notebookPane.syncDetails.reportTitlePrefix"),
-  }), [clientRuntimeQuery.data, globalIssue, healthQuery.data, i18n.language, items, releaseQuery.data, t]);
+  // The sync report reuses the in-app feedback dialog, so the diagnostics that
+  // used to prefill a GitHub issue are attached to the submitted email instead.
+  const reportDiagnostics = useMemo(() => ({
+    clientRuntime: clientRuntimeQuery.data,
+    instance: healthQuery.data?.health,
+    instanceVersion: releaseQuery.data?.version,
+    instanceUrl,
+  }), [clientRuntimeQuery.data, healthQuery.data?.health, instanceUrl, releaseQuery.data?.version]);
+  const reportDiagnosticText = useMemo(() => (items.length > 0 || globalIssue
+    ? [
+      `## ${t("notebookPane.syncDetails.reportDiagnosticsHeading")}`,
+      `<!-- ${t("notebookPane.syncDetails.reportDiagnosticsNotice")} -->`,
+      createDesktopSyncDiagnosticText(items, globalIssue),
+    ].join("\n\n")
+    : null), [globalIssue, items, t]);
   const collectingSystemInfo = clientRuntimeQuery.isFetching || healthQuery.isFetching || releaseQuery.isFetching;
   const canReportIssue = (items.length > 0 || Boolean(globalIssue)) && !collectingSystemInfo;
   const formatTime = (value: string | null | undefined) => {
@@ -355,20 +353,16 @@ export const DesktopSyncIssuesDialog = ({
           </section>
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button variant="outline" disabled={!canReportIssue} asChild={canReportIssue}>
-              {canReportIssue ? (
-                <a href={reportIssueUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-1.5 h-4 w-4" />
-                  {t("notebookPane.syncDetails.reportIssue")}
-                </a>
-              ) : (
-                <span>
-                  {collectingSystemInfo
-                    ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
-                    : <ExternalLink className="mr-1.5 h-4 w-4" />}
-                  {t("notebookPane.syncDetails.reportIssue")}
-                </span>
-              )}
+            <Button
+              disabled={!canReportIssue}
+              onClick={() => setReporting(true)}
+              type="button"
+              variant="outline"
+            >
+              {collectingSystemInfo
+                ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" />
+                : <MessageSquare className="mr-1.5 h-4 w-4" />}
+              {t("notebookPane.syncDetails.reportIssue")}
             </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>
           </DialogFooter>
@@ -443,6 +437,13 @@ export const DesktopSyncIssuesDialog = ({
           }}
         />
       )}
+
+      <FeedbackDialog
+        diagnostics={reportDiagnostics}
+        extraSystemInfo={reportDiagnosticText}
+        onOpenChange={setReporting}
+        open={reporting}
+      />
     </>
   );
 };

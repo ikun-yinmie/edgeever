@@ -297,6 +297,7 @@ export function createCompanionTools(args: { db: DatabaseAdapter; scope: Compani
               applied: true,
               id: created.memo.id,
               title: created.memo.title,
+              status: created.memo.status ?? null,
               notebookId: created.memo.notebookId,
               notebookName: await notebookName(created.memo.notebookId),
               revision: created.memo.revision,
@@ -305,12 +306,13 @@ export function createCompanionTools(args: { db: DatabaseAdapter; scope: Compani
             });
           }
           if (definition.name === "update_diagram") {
-            const updated = result as { memo: { id: string; title: string | null; revision: number }; diagram?: { nodes?: unknown[] }; changes?: unknown };
+            const updated = result as { memo: { id: string; title: string | null; status?: MemoDetail["status"]; revision: number }; diagram?: { nodes?: unknown[] }; changes?: unknown };
             inspected.set(updated.memo.id, updated.memo.revision);
             return done({
               applied: true,
               id: updated.memo.id,
               title: updated.memo.title,
+              status: updated.memo.status ?? null,
               revision: updated.memo.revision,
               nodeCount: Array.isArray(updated.diagram?.nodes) ? updated.diagram.nodes.length : undefined,
               changes: updated.changes,
@@ -342,14 +344,14 @@ export function createCompanionTools(args: { db: DatabaseAdapter; scope: Compani
           if (payload.diagram) {
             inspected.set(memo.id, memo.revision);
             return done({
-              id: memo.id, title: memo.title, notebookId: memo.notebookId, tags: memo.tags, revision: memo.revision,
+              id: memo.id, title: memo.title, status: memo.status ?? null, notebookId: memo.notebookId, tags: memo.tags, revision: memo.revision,
               createdAt: memo.createdAt, updatedAt: memo.updatedAt, diagramKind: payload.diagram.kind, diagram: payload.diagram,
               message: "This is an editable diagram. Change it with update_diagram, not update_memo.",
             });
           }
           const content = takeNoteText(memo.contentMarkdown, 8000);
           if (content.length === memo.contentMarkdown.length) inspected.set(memo.id, memo.revision); else inspected.delete(memo.id);
-          return done({ id: memo.id, title: memo.title, notebookId: memo.notebookId, tags: memo.tags, revision: memo.revision,
+          return done({ id: memo.id, title: memo.title, status: memo.status ?? null, notebookId: memo.notebookId, tags: memo.tags, revision: memo.revision,
             createdAt: memo.createdAt, updatedAt: memo.updatedAt,
             content, truncated: content.length !== memo.contentMarkdown.length });
         }
@@ -364,6 +366,7 @@ export function createCompanionTools(args: { db: DatabaseAdapter; scope: Compani
               notebookId: memo.notebookId,
               notebookName: await notebookName(memo.notebookId),
               tags: memo.tags,
+              status: memo.status ?? null,
               createdAt: memo.createdAt,
               updatedAt: memo.updatedAt,
               excerpt: takeNoteText(memo.excerpt, 180),

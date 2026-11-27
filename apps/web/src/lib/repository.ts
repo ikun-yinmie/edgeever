@@ -1,4 +1,4 @@
-import { markdownToDoc, type MemoDetail, type MemoRevision, type MemoSummary, type MemoTemplate, type Notebook, type Resource, type ResourceListItem, type ResourceStorageSummary, type TagSummary, type TiptapDoc } from "@edgeever/shared";
+import { markdownToDoc, type MemoDetail, type MemoRevision, type MemoStatus, type MemoSummary, type MemoTemplate, type Notebook, type Resource, type ResourceListItem, type ResourceStorageSummary, type TagSummary, type TiptapDoc } from "@edgeever/shared";
 import type { ShareDisplayPolicySummary, SharedMemoAccess } from "@edgeever/client";
 import { api } from "@/lib/api";
 import {
@@ -35,6 +35,8 @@ import {
   createLocalResource,
   putLocalMemo,
   putLocalMemoIfNotStale,
+  projectLocalMemoMetadata,
+  applyLocalMemoStatus,
   removeLocalMemo,
   putLocalNotebook,
   putLocalMemoUpdate,
@@ -86,10 +88,11 @@ export type EdgeEverRepository = {
   emptyTrash(): Promise<{ ok: true; deleted: number }>;
   pinMemos(input: { memoIds: string[]; isPinned: boolean }): Promise<{ ok: true; updated: number }>;
   setMemoTheme(memoId: string, theme: string | null): Promise<{ memo: MemoDetail }>;
+  setMemoStatus(memoId: string, status: MemoStatus | null): Promise<MemoDetail>;
   mergeMemos(input: { memoIds: string[]; notebookId?: string; title?: string }): Promise<{ memo: MemoDetail }>;
   listMemos(params: LocalMemoListParams): Promise<LocalMemoListResponse>;
   getMemo(memoId: string, includeDeleted?: boolean): Promise<{ memo: MemoDetail; displayPolicy?: ShareDisplayPolicySummary | null; access?: SharedMemoAccess }>;
-  createMemo(input: { notebookId: string; title?: string; contentJson?: TiptapDoc; contentMarkdown?: string; tags?: string[] }): Promise<{ memo: MemoDetail }>;
+  createMemo(input: { notebookId: string; title?: string; contentJson?: TiptapDoc; contentMarkdown?: string; tags?: string[]; status?: MemoStatus | null }): Promise<{ memo: MemoDetail }>;
   updateMemo(memo: MemoDetail, input: Omit<MemoUpdateSyncPayload, "memoId">): Promise<{ memo: MemoDetail; queued: true }>;
   /**
    * Drop the local conflicted draft for a note and replace the local copy with
@@ -166,8 +169,8 @@ const reconcileLocalTemplates = async (
 
 /**
  * Persist and surface a remote detail only when it is strictly fresher than the
- * local mirror (and no memo.update is still waiting to push). Returns whether
- * the remote snapshot was accepted.
+ * local mirror (and no memo.update is still waiting to push). Returns the
+ * accepted snapshot with current metadata, or false when it was rejected.
  */
 const acceptRemoteMemoDetail = async (
   scope: string,
@@ -186,11 +189,12 @@ const acceptRemoteMemoDetail = async (
     return false;
   }
 
-  cacheMemoWithoutBlocking(scope, remote);
+  const projected = await projectLocalMemoMetadata(scope, remote);
+  cacheMemoWithoutBlocking(scope, projected);
   if (options.emitRefreshEvent) {
-    window.dispatchEvent(new CustomEvent("edgeever:memo-detail-refreshed", { detail: remote }));
+    window.dispatchEvent(new CustomEvent("edgeever:memo-detail-refreshed", { detail: projected }));
   }
-  return true;
+  return projected;
 };
 
 /**
@@ -474,6 +478,20 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
     notifySyncQueueDeferred();
     return { memo };
   },
+  setMemoStatus: async (memoId, status) => {
+    const memo = await runLocalDatabaseOperationWithRecovery(() =>
+      localDb.transaction("rw", [localDb.memos, localDb.syncQueue, localDb.idMappings], async () => {
+        const mapping = isLocalMemoId(memoId) ? await localDb.idMappings.get([scope, memoId]) : undefined;
+        const resolvedId = mapping?.remoteId ?? memoId;
+        const updated = await applyLocalMemoStatus(scope, resolvedId, status);
+        if (!updated) throw new Error("Memo is not available in the local mirror");
+        await queueLocalAction(scope, "memo.status", resolvedId, { memoId: resolvedId, status });
+        return updated;
+      })
+    );
+    notifySyncQueueDeferred();
+    return memo;
+  },
   mergeMemos: async (input) => {
     const memo = await mergeLocalMemos(scope, input);
     if (!memo) {
@@ -507,7 +525,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       cursor: params.offset ? String(params.offset) : null,
       limit: params.limit,
     });
-    return remote;
+    return { ...remote, memos: remote.memos.map((memo) => ({ ...memo, status: memo.status ?? null })) };
   },
 
   async getMemo(memoId, includeDeleted = false) {
@@ -548,7 +566,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       }
       const accepted = await acceptRemoteMemoDetail(scope, firstResult.remote.memo, usableLocal);
       if (accepted) {
-        return firstResult.remote;
+        return { ...firstResult.remote, memo: accepted };
       }
       if (usableLocal) {
         return { memo: usableLocal };
@@ -600,6 +618,7 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
       contentJson: input.contentJson,
       contentMarkdown: input.contentMarkdown,
       tags: input.tags ?? [],
+      ...(input.status !== undefined ? { status: input.status } : {}),
       createdAt: memo.createdAt,
       updatedAt: memo.updatedAt,
     });
@@ -655,6 +674,9 @@ export const createWebRepository = (scope: string): EdgeEverRepository => {
         createdAt: memo.createdAt,
         updatedAt: memo.updatedAt,
       });
+      if (memo.status != null) {
+        await queueLocalAction(scope, "memo.status", memoId, { memoId, status: memo.status });
+      }
     } else {
       await queueMemoRestore(scope, { memoId });
     }

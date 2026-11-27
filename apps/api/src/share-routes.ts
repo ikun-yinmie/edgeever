@@ -1,4 +1,4 @@
-import { collectMemoLinkIds, isPdfAttachment, MemoShareUpdateSchema, PublicShareUnlockSchema, resolveMemoContentDoc, resolvePlayableMediaMimeType, type MemoShare, type PublicMemoShare, type TiptapDoc } from "@edgeever/shared";
+import { collectMemoLinkIds, isPdfAttachment, MemoShareUpdateSchema, PublicShareUnlockSchema, resolveMemoContentDoc, resolvePlayableMediaMimeType, type MemoShare, type MemoStatus, type PublicMemoShare, type TiptapDoc } from "@edgeever/shared";
 import { zValidator } from "@hono/zod-validator";
 import type { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -44,6 +44,7 @@ type PublicMemoShareRow = {
   workspace_id: string;
   title: string | null;
   theme: string | null;
+  status: MemoStatus | null;
   content_json: string;
   content_markdown: string;
   tags_json: string;
@@ -151,7 +152,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
     if (!token) return shareMissing(c, "Shared note not found");
 
     const row = await c.env.storage.db.prepare(
-      `SELECT ms.workspace_id, m.title, m.theme, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
+      `SELECT ms.workspace_id, m.title, m.theme, m.status, mc.content_json, mc.content_markdown, m.tags_json, m.updated_at, ms.password_hash,
               ms.display_policy_json,
               COALESCE(
                 NULLIF(TRIM(sharer.display_name), ''), NULLIF(TRIM(sharer.username), ''),
@@ -197,6 +198,7 @@ export const registerPublicShareRoutes = (app: Hono<AppEnv>) => {
     const share: PublicMemoShare = {
       title: row.title,
       theme: row.theme ?? null,
+      status: row.status ?? null,
       contentJson,
       contentMarkdown: row.content_markdown,
       tags: parseJsonArray(row.tags_json),

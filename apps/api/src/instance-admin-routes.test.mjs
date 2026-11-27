@@ -50,9 +50,10 @@ class SqliteD1Database {
 const AUTH_PASSWORD = "test-password";
 const ENCRYPTION_KEY = `edgeever:object-storage:v1:${AUTH_PASSWORD}`;
 
-const createEnvironment = () => {
+const createEnvironment = ({ beforeSmtpCompatibility = false } = {}) => {
   const sqlite = new Database(":memory:");
   for (const migration of globSync("migrations/*.sql").sort()) {
+    if (beforeSmtpCompatibility && migration.endsWith("0075_smtp_mode_compat.sql")) continue;
     sqlite.exec(readFileSync(migration, "utf8"));
   }
   return {
@@ -137,6 +138,132 @@ const registerPayload = (overrides = {}) => ({
   password: "password123",
   emailCode: "123456",
   ...overrides,
+});
+
+describe("SMTP transport migration compatibility", () => {
+  test.each([
+    [587, 0],
+    [465, 1],
+    [null, 0],
+  ])("preserves the legacy transport mode for SMTP port %s", (port, secure) => {
+    const { sqlite } = createEnvironment({ beforeSmtpCompatibility: true });
+    updateSettings(sqlite, {
+      smtp_host: "smtp.example.com",
+      smtp_port: port,
+      smtp_secure: 1,
+      smtp_password_encrypted: "encrypted-secret",
+    });
+
+    sqlite.exec(readFileSync("migrations/0075_smtp_mode_compat.sql", "utf8"));
+    const settings = sqlite.query(
+      "SELECT smtp_port, smtp_secure, smtp_host, smtp_password_encrypted FROM instance_settings WHERE id = 'instance'",
+    ).get();
+    expect(settings).toMatchObject({
+      smtp_port: port,
+      smtp_secure: secure,
+      smtp_host: "smtp.example.com",
+      smtp_password_encrypted: "encrypted-secret",
+    });
+    sqlite.close();
+  });
+});
+
+describe("feedback email settings", () => {
+  const patchSettings = (app, environment, payload) => app.request("/api/v1/admin/instance-settings", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }, environment);
+
+  test("starts disabled and allows a public contact without SMTP", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const app = createTestApp();
+      const initial = await app.request("/api/v1/admin/instance-settings", {}, environment);
+      expect((await initial.json()).settings).toMatchObject({
+        feedbackEnabled: false, feedbackRecipientEmail: null, contactEmail: null,
+      });
+      const response = await patchSettings(app, environment, { contactEmail: "  CONTACT@EXAMPLE.COM  " });
+      expect(response.status).toBe(200);
+      expect((await response.json()).settings).toMatchObject({ feedbackEnabled: false, contactEmail: "contact@example.com" });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("requires valid effective delivery settings when enabling feedback", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const response = await patchSettings(createTestApp(), environment, {
+        feedbackEnabled: true, feedbackRecipientEmail: "feedback@example.com",
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: "feedback_not_configured" } });
+      expect(sqlite.query("SELECT feedback_enabled FROM instance_settings").get().feedback_enabled).toBe(0);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("saves the recipient separately and validates later SMTP changes", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const app = createTestApp();
+      await configureSmtp(sqlite);
+      const enabled = await patchSettings(app, environment, {
+        feedbackEnabled: true, feedbackRecipientEmail: "FEEDBACK@EXAMPLE.COM", contactEmail: "contact@example.com",
+      });
+      expect(enabled.status).toBe(200);
+      const settings = (await enabled.json()).settings;
+      expect(settings).toMatchObject({
+        feedbackEnabled: true, feedbackRecipientEmail: "feedback@example.com", contactEmail: "contact@example.com",
+      });
+      expect(settings).not.toHaveProperty("smtpPassword");
+      const invalidated = await patchSettings(app, environment, { smtpHost: null });
+      expect(invalidated.status).toBe(400);
+      expect(sqlite.query("SELECT smtp_host FROM instance_settings").get().smtp_host).toBe("smtp.example.com");
+      const disabled = await patchSettings(app, environment, { feedbackEnabled: false, feedbackRecipientEmail: null, smtpHost: null });
+      expect(disabled.status).toBe(200);
+      expect((await disabled.json()).settings).toMatchObject({ feedbackEnabled: false, contactEmail: "contact@example.com" });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("requires credentials when SMTP authentication is configured", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const response = await patchSettings(createTestApp(), environment, {
+        feedbackEnabled: true, feedbackRecipientEmail: "feedback@example.com",
+        smtpHost: "smtp.example.com", smtpFromAddress: "sender@example.com", smtpUsername: "sender", smtpPassword: null,
+      });
+      expect(response.status).toBe(400);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("rejects malformed emails before saving", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      for (const field of ["feedbackRecipientEmail", "contactEmail"]) {
+        expect((await patchSettings(createTestApp(), environment, { [field]: "not-an-email" })).status).toBe(400);
+      }
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("only the site owner can change feedback delivery or contact details", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      for (const payload of [{ contactEmail: "contact@example.com" }, { feedbackEnabled: true }, { feedbackRecipientEmail: "feedback@example.com" }]) {
+        expect((await patchSettings(createTestApp("admin"), environment, payload)).status).toBe(403);
+      }
+    } finally {
+      sqlite.close();
+    }
+  });
 });
 
 describe("public registration configuration", () => {
@@ -1095,5 +1222,70 @@ describe("share server settings", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: { code: "bad_request" } });
     sqlite.close();
+  });
+});
+
+describe("desktop client session lifetime", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const patchSettings = (app, environment, payload) => app.request("/api/v1/admin/instance-settings", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }, environment);
+
+  const seedAccount = (sqlite, { id, username, accountType }) => {
+    sqlite.query(
+      `INSERT INTO users (id, username, password_hash, display_name, is_disabled, account_type, created_at, updated_at)
+       VALUES (?, ?, 'hash', ?, 0, ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run(id, username, username, accountType);
+  };
+
+  const seedDesktopSession = (sqlite, { id, userId, expiresAt }) => {
+    sqlite.query(
+      `INSERT INTO sessions (id, user_id, token_hash, device_id, client_kind, user_agent, ip_address, expires_at, created_at)
+       VALUES (?, ?, ?, ?, 'desktop', 'EdgeEver/1.0', '203.0.113.9', ?, '2026-01-01T00:00:00.000Z')`,
+    ).run(id, userId, `token-hash-${id}`, `device-${id}`, expiresAt);
+  };
+
+  const daysFromNow = (expiresAt) => (Date.parse(expiresAt) - Date.now()) / DAY_MS;
+
+  test("stores the admin lifetime and trims existing personal desktop sessions", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const farFuture = new Date(Date.now() + 300 * DAY_MS).toISOString();
+      seedAccount(sqlite, { id: "usr_personal", username: "personal", accountType: "user" });
+      seedAccount(sqlite, { id: "usr_shared", username: "shared_team", accountType: "group" });
+      seedDesktopSession(sqlite, { id: "sess_personal", userId: "usr_personal", expiresAt: farFuture });
+      seedDesktopSession(sqlite, { id: "sess_shared", userId: "usr_shared", expiresAt: farFuture });
+
+      const response = await patchSettings(createTestApp(), environment, { desktopSessionTtlDays: 30 });
+      expect(response.status).toBe(200);
+      expect((await response.json()).settings).toMatchObject({ desktopSessionTtlDays: 30 });
+      expect(sqlite.query("SELECT desktop_session_ttl_days FROM instance_settings").get().desktop_session_ttl_days).toBe(30);
+
+      const personal = sqlite.query("SELECT expires_at FROM sessions WHERE id = 'sess_personal'").get();
+      const shared = sqlite.query("SELECT expires_at FROM sessions WHERE id = 'sess_shared'").get();
+      expect(daysFromNow(personal.expires_at)).toBeLessThan(31);
+      // Shared accounts keep the group lifetime instead of the admin policy.
+      expect(daysFromNow(shared.expires_at)).toBeGreaterThan(299);
+
+      const cleared = await patchSettings(createTestApp(), environment, { desktopSessionTtlDays: null });
+      expect(cleared.status).toBe(200);
+      expect((await cleared.json()).settings).toMatchObject({ desktopSessionTtlDays: null });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("rejects lifetimes outside the supported range", async () => {
+    const { sqlite, environment } = createEnvironment();
+    try {
+      const app = createTestApp();
+      expect((await patchSettings(app, environment, { desktopSessionTtlDays: 0 })).status).toBe(400);
+      expect((await patchSettings(app, environment, { desktopSessionTtlDays: 4000 })).status).toBe(400);
+      expect((await patchSettings(app, environment, { desktopSessionTtlDays: 1.5 })).status).toBe(400);
+    } finally {
+      sqlite.close();
+    }
   });
 });

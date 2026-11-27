@@ -20,3 +20,18 @@ export const getDesktopUpdateDownloadLabel = (
     t("desktopUpdate.downloadSize", { downloaded, total }),
   ].filter(Boolean).join(" · ");
 };
+
+/** Keeps the byte count visible while a paused download waits for a proxy switch. */
+export const getDesktopUpdatePausedLabel = (
+  progress: DesktopUpdateStatus["downloadProgress"],
+  t: TFunction,
+): string => {
+  const percent = getDesktopUpdateDownloadPercent(progress);
+  const downloaded = formatAttachmentByteSize(progress?.transferred) ?? "0 B";
+  const total = formatAttachmentByteSize(progress?.total) ?? t("desktopUpdate.unknownSize");
+  return [
+    t("desktopUpdate.paused"),
+    percent,
+    t("desktopUpdate.downloadSize", { downloaded, total }),
+  ].filter(Boolean).join(" · ");
+};

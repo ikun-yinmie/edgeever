@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { EventEmitter } from "node:events";
 import { describe, expect, test } from "bun:test";
 import { normalizeDesktopUpdateProgress } from "./update-progress.mjs";
+import { UpdateDownloadPausedError } from "./update-resume.mjs";
 
 const mainSource = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
 const preloadSource = readFileSync(new URL("../preload/index.cjs", import.meta.url), "utf8");
@@ -40,27 +42,74 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
   let checks = 0;
   let destroyed = false;
   let latestVersion = "2.0.0";
+  let lastDownloadOptions = null;
+  const assetName = platform === "win32"
+    ? "EdgeEver-2.0.0-windows-x64.exe"
+    : "EdgeEver-2.0.0-linux-x64.AppImage";
   const autoUpdater = new EventEmitter();
   autoUpdater.netSession = { setProxy: async () => {}, fetch: async () => {} };
   autoUpdater.setFeedURL = () => {};
   autoUpdater.downloadUpdate = () => { downloads += 1; return download.promise; };
+  autoUpdater.getOrCreateDownloadHelper = async () => ({
+    cacheDirForPendingUpdate: "/tmp/edgeever-test/pending",
+    setDownloadedFile: async () => {},
+  });
   autoUpdater.checkForUpdates = async () => {
     checks += 1;
-    const info = { version: latestVersion };
+    const info = {
+      version: latestVersion,
+      files: [{ url: assetName, sha512: "c2hhNTEyLXRlc3Q=", size: 2 }],
+    };
+    autoUpdater.updateInfoAndProvider = {
+      info,
+      provider: {
+        resolveFiles: () => [{ url: new URL(`http://127.0.0.1/${assetName}`), info: info.files[0] }],
+        isUseMultipleRangeRequest: true,
+        getBlockMapFiles: () => [new URL("http://127.0.0.1/old.blockmap"), new URL("http://127.0.0.1/new.blockmap")],
+      },
+    };
     const isUpdateAvailable = latestVersion !== "1.0.0";
     autoUpdater.emit(isUpdateAvailable ? "update-available" : "update-not-available", info);
     return { isUpdateAvailable, updateInfo: info };
   };
   const state = {
     autoUpdater,
-    process: { platform, env },
-    app: { isPackaged: true, getLocale: () => "zh-CN", getVersion: () => "1.0.0", quit: () => {} },
+    process: { platform, arch: "x64", env },
+    app: {
+      isPackaged: true,
+      getLocale: () => "zh-CN",
+      getVersion: () => "1.0.0",
+      getPath: () => "/tmp/edgeever-test",
+      quit: () => {},
+    },
+    basename: basename,
+    join: join,
+    mkdir: async () => {},
+    rename: async () => {},
+    chmod: async () => {},
+    copyFile: async () => {},
+    unlink: async () => {},
+    AbortController,
+    UpdateDownloadPausedError,
+    prunePartialUpdates: async () => {},
+    runResumableUpdateDownload: async ({ onProgress, signal }) => {
+      downloads += 1;
+      lastDownloadOptions = { onProgress, signal };
+      onProgress?.({ percent: 0, transferred: 0, total: null });
+      if (signal.aborted) throw new UpdateDownloadPausedError();
+      const aborted = new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new UpdateDownloadPausedError()), { once: true });
+      });
+      return Promise.race([download.promise, aborted]);
+    },
     mainWindow: { isDestroyed: () => destroyed, webContents: { send: (_channel, status) => statuses.push(status) } },
     isQuitting: false,
     updateState: "idle",
     updateDownloadProgress: null,
     updateCheckInFlight: null,
     updateDownloadInFlight: null,
+    updateDownloadAbort: null,
+    updateDownloadPauseRequested: false,
     updateDownloadPromptInFlight: null,
     downloadedUpdateVersion: null,
     latestCheckedVersion: null,
@@ -112,6 +161,7 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
   `, state);
   return {
     ...api, state, autoUpdater, dialogs, statuses, diagnostics, handlers, confirmation, download,
+    lastDownloadOptions: () => lastDownloadOptions,
     dialogOpened: dialogOpened.promise,
     counts: () => ({ checks, downloads }),
     destroyWindow: () => { destroyed = true; },
@@ -182,11 +232,12 @@ describe("desktop update flow", () => {
   test("offers quiet download and restart actions without stealing focus", () => {
     expect(noticeSource).toContain('statusQuery.data?.state === "downloaded"');
     expect(noticeSource).toContain('statusQuery.data?.state === "available"');
-    expect(noticeSource).toContain('"systemInfo.desktopUpdateRestart" : "desktopUpdate.download"');
+    expect(noticeSource).toContain('"systemInfo.desktopUpdateRestart"');
+    expect(noticeSource).toContain('"desktopUpdate.download"');
     expect(noticeSource).toContain("bridge!.downloadUpdate()");
     expect(noticeSource).not.toContain("window.focus()");
-    expect(updateCardSource).toContain("else if (available) downloadUpdate.mutate()");
-    expect(systemInfoSource).toContain('else if (desktopUpdateState === "available") desktopUpdateDownloadMutation.mutate()');
+    expect(updateCardSource).toContain("else if (available || paused) downloadUpdate.mutate()");
+    expect(systemInfoSource).toContain('else if (desktopUpdateState === "available" || desktopUpdateState === "paused") desktopUpdateDownloadMutation.mutate()');
   });
 
   test("pushes update status and shows a native restart prompt after download", () => {
@@ -302,6 +353,96 @@ describe("desktop update flow", () => {
     expect(updateCardSource).toContain('t("desktopUpdate.checkFailedWithLink")');
     expect(systemInfoSource).toContain("desktopDownloadUrl");
   });
+
+  test("pauses a running download without discarding the partial file", () => {
+    expect(mainSource).toContain("desktop:pause-update-download");
+    expect(mainSource).toContain("pauseDesktopUpdateDownload");
+    expect(mainSource).toContain("UpdateDownloadPausedError");
+    expect(preloadSource).toContain('pauseUpdateDownload: () => ipcRenderer.invoke("desktop:pause-update-download")');
+    expect(updateCardSource).toContain("bridge.pauseUpdateDownload");
+    expect(updateCardSource).toContain('t("desktopUpdate.resume")');
+    expect(noticeSource).toContain("pauseUpdateDownload");
+    expect(noticeSource).toContain('t("desktopUpdate.pauseHint")');
+    expect(systemInfoSource).toContain("desktopUpdatePauseMutation");
+    expect(systemInfoSource).toContain('t("desktopUpdate.pause")');
+  });
+});
+
+describe("desktop download pause and resume", () => {
+  test("keeps progress while paused and continues the same transfer", async () => {
+    const harness = createUpdateHarness({ platform: "linux", response: 0 });
+    await harness.ready();
+    await harness.handlers.get("desktop:download-update")();
+    expect(harness.state.updateState).toBe("downloading");
+    expect(harness.counts().downloads).toBe(1);
+
+    harness.lastDownloadOptions().onProgress({ percent: 40, transferred: 40, total: 100 });
+    expect(harness.statuses.at(-1)).toMatchObject({
+      state: "downloading",
+      downloadProgress: { percent: 40, transferred: 40, total: 100 },
+    });
+
+    expect(await harness.handlers.get("desktop:pause-update-download")()).toEqual({ paused: true });
+    await harness.state.updateDownloadInFlight;
+    expect(harness.state.updateState).toBe("paused");
+    expect(harness.state.lastUpdateError).toBeNull();
+    expect(harness.state.downloadedUpdateVersion).toBe("2.0.0");
+    expect(harness.state.updateDownloadAbort).toBeNull();
+    // Progress survives the pause instead of being rewritten when resumed.
+    expect(harness.statuses.at(-1)).toMatchObject({
+      state: "paused",
+      downloadProgress: { percent: 40, transferred: 40, total: 100 },
+    });
+
+    const resumed = deferred();
+    let resumedProgress = null;
+    harness.state.runResumableUpdateDownload = async ({ onProgress }) => {
+      resumedProgress = onProgress;
+      onProgress?.({ percent: 40, transferred: 40, total: 100 });
+      return resumed.promise;
+    };
+    expect(await harness.handlers.get("desktop:download-update")()).toMatchObject({
+      started: true,
+      resumed: true,
+    });
+    expect(harness.state.updateState).toBe("downloading");
+    resumedProgress({ percent: 70, transferred: 70, total: 100 });
+    expect(harness.statuses.at(-1)).toMatchObject({
+      state: "downloading",
+      downloadProgress: { percent: 70, transferred: 70, total: 100 },
+    });
+    resumed.resolve([]);
+    await harness.state.updateDownloadInFlight;
+    expect(harness.state.updateDownloadInFlight).toBeNull();
+  });
+
+  test("background checks leave a paused download untouched", async () => {
+    const harness = createUpdateHarness({ platform: "win32", response: 0 });
+    await harness.ready();
+    await harness.handlers.get("desktop:download-update")();
+    await harness.handlers.get("desktop:pause-update-download")();
+    await harness.state.updateDownloadInFlight;
+    expect(harness.state.updateState).toBe("paused");
+    const checksBefore = harness.counts().checks;
+    const dialogsBefore = harness.dialogs.length;
+    await harness.checkForDesktopUpdate("interval", { force: true });
+    expect(harness.counts().checks).toBe(checksBefore);
+    expect(harness.dialogs).toHaveLength(dialogsBefore);
+    expect(harness.state.updateState).toBe("paused");
+  });
+
+  test("pausing is a no-op when no resumable transfer is running", async () => {
+    const harness = createUpdateHarness({ platform: "darwin", response: 0 });
+    await harness.ready();
+    expect(await harness.handlers.get("desktop:pause-update-download")()).toEqual({ paused: false });
+    // macOS keeps electron-updater's own installer promise; a pause request
+    // must not pretend it can continue from a cache file.
+    harness.autoUpdater.downloadUpdate = () => harness.download.promise;
+    await harness.handlers.get("desktop:download-update")();
+    expect(await harness.handlers.get("desktop:pause-update-download")()).toEqual({ paused: false });
+    harness.download.resolve([]);
+    await harness.state.updateDownloadInFlight;
+  });
 });
 
 describe("desktop download progress publication", () => {
@@ -310,7 +451,9 @@ describe("desktop download progress publication", () => {
       const harness = createUpdateHarness({ platform, response: 0 });
       await harness.ready();
       await harness.handlers.get("desktop:download-update")();
-      expect(harness.statuses.at(-1).downloadProgress).toEqual({ percent: null, transferred: 0, total: null });
+      // macOS keeps electron-updater's downloader, which reports its first
+      // byte progress later than the resumable path.
+      expect(harness.statuses.at(-1).downloadProgress).toMatchObject({ transferred: 0, total: null });
       harness.autoUpdater.emit("download-progress", { percent: 25, transferred: 25, total: 100 });
       expect(harness.statuses.at(-1)).toMatchObject({
         state: "downloading", downloadProgress: { percent: 25, transferred: 25, total: 100 },
@@ -337,10 +480,13 @@ describe("desktop download progress publication", () => {
     await pending;
     expect(harness.statuses.at(-1)).toMatchObject({ state: "idle", downloadProgress: null });
     const retry = deferred();
-    harness.autoUpdater.downloadUpdate = () => retry.promise;
+    harness.state.runResumableUpdateDownload = async ({ onProgress }) => {
+      onProgress?.({ percent: 0, transferred: 0, total: null });
+      return retry.promise;
+    };
     await harness.handlers.get("desktop:check-update")();
     expect(harness.statuses.at(-1)).toMatchObject({
-      state: "downloading", downloadProgress: { percent: null, transferred: 0, total: null },
+      state: "downloading", downloadProgress: { percent: 0, transferred: 0, total: null },
     });
     retry.resolve([]);
     await harness.state.updateDownloadInFlight;
@@ -446,7 +592,10 @@ describe("desktop download confirmation behavior", () => {
     expect(harness.state.updateDownloadInFlight).toBeNull();
     expect(harness.state.lastUpdateError.message).toBe("Connection interrupted");
     const retry = deferred();
-    harness.autoUpdater.downloadUpdate = () => retry.promise;
+    harness.state.runResumableUpdateDownload = async ({ onProgress }) => {
+      onProgress?.({ percent: 0, transferred: 0, total: null });
+      return retry.promise;
+    };
     await harness.handlers.get("desktop:check-update")();
     expect(harness.dialogs).toHaveLength(2);
     expect(harness.state.updateState).toBe("downloading");

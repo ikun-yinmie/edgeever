@@ -315,6 +315,11 @@ describe("shared with me overview", () => {
     seedMemo("memo_root", "ws_usr_owner", "nb_root");
     seedMemo("memo_child", "ws_usr_owner", "nb_child");
     seedMemo("memo_shared", "ws_usr_owner", "nb_root");
+    environment.sqlite.query(`UPDATE memos SET status = CASE id
+      WHEN 'memo_root' THEN 'in_progress'
+      WHEN 'memo_child' THEN 'completed'
+      WHEN 'memo_shared' THEN 'cancelled'
+      END WHERE id IN ('memo_root', 'memo_child', 'memo_shared')`).run();
     const family = await createGroup(database, { name: "家庭", description: null, createdBy: "usr_owner" });
     await addGroupMembers(database, family.id, ["usr_a"]);
     await createGroupShare(database, {
@@ -327,15 +332,27 @@ describe("shared with me overview", () => {
       note: "项目资料",
       createdBy: "usr_owner",
     });
+    await createGroupShare(database, {
+      groupId: family.id,
+      targetType: "memo",
+      targetId: "memo_shared",
+      sourceWorkspaceId: "ws_usr_owner",
+      editMode: "author",
+      editorUserIds: [],
+      note: null,
+      createdBy: "usr_owner",
+    });
 
     const shared = await listSharedWithMe(database, { userId: "usr_a", ownWorkspaceId: "ws_usr_a" });
     expect(shared.groups).toEqual([
-      expect.objectContaining({ id: family.id, name: "家庭", shareCount: 1, memberCount: 2 }),
+      expect.objectContaining({ id: family.id, name: "家庭", shareCount: 2, memberCount: 2 }),
     ]);
     expect(shared.notebooks).toEqual([
       expect.objectContaining({ id: "nb_root", name: "nb_root", canEdit: true, memoCount: 3, groupName: "家庭" }),
     ]);
-    expect(shared.memos).toEqual([]);
+    expect(shared.memos).toEqual([
+      expect.objectContaining({ id: "memo_shared", status: "cancelled" }),
+    ]);
 
     const memos = await listSharedNotebookMemos(database, {
       userId: "usr_a",
@@ -343,6 +360,11 @@ describe("shared with me overview", () => {
       notebookId: "nb_root",
     });
     expect(memos.map((memo) => memo.id).sort()).toEqual(["memo_child", "memo_root", "memo_shared"]);
+    expect(Object.fromEntries(memos.map((memo) => [memo.id, memo.status]))).toEqual({
+      memo_child: "completed",
+      memo_root: "in_progress",
+      memo_shared: "cancelled",
+    });
     expect(memos.every((memo) => memo.canEdit)).toBe(true);
   });
 

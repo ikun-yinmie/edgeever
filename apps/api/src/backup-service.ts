@@ -127,15 +127,16 @@ export const restoreJsonMemos = async (
     await db.batch([
       db.prepare(
         `INSERT INTO memos (
-          id, workspace_id, notebook_id, title, excerpt, tags_json, is_pinned, is_archived, is_deleted,
+          id, workspace_id, notebook_id, title, excerpt, tags_json, status, is_pinned, is_archived, is_deleted,
           source_memo_ids, merge_source_count, merged_into_memo_id,
           created_by, updated_by, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, 'restore', 'restore', ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, 'restore', 'restore', ?, ?, NULL)
         ON CONFLICT(id) DO UPDATE SET
           notebook_id = excluded.notebook_id,
           title = excluded.title,
           excerpt = excluded.excerpt,
           tags_json = excluded.tags_json,
+          status = excluded.status,
           is_pinned = excluded.is_pinned,
           is_archived = excluded.is_archived,
           is_deleted = 0,
@@ -152,6 +153,7 @@ export const restoreJsonMemos = async (
         title,
         createExcerpt(contentText),
         JSON.stringify(tags),
+        memo.status ?? null,
         memo.isPinned ? 1 : 0,
         memo.isArchived ? 1 : 0,
         JSON.stringify(memo.sourceMemoIds),

@@ -87,6 +87,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       username: input.username,
       password: input.password,
       deviceId,
+      clientKind: "mobile",
     });
 
     if (!authSession.authenticated || !authSession.sessionToken) {

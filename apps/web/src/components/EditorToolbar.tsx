@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
-import { ensureCodeBlockTrailingParagraph } from "@edgeever/shared";
+import { ensureCodeBlockTrailingParagraph, type MemoStatus } from "@edgeever/shared";
+import { MemoStatusMenu } from "@/components/MemoStatusMenu";
 import { setMemoTaskMark } from "@/lib/memo-task-editor";
 import { useTranslation } from "react-i18next";
 import {
@@ -212,6 +213,8 @@ export const EditorToolbar = ({
   externalLinkActive = false,
   memoTheme = null,
   onMemoThemeChange,
+  memoStatus = null,
+  onMemoStatusChange,
 }: {
   editor: Editor | null;
   readOnly: boolean;
@@ -228,6 +231,8 @@ export const EditorToolbar = ({
   memoTheme?: string | null;
   /** When provided, the theme picker edits this note's theme instead of the device preference. */
   onMemoThemeChange?: (theme: string | null) => void;
+  memoStatus?: MemoStatus | null;
+  onMemoStatusChange?: (status: MemoStatus | null) => void | Promise<unknown>;
 }) => {
   const { t } = useTranslation();
   const { markdownThemePreference, setMarkdownTheme } = useMarkdownTheme();
@@ -447,6 +452,12 @@ export const EditorToolbar = ({
               >
                 <Link2 className="h-4 w-4" />
               </EditorToolbarButton>
+              <MemoEditorToolbarDivider className="hidden sm:block" />
+            </>
+          )}
+          {onMemoStatusChange && (
+            <>
+              <MemoStatusMenu status={memoStatus} disabled={readOnly} onStatusChange={onMemoStatusChange} />
               <MemoEditorToolbarDivider className="hidden sm:block" />
             </>
           )}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { ListTree } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +9,8 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { getEditorOutlineItems } from "@/lib/editor-outline-editor";
+import { isEditorDocumentReady, type EditorDocumentState } from "./editor/editor-document-state";
+import { useEditorOutlineItems } from "./editor/useEditorOutlineItems";
 import { getOutlineDisplaySegments, type OutlineItem } from "@/lib/editor-outline";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ type MobileOutlineSheetProps = {
   editor: Editor | null;
   scrollContainer?: HTMLElement | null;
   documentKey?: string;
+  documentState?: EditorDocumentState | null;
   className?: string;
 };
 
@@ -32,36 +34,25 @@ export const MobileOutlineSheet = ({
   editor,
   scrollContainer = null,
   documentKey,
+  documentState,
   className,
 }: MobileOutlineSheetProps) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<OutlineItem[]>([]);
+  const { items, ready, refresh } = useEditorOutlineItems(editor, documentKey, documentState);
   const [activePos, setActivePos] = useState<number | null>(null);
-
-  const refresh = useCallback(() => {
-    if (!editor || editor.isDestroyed) {
-      setItems([]);
-      return;
-    }
-    setItems(getEditorOutlineItems(editor));
-  }, [editor]);
+  const jumpTimerRef = useRef<number | null>(null);
+  const currentDocumentRef = useRef({ editor, documentKey, documentState });
+  currentDocumentRef.current = { editor, documentKey, documentState };
 
   useEffect(() => {
-    refresh();
-    if (!editor || editor.isDestroyed) {
-      return;
-    }
-
-    editor.on("update", refresh);
-    return () => {
-      editor.off("update", refresh);
-    };
-  }, [editor, refresh]);
-
-  useEffect(() => {
+    setOpen(false);
     setActivePos(null);
-  }, [documentKey]);
+    return () => {
+      if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+      jumpTimerRef.current = null;
+    };
+  }, [documentKey, editor, documentState]);
 
   useEffect(() => {
     if (!open || items.length === 0 || !editor || editor.isDestroyed) {
@@ -92,13 +83,21 @@ export const MobileOutlineSheet = ({
   }, [editor, items, open, scrollContainer]);
 
   const jumpToHeading = useCallback((item: OutlineItem) => {
-    if (!editor || editor.isDestroyed) {
+    if (!editor || !ready) {
       return;
     }
 
+    if (jumpTimerRef.current !== null) window.clearTimeout(jumpTimerRef.current);
+    const targetDocument = currentDocumentRef.current;
     setOpen(false);
     setActivePos(item.pos);
-    window.setTimeout(() => {
+    jumpTimerRef.current = window.setTimeout(() => {
+      jumpTimerRef.current = null;
+      const current = currentDocumentRef.current;
+      if (current.editor !== targetDocument.editor
+        || current.documentKey !== targetDocument.documentKey
+        || current.documentState !== targetDocument.documentState
+        || !isEditorDocumentReady(editor, documentKey, documentState)) return;
       const element = editor.view.nodeDOM(item.pos);
       if (!(element instanceof HTMLElement)) {
         return;
@@ -117,7 +116,7 @@ export const MobileOutlineSheet = ({
         behavior: "smooth",
       });
     }, DRAWER_CLOSE_DELAY_MS);
-  }, [editor, scrollContainer]);
+  }, [documentKey, documentState, editor, ready, scrollContainer]);
 
   const rows = useMemo(() => items.map((item) => ({
     item,

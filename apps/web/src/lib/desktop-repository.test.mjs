@@ -142,6 +142,40 @@ describe("desktop repository memo saves", () => {
   });
 });
 
+describe("desktop repository memo status", () => {
+  test.each(["in_progress", "completed", "cancelled", null])("persists %s through the local RPC and defers sync", async (status) => {
+    const previousBridge = globalThis.window.edgeeverDesktop;
+    const previousDispatch = globalThis.window.dispatchEvent;
+    const calls = [];
+    const events = [];
+    const memo = {
+      id: "memo_status",
+      status,
+      contentJson: { type: "doc", content: [{ type: "paragraph" }] },
+      contentMarkdown: "body",
+    };
+    globalThis.window.edgeeverDesktop = {
+      isAvailable: true,
+      sidecarRequest: async (method, params) => {
+        calls.push({ method, params });
+        return { memo };
+      },
+    };
+    globalThis.window.dispatchEvent = (event) => { events.push(event.type); return true; };
+    try {
+      const result = await createDesktopRepository().setMemoStatus("memo_status", status);
+      expect(calls).toEqual([{ method: "memo.setStatus", params: { memoId: "memo_status", status } }]);
+      expect(result.id).toBe("memo_status");
+      expect(result.status).toBe(status);
+      expect(result.contentMarkdown).toBe("body");
+      expect(events).toEqual(["edgeever:sync-queue-deferred"]);
+    } finally {
+      globalThis.window.edgeeverDesktop = previousBridge;
+      globalThis.window.dispatchEvent = previousDispatch;
+    }
+  });
+});
+
 describe("desktop repository memo reads", () => {
   test("rewrites a dead staged screenshot URL when opening the memo", async () => {
     const result = await createDesktopRepository().getMemo("memo_shot");
