@@ -1,44 +1,36 @@
-import type { DesktopWorkspaceRestoreState } from "@/lib/desktop-workspace-restore";
-import type { MemoView } from "@/lib/app-helpers";
+import { normalizeWorkspaceRestoreState, type DesktopWorkspaceRestoreState } from "@/lib/desktop-workspace-restore";
 
 export const WEB_WORKSPACE_RESTORE_STORAGE_KEY_PREFIX = "edgeever.web.workspace-restore:v1:";
 
 export const getWebWorkspaceRestoreStorageKey = (userId: string) =>
   `${WEB_WORKSPACE_RESTORE_STORAGE_KEY_PREFIX}${userId}`;
 
-const isMemoView = (value: unknown): value is MemoView => value === "notebook" || value === "trash";
-
 export const readWebWorkspaceRestoreState = (
   userId: string,
-  storage: Pick<Storage, "getItem"> | null = typeof window === "undefined" ? null : window.localStorage,
+  storage: (Pick<Storage, "getItem"> & Partial<Pick<Storage, "removeItem">>) | null = typeof window === "undefined" ? null : window.localStorage,
 ): DesktopWorkspaceRestoreState | null => {
   if (!storage || !userId) return null;
+  const key = getWebWorkspaceRestoreStorageKey(userId);
   try {
-    const raw = storage.getItem(getWebWorkspaceRestoreStorageKey(userId));
+    const raw = storage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<DesktopWorkspaceRestoreState>;
-    return {
-      selectedMemoId: typeof parsed.selectedMemoId === "string" ? parsed.selectedMemoId : null,
-      selectedNotebookId: typeof parsed.selectedNotebookId === "string" ? parsed.selectedNotebookId : null,
-      memoView: isMemoView(parsed.memoView) ? parsed.memoView : "notebook",
-    };
+    const state = normalizeWorkspaceRestoreState(JSON.parse(raw));
+    if (!state) storage.removeItem?.(key);
+    return state;
   } catch {
+    try { storage.removeItem?.(key); } catch { /* Storage can be unavailable. */ }
     return null;
   }
 };
 
 export const writeWebWorkspaceRestoreState = (
   userId: string,
-  state: DesktopWorkspaceRestoreState,
+  state: Omit<DesktopWorkspaceRestoreState, "openMemoTabs"> & { openMemoTabs?: string[] },
   storage: Pick<Storage, "setItem"> | null = typeof window === "undefined" ? null : window.localStorage,
 ) => {
   if (!storage || !userId) return false;
   try {
-    storage.setItem(getWebWorkspaceRestoreStorageKey(userId), JSON.stringify({
-      selectedMemoId: state.selectedMemoId,
-      selectedNotebookId: state.selectedNotebookId,
-      memoView: state.memoView,
-    }));
+    storage.setItem(getWebWorkspaceRestoreStorageKey(userId), JSON.stringify(normalizeWorkspaceRestoreState(state)));
     return true;
   } catch {
     return false;

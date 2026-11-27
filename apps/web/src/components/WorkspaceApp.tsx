@@ -158,6 +158,8 @@ import {
   readDesktopWorkspaceRestoreState,
   shouldRestoreDesktopWorkspace,
   writeDesktopWorkspaceRestoreState,
+  validateRestoredMemoTabs,
+  reconcileRestoredMemoTabs,
 } from "@/lib/desktop-workspace-restore";
 import { readWebWorkspaceRestoreState, writeWebWorkspaceRestoreState } from "@/lib/web-workspace-restore";
 import { EditorPaneErrorBoundary } from "./EditorPaneErrorBoundary";
@@ -209,7 +211,7 @@ type EmptyTrashOptimisticContext = {
   previousSelectedMemoId: string | null;
 };
 
-export const WorkspaceApp = ({
+const WorkspaceAppForUser = ({
   authRequired,
   demoMode,
   user,
@@ -241,24 +243,25 @@ export const WorkspaceApp = ({
     [user?.id]
   );
   const repository = useMemo(() => createRepository(localDataScope), [localDataScope]);
+  const [rendererRecoveryMode, setRendererRecoveryMode] = useState(() =>
+    Boolean(window.edgeeverDesktop?.recoveredAfterAbnormalExit) || isRendererRecoveryRequired()
+  );
   const isInitialSettingsRoute = route.isSettings;
   const isInitialPluginsRoute = route.isPlugins;
   const isInitialTemplatesRoute = route.isTemplates;
   const isInitialAiPromptsRoute = route.isAiPrompts;
   const isInitialExecutionCenterRoute = route.isExecutionCenter;
-  const isInitialMobileEditorReturn = Boolean(route.mobileEditorReturnMemoId);
-  const isInitialOpenMemoRoute = Boolean(route.openMemoId) && !route.isTrash;
+  const isInitialMobileEditorReturn = Boolean(route.mobileEditorReturnMemoId) && !rendererRecoveryMode;
+  const isInitialOpenMemoRoute = Boolean(route.openMemoId) && !route.isTrash && !rendererRecoveryMode;
   const isTrashRoute = route.isTrash;
-  const [rendererRecoveryMode, setRendererRecoveryMode] = useState(() =>
-    Boolean(window.edgeeverDesktop?.recoveredAfterAbnormalExit) || isRendererRecoveryRequired()
-  );
+  const [isOnline, setIsOnline] = useState(isBrowserOnline);
   const [workspaceRestore] = useState(() => {
-    if (isRendererRecoveryRequired()) {
+    if (rendererRecoveryMode) {
       return null;
     }
 
     if (shouldRestoreDesktopWorkspace()) {
-      return readDesktopWorkspaceRestoreState();
+      return readDesktopWorkspaceRestoreState(undefined, user?.id);
     }
 
     return user?.id ? readWebWorkspaceRestoreState(user.id) : null;
@@ -295,31 +298,12 @@ export const WorkspaceApp = ({
   const autoSelectedDemoNotebookRef = useRef(false);
   const [createdMemoEditId, setCreatedMemoEditId] = useState<string | null>(null);
   const pendingCreatedMemoIdRef = useRef<string | null>(null);
-  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(route.mobileEditorReturnMemoId ?? route.openMemoId ?? workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
-  const consumedOpenMemoParamRef = useRef<string | null>(null);
+  const pendingQuickSwitcherMemoIdRef = useRef<string | null>(rendererRecoveryMode ? null : route.mobileEditorReturnMemoId ?? route.openMemoId ?? workspaceRestore?.selectedMemoId ?? null); // also companion/plugin opens not yet in the list
+  const consumedOpenMemoParamRef = useRef<string | null>(rendererRecoveryMode ? route.openMemoId : null);
   // Group-shared memos live in the author's workspace, so they never appear in
   // the personal list. The selection-normalising effect below would otherwise
   // instantly clear such an external selection; this ref holds it open.
   const externalSelectionRef = useRef<string | null>(null);
-  useEffect(() => {
-    const restorableSelectedMemoId = memberNotesView ? null : selectedMemoId;
-    if (window.edgeeverDesktop?.isAvailable) {
-      writeDesktopWorkspaceRestoreState({
-        selectedMemoId: restorableSelectedMemoId,
-        selectedNotebookId,
-        memoView,
-      });
-      return;
-    }
-
-    if (user?.id) {
-      writeWebWorkspaceRestoreState(user.id, {
-        selectedMemoId: restorableSelectedMemoId,
-        selectedNotebookId,
-        memoView,
-      });
-    }
-  }, [memberNotesView, memoView, selectedMemoId, selectedNotebookId, user?.id]);
   // Local-first creates put a `local_*` notebook id in the sidebar selection
   // (and in the pending new-note target). Sync later renames that row to the
   // server id, so follow the rename instead of leaving the selection pointing
@@ -340,13 +324,16 @@ export const WorkspaceApp = ({
   const creatingMemoSelectionRef = useRef(false);
   const createMemoInFlightRef = useRef(false);
   const memoDocumentActionIdRef = useRef(0);
-  const [openMemoTabs, setOpenMemoTabs] = useState<string[]>([]);
+  const [openMemoTabs, setOpenMemoTabs] = useState<string[]>(() => workspaceRestore?.openMemoTabs ?? []);
+  const openMemoTabsRef = useRef(openMemoTabs);
+  openMemoTabsRef.current = openMemoTabs;
   const [memoTabTitles, setMemoTabTitles] = useState<Record<string, string>>({});
   useEffect(() => {
     const handleMemoIdRemapped = (event: Event) => {
       const mappings = (event as CustomEvent<ReadonlyMap<string, string>>).detail;
       if (!(mappings instanceof Map)) return;
       setOpenMemoTabs((current) => remapMemoTabs(current, mappings));
+      setSelectedMemoId((current) => resolveSyncedMemoId(mappings, current));
       pendingQuickSwitcherMemoIdRef.current = resolveSyncedMemoId(mappings, pendingQuickSwitcherMemoIdRef.current);
       setMemoTabTitles((current) => {
         const next = { ...current };
@@ -360,10 +347,14 @@ export const WorkspaceApp = ({
     };
     window.addEventListener(MEMO_ID_REMAPPED_EVENT, handleMemoIdRemapped);
     return () => window.removeEventListener(MEMO_ID_REMAPPED_EVENT, handleMemoIdRemapped);
-  }, []);
+  }, [setSelectedMemoId]);
   // Set when the user closes the last note tab; keeps the auto-select effect
   // from instantly re-opening the first memo until they pick one explicitly.
-  const suppressAutoOpenRef = useRef(false);
+  const suppressAutoOpenRef = useRef(Boolean(
+    workspaceRestore && workspaceRestore.memoView !== "trash"
+    && workspaceRestore.openMemoTabs.length === 0
+    && !isInitialMobileEditorReturn && !isInitialOpenMemoRoute,
+  ));
   const [memoDocumentActionRequest, setMemoDocumentActionRequest] = useState<MemoDocumentActionRequest | null>(null);
   const [memoDeleteConfirmation, setMemoDeleteConfirmation] = useState<MemoDeleteConfirmation | null>(null);
   const [emptyTrashConfirmationOpen, setEmptyTrashConfirmationOpen] = useState(false);
@@ -662,10 +653,58 @@ export const WorkspaceApp = ({
               : !isTrashRoute
                 && !isInitialMobileEditorReturn
                 && !isInitialOpenMemoRoute
-                && (!workspaceRestore || rendererRecoveryMode)
+                && (!workspaceRestore || rendererRecoveryMode || (workspaceRestore.memoView !== "trash" && workspaceRestore.openMemoTabs.length === 0))
                 ? "recent"
                 : "editor"
   );
+  useEffect(() => {
+    const state = {
+      selectedMemoId: memberNotesView ? null : selectedMemoId,
+      selectedNotebookId,
+      memoView,
+      openMemoTabs: memberNotesView ? [] : openMemoTabs,
+    };
+    if (window.edgeeverDesktop?.isAvailable) {
+      writeDesktopWorkspaceRestoreState(state, undefined, user?.id);
+    } else if (user?.id) {
+      writeWebWorkspaceRestoreState(user.id, state);
+    }
+  }, [memberNotesView, memoView, openMemoTabs, selectedMemoId, selectedNotebookId, user?.id]);
+
+  useEffect(() => {
+    if (!workspaceRestore?.openMemoTabs.length || rendererRecoveryMode) return;
+    let active = true;
+    void validateRestoredMemoTabs(workspaceRestore.openMemoTabs, async (id, includeDeleted) => {
+      const summary = collectMemoSummariesFromCache(queryClient, new Set([id]))[0];
+      if (summary) return { memo: summary };
+      try {
+        return await repository.getMemo(id, includeDeleted);
+      } catch (error) {
+        // The sidecar's missing-row error has no HTTP status and can also mean
+        // an unmirrored shared note. Confirm against the server before pruning.
+        if (active && isDesktopRenderer() && isOnline && canPullFromServer(localDataScope)) {
+          return api.getMemo(id, { includeDeleted });
+        }
+        throw error;
+      }
+    }, () => active).then(({ removed, mappings, titles }) => {
+      if (!active) return;
+      const selected = selectedMemoIdRef.current;
+      const next = reconcileRestoredMemoTabs({
+        openMemoTabs: openMemoTabsRef.current,
+        selectedMemoId: selected,
+      }, { removed, mappings });
+      setOpenMemoTabs(next.openMemoTabs);
+      setMemoTabTitles((previous) => ({ ...titles, ...previous }));
+      if (next.selectedMemoId !== selected) {
+        pendingQuickSwitcherMemoIdRef.current = next.selectedMemoId;
+        suppressAutoOpenRef.current = !next.selectedMemoId;
+        setSelectedMemoId(next.selectedMemoId);
+      }
+    });
+    return () => { active = false; };
+  }, [isOnline, localDataScope, queryClient, rendererRecoveryMode, repository, selectedMemoIdRef, setSelectedMemoId, workspaceRestore]);
+
   useEffect(() => {
     if (!memberNotesView) return;
     if (
@@ -728,7 +767,6 @@ export const WorkspaceApp = ({
   const [mobileEditorReturnPreview, setMobileEditorReturnPreview] = useState<MobileEditorReturnPreview | null>(() =>
     readMobileEditorReturnPreview(route.mobileEditorReturnMemoId)
   );
-  const [isOnline, setIsOnline] = useState(isBrowserOnline);
   const [isDesktop, setIsDesktop] = useState(isDesktopViewport);
   const [isManualMemoSyncing, setIsManualMemoSyncing] = useState(false);
   const [isStandaloneRuntime] = useState(isStandaloneApp);
@@ -1366,7 +1404,7 @@ export const WorkspaceApp = ({
   const previousMemoId = selectedMemoIndex > 0 ? memos[selectedMemoIndex - 1]?.id : null;
   const nextMemoId =
     selectedMemoIndex >= 0 && selectedMemoIndex < memos.length - 1 ? memos[selectedMemoIndex + 1]?.id : null;
-  const detailMemoId = rendererRecoveryMode ? null : selectedMemoId ?? memos[0]?.id ?? null;
+  const detailMemoId = rendererRecoveryMode ? null : selectedMemoId ?? (suppressAutoOpenRef.current ? null : memos[0]?.id ?? null);
 
   useEffect(() => {
     if (suppressAutoOpenRef.current) {
@@ -1415,6 +1453,11 @@ export const WorkspaceApp = ({
       return;
     }
 
+    // Notebook/search/pagination filters describe the list, not the tab strip.
+    if (memoView !== "trash" && selectedMemoId && openMemoTabs.includes(selectedMemoId)) {
+      return;
+    }
+
     if (memos.length === 0) {
       setSelectedMemoId(null);
       return;
@@ -1423,7 +1466,7 @@ export const WorkspaceApp = ({
     if (!selectedMemoId || !selectedMemoInList) {
       setSelectedMemoId(memos[0].id);
     }
-  }, [createdMemoEditId, memos, rendererRecoveryMode, rightView, selectedMemoId]);
+  }, [createdMemoEditId, memos, memoView, openMemoTabs, rendererRecoveryMode, rightView, selectedMemoId]);
 
   useEffect(() => {
     if (selectedMemoId) {
@@ -2187,6 +2230,7 @@ export const WorkspaceApp = ({
       }
 
       suppressAutoOpenRef.current = true;
+      pendingQuickSwitcherMemoIdRef.current = null;
       setSelectedMemoId(null);
     },
     [openMemoTabs, selectedMemoId, setSelectedMemoId]
@@ -4559,4 +4603,10 @@ export const WorkspaceApp = ({
     </WorkspaceMotionProvider>
   );
 };
+// Reset all selection, tab, and pending-request state before a different user
+// can persist anything into their account's restore slot.
+export const WorkspaceApp = (props: Parameters<typeof WorkspaceAppForUser>[0]) => (
+  <WorkspaceAppForUser key={props.user?.id ?? "anonymous"} {...props} />
+);
+
 export default WorkspaceApp;

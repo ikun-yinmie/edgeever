@@ -34,6 +34,13 @@ export type CreateEdgeEverDocumentExtensionsOptions = {
   markdown?: boolean;
 };
 
+const normalizeTaskStatusSource = (value: unknown): "manual" | "auto" | null =>
+  value === "manual" || value === "auto" ? value : null;
+
+// Only a complete, leading marker is metadata; escaped/code examples and
+// unknown or malformed comments must continue through ordinary inline parsing.
+const TASK_STATUS_SOURCE_PREFIX = /^<!-- edgeever:task-status (manual|auto) -->(?:[ \t]+|$)/;
+
 /**
  * Task lists keep the stock schema and add an optional numbered rendering.
  * The flag lives on the list node so one note can mix numbered and plain
@@ -49,18 +56,25 @@ export const EdgeEverTaskList = TaskList.extend({
     // Only advertise a new line here, or an escaped "\\- [❌]" splits into a task.
     // tokenize() still handles tasks at the beginning of a block.
     start: (src) => {
-      const match = /\n[ \t]*[-+*]\s+\[([ xX❌-])\]\s+/.exec(src);
+      const match = /\n[ \t]*[-+*][ \t]+\[([ xX❌-])\](?:[ \t]+|(?=\n|$))/.exec(src);
       return match ? match.index + 1 : -1;
     },
     tokenize(src, _tokens, lexer) {
+      // Let Marked handle indented code before considering task metadata.
+      if (/^(?: {4}| {0,3}\t)/.test(src)) return undefined;
       const parseList = (source: string) => parseIndentedBlocks(source, {
-        itemPattern: /^(\s*)([-+*])\s+\[([ xX❌-])\]\s+(.*)$/,
-        extractItemData: (match) => ({
-          indentLevel: match[1].length,
-          mainContent: match[4],
-          checked: match[3].toLowerCase() === "x",
-          rejected: match[3] === "❌" || match[3] === "-",
-        }),
+        itemPattern: /^([ \t]*)([-+*])[ \t]+\[([ xX❌-])\](?:[ \t]+(.*))?$/,
+        extractItemData: (match) => {
+          const text = match[4] ?? "";
+          const sourcePrefix = TASK_STATUS_SOURCE_PREFIX.exec(text);
+          return {
+            indentLevel: match[1].length,
+            mainContent: sourcePrefix ? text.slice(sourcePrefix[0].length) : text,
+            checked: match[3].toLowerCase() === "x",
+            rejected: match[3] === "❌" || match[3] === "-",
+            statusSource: normalizeTaskStatusSource(sourcePrefix?.[1]),
+          };
+        },
         createToken: (data, nestedTokens) => ({
           type: "taskItem",
           raw: "",
@@ -100,11 +114,20 @@ export const EdgeEverTaskItem = TaskItem.extend({
   parseMarkdown(token, helpers) {
     const parsed = TaskItem.config.parseMarkdown!.call(this, token, helpers);
     if (Array.isArray(parsed)) return parsed;
-    return { ...parsed, attrs: { ...parsed.attrs, rejected: token.rejected === true } };
+    return {
+      ...parsed,
+      attrs: {
+        ...parsed.attrs,
+        rejected: token.rejected === true,
+        statusSource: normalizeTaskStatusSource(token.statusSource),
+      },
+    };
   },
   renderMarkdown(node, helpers) {
     const marker = node.attrs?.rejected === true ? "❌" : node.attrs?.checked ? "x" : " ";
-    return renderNestedMarkdownContent(node, helpers, `- [${marker}] `);
+    const statusSource = normalizeTaskStatusSource(node.attrs?.statusSource);
+    const sourcePrefix = statusSource ? `<!-- edgeever:task-status ${statusSource} --> ` : "";
+    return renderNestedMarkdownContent(node, helpers, `- [${marker}] ${sourcePrefix}`);
   },
   addInputRules() {
     return [
@@ -119,6 +142,18 @@ export const EdgeEverTaskItem = TaskItem.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      statusSource: {
+        // Legacy marks remain unclassified; business logic protects non-empty
+        // marks while allowing an unmarked pending task to aggregate.
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element: HTMLElement) =>
+          normalizeTaskStatusSource(element.getAttribute("data-task-status-source")),
+        renderHTML: (attributes: { statusSource?: unknown }) => {
+          const statusSource = normalizeTaskStatusSource(attributes.statusSource);
+          return statusSource ? { "data-task-status-source": statusSource } : {};
+        },
+      },
       rejected: {
         default: false,
         keepOnSplit: false,

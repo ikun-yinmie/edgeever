@@ -131,7 +131,7 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
         if (!currentNode) return;
         // Read the document, not the browser's two-state checkbox toggle.
         const mark = nextMemoTaskMark(currentNode.attrs);
-        // Rejecting also rejects the subtree; re-opening clears the cascade.
+        // The shared rules preserve manual choices and update related tasks together.
         setMemoTaskMark(editor, position, mark);
       });
 

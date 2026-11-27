@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { docToMarkdown, markdownToDoc } from "@edgeever/shared";
+import { collectMemoTasks, findMemoTaskNode } from "../../lib/memo-tasks.ts";
 import {
   createMarkdownModeSnapshot,
   isMarkdownSourceUnchanged,
@@ -39,6 +40,42 @@ const tableTaskListDocument = {
 };
 
 describe("Markdown editor mode content preservation", () => {
+  test("retains task status sources and clean summaries after source edits elsewhere", () => {
+    const content = markdownToDoc([
+      "- [ ] <!-- edgeever:task-status manual --> Manual pending",
+      "  - [x] <!-- edgeever:task-status auto --> Auto completed",
+      "- [❌] <!-- edgeever:task-status manual --> Manual rejected",
+      "- [ ] <!-- edgeever:task-status auto --> Auto pending",
+      "- [x] Legacy completed",
+      "",
+      "Original paragraph",
+    ].join("\n"));
+    const snapshot = createMarkdownModeSnapshot("memo-1", content);
+    expect(snapshot.markdownSource).toContain("- [ ] <!-- edgeever:task-status manual --> Manual pending");
+    const changedSource = snapshot.markdownSource.replace("Original paragraph", "Edited paragraph");
+    const resolved = resolveMarkdownModeContent(snapshot, "memo-1", changedSource);
+    expect(isMarkdownSourceUnchanged(snapshot, "memo-1", changedSource)).toBe(false);
+    const tasks = collectMemoTasks(resolved, "memo-1");
+    expect(tasks.map(({ text }) => text)).toEqual([
+      "Manual pending", "Auto completed", "Manual rejected", "Auto pending", "Legacy completed",
+    ]);
+    expect(tasks.map(({ path }) => findMemoTaskNode(resolved, path).attrs.statusSource))
+      .toEqual(["manual", "auto", "manual", "auto", null]);
+    expect(tasks.map(({ checked, rejected }) => [checked, rejected]))
+      .toEqual([[false, false], [true, false], [false, true], [false, false], [true, false]]);
+    expect(tasks[1].parentId).toBe(tasks[0].id);
+    expect(docToMarkdown(resolved)).toBe(changedSource);
+  });
+
+  test("empty task summaries stay empty after a Markdown mode round-trip", () => {
+    const content = markdownToDoc("- [ ] <!-- edgeever:task-status manual -->\n  - [❌] <!-- edgeever:task-status auto -->");
+    const snapshot = createMarkdownModeSnapshot("memo-1", content);
+    const resolved = resolveMarkdownModeContent(snapshot, "memo-1", `${snapshot.markdownSource}\n\nNew paragraph`);
+    const tasks = collectMemoTasks(resolved, "memo-1");
+    expect(tasks.map(({ text }) => text)).toEqual(["", ""]);
+    expect(tasks.map(({ path }) => findMemoTaskNode(resolved, path).attrs.statusSource)).toEqual(["manual", "auto"]);
+  });
+
   test("preserves rich-only table task lists when source was only viewed", () => {
     const snapshot = createMarkdownModeSnapshot("memo-1", tableTaskListDocument);
     const restored = resolveMarkdownModeContent(snapshot, "memo-1", snapshot.markdownSource);

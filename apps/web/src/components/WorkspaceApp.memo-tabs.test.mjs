@@ -5,12 +5,21 @@ const source = readFileSync(new URL("./WorkspaceApp.tsx", import.meta.url), "utf
 
 describe("workspace memo tabs", () => {
   test("opens a tab for the selected note and stays quiet after closing the last one", () => {
-    expect(source).toContain("const [openMemoTabs, setOpenMemoTabs] = useState<string[]>([]);");
+    expect(source).toContain("useState<string[]>(() => workspaceRestore?.openMemoTabs ?? [])");
     expect(source).toContain(
       "setOpenMemoTabs((current) => (current.includes(selectedMemoId) ? current : [...current, selectedMemoId]));"
     );
     expect(source).toContain("suppressAutoOpenRef.current = true;");
     expect(source).toContain("if (suppressAutoOpenRef.current) {");
+  });
+
+  test("persists ordered tabs and remounts all workspace state when the account changes", () => {
+    expect(source).toContain("openMemoTabs: memberNotesView ? [] : openMemoTabs");
+    expect(source).toContain("writeDesktopWorkspaceRestoreState(state, undefined, user?.id)");
+    expect(source).toContain('key={props.user?.id ?? "anonymous"}');
+    expect(source).toContain('memoView !== "trash" && selectedMemoId && openMemoTabs.includes(selectedMemoId)');
+    expect(source).toContain("reconcileRestoredMemoTabs({");
+    expect(source).toContain("openMemoTabs: openMemoTabsRef.current");
   });
 
   test("switching and closing tabs reuses the quick-switcher selection guard", () => {

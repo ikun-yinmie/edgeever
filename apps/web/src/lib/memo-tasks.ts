@@ -58,7 +58,9 @@ export const collectMemoTasks = (doc: TiptapDoc, memoId: string): MemoTask[] => 
     let parentId = task.parentId;
     while (parentId) {
       const parent = byId.get(parentId)!;
-      if (parent.status === "pending") parent.status = "doing";
+      if (parent.status === "pending" && findMemoTaskNode(doc, parent.path)?.attrs?.statusSource !== "manual") {
+        parent.status = "doing";
+      }
       parentId = parent.parentId;
     }
   }
@@ -85,26 +87,48 @@ export const memoTaskAttributes = (mark: MemoTaskMark) => ({
   rejected: mark === "rejected",
 });
 
-/**
- * A rejected parent cancels its whole subtree, and re-opening it clears the
- * cascade again. "Done" keeps descendant marks untouched (a parent can be
- * finished while children stay pending).
- */
-export const shouldCascadeMemoTaskMark = (mark: MemoTaskMark) => mark !== "done";
+/** Legacy non-empty marks have no provenance, so preserve them as manual choices. */
+export const isManualMemoTask = (node: TiptapNode): boolean =>
+  node.attrs?.statusSource === "manual"
+  || (node.attrs?.statusSource !== "auto" && (node.attrs?.checked === true || node.attrs?.rejected === true));
 
-const markTaskItemsDeep = (node: TiptapNode, mark: MemoTaskMark) => {
+const setTaskMark = (node: TiptapNode, mark: MemoTaskMark, statusSource: "manual" | "auto") => {
+  node.attrs = { ...node.attrs, ...memoTaskAttributes(mark), statusSource };
+};
+
+const markDescendants = (node: TiptapNode, mark: MemoTaskMark) => {
   for (const child of node.content ?? []) {
-    if (child.type === "taskItem") {
-      child.attrs = { ...child.attrs, ...memoTaskAttributes(mark) };
+    if (child.type === "taskItem" && !isManualMemoTask(child)) {
+      // Finishing a parent cancels unfinished work without changing completed work.
+      if (mark !== "done" || child.attrs?.checked !== true) {
+        setTaskMark(child, mark === "done" ? "rejected" : mark, "auto");
+      }
     }
-    // Task items sit inside taskList wrappers, so keep walking containers.
-    markTaskItemsDeep(child, mark);
+    markDescendants(child, mark);
   }
 };
 
-export const applyMemoTaskMarkToNode = (node: TiptapNode, mark: MemoTaskMark, cascade = shouldCascadeMemoTaskMark(mark)) => {
-  node.attrs = { ...node.attrs, ...memoTaskAttributes(mark) };
-  if (cascade) markTaskItemsDeep(node, mark);
+const directTaskChildren = (node: TiptapNode): TiptapNode[] => {
+  const children: TiptapNode[] = [];
+  const walk = (parent: TiptapNode) => {
+    for (const child of parent.content ?? []) {
+      if (child.type === "taskItem") children.push(child);
+      else walk(child);
+    }
+  };
+  walk(node);
+  return children;
+};
+
+const aggregateTaskMark = (node: TiptapNode) => {
+  if (isManualMemoTask(node)) return;
+  const children = directTaskChildren(node);
+  if (!children.length) return;
+  const settled = children.every(child => child.attrs?.checked === true || child.attrs?.rejected === true);
+  const mark = settled
+    ? children.some(child => child.attrs?.checked === true) ? "done" : "rejected"
+    : "pending";
+  setTaskMark(node, mark, "auto");
 };
 
 export const updateMemoTaskDocument = (doc: TiptapDoc, task: MemoTask, mark: MemoTaskMark): TiptapDoc | null => {
@@ -112,6 +136,12 @@ export const updateMemoTaskDocument = (doc: TiptapDoc, task: MemoTask, mark: Mem
   if (!node || textOf(node.content?.[0] ?? { type: "paragraph" }) !== task.text) return null;
   const updated = structuredClone(doc);
   const target = findMemoTaskNode(updated, task.path)!;
-  applyMemoTaskMarkToNode(target, mark);
+  setTaskMark(target, mark, "manual");
+  markDescendants(target, mark);
+  // Only walk upwards from this operation; automatic parent changes never cascade again.
+  for (let depth = task.path.length - 1; depth > 0; depth -= 1) {
+    const ancestor = findMemoTaskNode(updated, task.path.slice(0, depth));
+    if (ancestor) aggregateTaskMark(ancestor);
+  }
   return updated;
 };

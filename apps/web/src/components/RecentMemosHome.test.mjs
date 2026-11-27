@@ -73,8 +73,8 @@ describe("RecentMemosHome workspace wiring", () => {
     expect(allMemosHandler).not.toContain("setSelectedMemoId(null)");
   });
 
-  test("lands on the recent-notes home when no workspace snapshot exists", () => {
-    expect(workspaceSource).toContain("&& (!workspaceRestore || rendererRecoveryMode)");
+  test("lands on the recent-notes home with no snapshot or an explicitly closed tab strip", () => {
+    expect(workspaceSource).toContain('&& (!workspaceRestore || rendererRecoveryMode || (workspaceRestore.memoView !== "trash" && workspaceRestore.openMemoTabs.length === 0))');
     expect(workspaceSource).toContain("readWebWorkspaceRestoreState");
     expect(workspaceSource).toContain("writeWebWorkspaceRestoreState");
   });

@@ -15,7 +15,12 @@ describe("note editor failure containment", () => {
     const rootBoundarySource = readFileSync(new URL("./DesktopRendererErrorBoundary.tsx", import.meta.url), "utf8");
 
     expect(rootBoundarySource).toContain("markRendererRecoveryRequired()");
-    expect(workspaceSource).toContain("rendererRecoveryMode ? null : selectedMemoId ?? memos[0]?.id ?? null");
+    expect(workspaceSource).toContain("rendererRecoveryMode ? null : selectedMemoId ?? (suppressAutoOpenRef.current ? null : memos[0]?.id ?? null)");
+    const restoreBlock = workspaceSource.slice(workspaceSource.indexOf("const [workspaceRestore]"), workspaceSource.indexOf("const [activePane"));
+    expect(restoreBlock).toContain("if (rendererRecoveryMode) {\n      return null;");
+    expect(workspaceSource).toContain("if (!workspaceRestore?.openMemoTabs.length || rendererRecoveryMode) return;");
+    expect(workspaceSource).toContain("Boolean(route.openMemoId) && !route.isTrash && !rendererRecoveryMode");
+    expect(workspaceSource).toContain("rendererRecoveryMode ? route.openMemoId : null");
     expect(workspaceSource).toContain("if (rendererRecoveryMode) {");
     expect(workspaceSource).toContain("safeModeNotice={rendererRecoveryMode}");
     expect(workspaceSource).not.toContain("<EditorRecoveryPane />");

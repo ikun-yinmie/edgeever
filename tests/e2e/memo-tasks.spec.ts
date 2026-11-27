@@ -1,6 +1,20 @@
 import { expect, test } from "@playwright/test";
 
 const cross = "❌";
+const visibleTaskMarkdown = (source: string) => source.replace(/<!-- edgeever:task-status (?:manual|auto) --> /g, "");
+type TaskNode = { type: string; text?: string; attrs?: Record<string, unknown>; content?: TaskNode[] };
+const taskMarks = (doc: TaskNode) => {
+  const result: Array<[string, unknown, unknown, unknown]> = [];
+  const walk = (node: TaskNode) => {
+    if (node.type === "taskItem") result.push([
+      node.content?.[0]?.content?.map(child => child.text ?? "").join("") ?? "",
+      node.attrs?.checked, node.attrs?.rejected, node.attrs?.statusSource ?? null,
+    ]);
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return result;
+};
 
 test("task overview and in-note dialog derive progress and persist marks", async ({ page }) => {
   // The overview walks every note and each mark save waits for a server
@@ -15,7 +29,7 @@ test("task overview and in-note dialog derive progress and persist marks", async
   const title = `task-views-${Date.now()}`;
   const created = await page.request.post("/api/v1/memos", { data: {
     notebookId: notebooks[0].id, title,
-    contentMarkdown: `## Task section\n\n- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child\n  - [ ] Pending child\n- [ ] Untouched\n- [x] Completed root\n- [${cross}] Rejected root\n\nText outside tasks.`,
+    contentMarkdown: `## Task section\n\n- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child\n  - [ ] Pending child\n  - [ ] Auto child\n    - [ ] Auto grandchild\n- [ ] Untouched\n- [x] Completed root\n- [${cross}] Rejected root\n\nText outside tasks.`,
   } });
   expect(created.status()).toBe(201);
   const { memo } = await created.json();
@@ -41,15 +55,15 @@ test("task overview and in-note dialog derive progress and persist marks", async
       await childRow.getByRole("button", { name: /更改标记/ }).click();
       await expect(childRow).toHaveAttribute("data-task-status", status);
       await expect(parent).toBeVisible();
-      await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain(`- [${marker}] Pending child`);
+      await expect.poll(async () => visibleTaskMarkdown((await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown), { timeout: 30_000 }).toContain(`- [${marker}] Pending child`);
     }
     await expect(page.getByRole("menu")).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("article-tasks-desktop.png") });
-    // Rejecting a parent crosses out its subtree; re-opening clears the cascade.
-    // A row that changes status moves between groups, so switch to the unfiltered
-    // view and open both groups before cycling.
+    // Parent operations cascade only to automatic/unmarked descendants. Legacy
+    // marks and the child explicitly cycled above retain their manual choices.
+    // Rows move between groups, so open each destination before cycling.
     await dialog.locator('button[aria-pressed]').filter({ hasText: "全部" }).click();
-    for (const group of ["done", "rejected"]) {
+    for (const group of ["done", "rejected", "pending"]) {
       const header = dialog.locator(`[data-task-group="${group}"] > button`);
       if ((await header.getAttribute("aria-expanded")) === "false") {
         await header.click();
@@ -57,24 +71,39 @@ test("task overview and in-note dialog derive progress and persist marks", async
     }
     // This locator must not pin a status: the row leaves [data-task-status=doing].
     const stableParent = dialog.locator("[data-task-id]").filter({ has: page.getByText("Parent", { exact: true }) }).first();
+    const autoChild = dialog.locator("[data-task-id]").filter({ has: page.getByText("Auto child", { exact: true }) }).first();
+    const assertSavedCascade = async (mark: "done" | "rejected" | "pending") => {
+      const isPending = mark === "pending";
+      await expect.poll(async () => {
+        const saved = (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo;
+        return taskMarks(saved.contentJson).slice(0, 6);
+      }, { timeout: 30_000 }).toEqual([
+        ["Parent", mark === "done", mark === "rejected", "manual"],
+        ["Done child", true, false, null], ["Crossed child", false, true, null],
+        ["Pending child", true, false, "manual"],
+        ["Auto child", false, !isPending, "auto"], ["Auto grandchild", false, !isPending, "auto"],
+      ]);
+    };
     await stableParent.getByRole("button", { name: /更改标记/ }).click();
     await expect(stableParent).toHaveAttribute("data-task-status", "done");
+    await expect(childRow).toHaveAttribute("data-task-status", "done");
+    await expect(autoChild).toHaveAttribute("data-task-status", "rejected");
+    await assertSavedCascade("done");
     await stableParent.getByRole("button", { name: /更改标记/ }).click();
     await expect(stableParent).toHaveAttribute("data-task-status", "rejected");
-    await expect(childRow).toHaveAttribute("data-task-status", "rejected");
-    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 })
-      .toContain(`- [${cross}] Parent\n  - [${cross}] Done child\n  - [${cross}] Crossed child\n  - [${cross}] Pending child`);
+    await expect(childRow).toHaveAttribute("data-task-status", "done");
+    await expect(autoChild).toHaveAttribute("data-task-status", "rejected");
+    await assertSavedCascade("rejected");
+    await expect.poll(async () => visibleTaskMarkdown((await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown), { timeout: 30_000 })
+      .toContain(`- [${cross}] Parent\n  - [x] Done child\n  - [${cross}] Crossed child\n  - [x] Pending child\n  - [${cross}] Auto child\n    - [${cross}] Auto grandchild`);
     await stableParent.getByRole("button", { name: /更改标记/ }).click();
     await expect(stableParent).toHaveAttribute("data-task-status", "pending");
-    await expect(childRow).toHaveAttribute("data-task-status", "pending");
-    // The rejected cascade reset every child to pending; re-check one child so
-    // the parent derives "doing" again for the later filter steps.
-    await childRow.getByRole("button", { name: /更改标记/ }).click();
     await expect(childRow).toHaveAttribute("data-task-status", "done");
-    await expect(stableParent).toHaveAttribute("data-task-status", "doing");
-    // The later overview steps read persisted data, so wait for the restore.
-    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 })
-      .toContain(`- [ ] Parent\n  - [ ] Done child\n  - [ ] Crossed child\n  - [x] Pending child`);
+    await expect(autoChild).toHaveAttribute("data-task-status", "pending");
+    // Explicit pending remains pending even with protected done/rejected children.
+    await assertSavedCascade("pending");
+    await expect.poll(async () => visibleTaskMarkdown((await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown), { timeout: 30_000 })
+      .toContain(`- [ ] Parent\n  - [x] Done child\n  - [${cross}] Crossed child\n  - [x] Pending child\n  - [ ] Auto child\n    - [ ] Auto grandchild`);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
@@ -88,8 +117,8 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await parentItem.locator(":scope > .edgeever-task-toggle").click();
     await expect(parentItem).toHaveAttribute("data-collapsed", "true");
     await trigger.click();
-    await dialog.locator('button[aria-pressed]').filter({ hasText: "进行中" }).click();
-    const parentTarget = dialog.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    await dialog.locator('button[aria-pressed]').filter({ hasText: "未进行" }).click();
+    const parentTarget = dialog.locator('[data-task-status="pending"]').filter({ has: page.getByText("Parent", { exact: true }) });
     await expect(parentTarget).toBeVisible();
     // A status filter keeps the outline: the done child stays nested as context
     // instead of the whole list becoming flat.
@@ -108,11 +137,12 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await expect(page.getByRole("heading", { name: "待办总览", exact: true })).toBeVisible();
     const overviewSearch = page.getByRole("textbox", { name: "搜索待办内容或笔记…" });
     await overviewSearch.fill(title);
-    await expect(page.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) })).toBeVisible();
+    await expect(page.locator('[data-task-status="pending"]').filter({ has: page.getByText("Parent", { exact: true }) })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("task-overview-desktop.png") });
-    const globalParent = page.locator('[data-task-status="doing"]').filter({ has: page.getByText("Parent", { exact: true }) });
+    const globalParent = page.locator('[data-task-status="pending"]').filter({ has: page.getByText("Parent", { exact: true }) });
     await globalParent.getByRole("button", { name: /更改标记/ }).click();
-    await expect.poll(async () => (await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown, { timeout: 30_000 }).toContain("- [x] Parent");
+    await expect.poll(async () => visibleTaskMarkdown((await (await page.request.get(`/api/v1/memos/${memo.id}`)).json()).memo.contentMarkdown), { timeout: 30_000 }).toContain("- [x] Parent");
+    await assertSavedCascade("done");
     await overviewSearch.fill("No such task anywhere");
     await expect(page.getByText("没有匹配的待办", { exact: true })).toBeVisible();
     await overviewSearch.fill(title);
