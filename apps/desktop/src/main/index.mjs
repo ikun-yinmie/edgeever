@@ -102,6 +102,7 @@ import { desktopReleaseLinks } from "./update-release-links.mjs";
 import { normalizeDesktopUpdateProgress } from "./update-progress.mjs";
 import {
   UpdateDownloadPausedError,
+  prunePartialUpdates,
   runResumableUpdateDownload,
 } from "./update-resume.mjs";
 import electronUpdater from "electron-updater";

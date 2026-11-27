@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -171,6 +172,13 @@ const createUpdateHarness = ({ platform = "linux", env = {}, response = 1, verif
 };
 
 describe("desktop update flow", () => {
+  test("binds partial update cleanup in the main process module", () => {
+    const statement = mainSource.match(/import\s*\{[^}]*\}\s*from\s*["']\.\/update-resume\.mjs["'];/)?.[0];
+    expect(statement).toBeDefined();
+    const source = statement.replace("./update-resume.mjs", new URL("./update-resume.mjs", import.meta.url).href);
+    expect(() => execFileSync("node", ["--input-type=module", "--eval", `${source}\nif (typeof prunePartialUpdates !== "function") throw new Error("Missing update cleanup binding");`], { stdio: "pipe" })).not.toThrow();
+  });
+
   test("enables automatic updates for packaged Linux AppImages", () => {
     expect(mainSource).not.toContain('process.platform === "linux" || !app.isPackaged');
     expect(mainSource).toContain('autoUpdateSupported: true');
