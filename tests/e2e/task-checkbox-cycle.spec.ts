@@ -109,9 +109,9 @@ for (const [name, viewport] of [
       await assertState(true, false);
 
       if (compact) {
-        // "Done" returns to the list; reopening shows the read-only preview.
+        // "Done" returns to this note's read-only preview.
         await page.getByRole("button", { name: "完成", exact: true }).click();
-        await openFromList();
+        await expect(page.getByRole("button", { name: "编辑笔记", exact: true })).toBeVisible({ timeout: 60_000 });
         await expect(parent()).toBeVisible({ timeout: 30_000 });
         await expect(parent()).toHaveAttribute("data-checked", "true");
         await parent().locator(':scope > label input[type="checkbox"]').click();
