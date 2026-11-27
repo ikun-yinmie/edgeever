@@ -1,23 +1,17 @@
 {
-  "version": "1.107.0",
+  "version": "1.108.0",
   "changes": {
     "en-US": [
-      "Add memo statuses that stay in sync across devices, shared notes, and backups.",
-      "Improve login security and session controls with configurable lifetimes, device-aware management, and same-device recovery after an IP change.",
-      "Add administrator-configurable email feedback and improve SMTP compatibility with existing delivery settings.",
-      "Make desktop update downloads resumable and improve sync-conflict details and editor outlines when switching notes."
+      "Restore open note tabs, their order, and the selected note after reloading the workspace. Keep closed tabs closed and restore each account separately.",
+      "Coordinate parent and child task states while preserving manual choices. Keep task status consistent across the editor, task overview, and Markdown mode."
     ],
     "zh-CN": [
-      "新增笔记状态，并让状态在设备同步、共享笔记和备份中保持一致。",
-      "完善登录安全与会话管理，支持自定义有效期、设备识别管理及同设备更换网络后的重新登录。",
-      "新增管理员可配置的邮件反馈，并兼容原有 SMTP 投递设置。",
-      "桌面更新下载现可续传，并改进同步冲突详情与切换笔记时的大纲表现。"
+      "刷新工作区后恢复已打开笔记的页签、顺序和选中项；已关闭的页签保持关闭，不同账号独立恢复。",
+      "待办父子任务状态自动联动并保留手动设置；编辑器、待办总览与 Markdown 模式之间保持状态一致。"
     ],
     "ja": [
-      "ノートの状態表示を追加し、端末間の同期、共有ノート、バックアップでも状態を維持します。",
-      "有効期間の設定、デバイス管理、IP アドレス変更後の同じデバイスでの再ログインに対応し、ログインとセッション管理を改善します。",
-      "管理者が設定できるメールフィードバックを追加し、既存の SMTP 配信設定との互換性を改善します。",
-      "デスクトップ更新のダウンロード再開に対応し、同期競合の詳細表示とノート切り替え時のアウトラインを改善します。"
+      "ワークスペースの再読み込み後に、開いていたノートのタブ、順序、選択を復元します。閉じたタブは開き直さず、アカウントごとに状態を保存します。",
+      "親子タスクの状態を自動的に連動させ、手動で設定した状態を保持します。エディター、タスク一覧、Markdown モード間で状態を一貫させます。"
     ]
   }
 }
