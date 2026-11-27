@@ -1,17 +1,23 @@
 {
-  "version": "1.106.1",
+  "version": "1.107.0",
   "changes": {
     "en-US": [
-      "Fix stale note previews after saving in the mobile web editor, and restore the reading position when returning to the preview.",
-      "Restore access to sync controls in the sync issue details dialog, including while searching notebooks."
+      "Add memo statuses that stay in sync across devices, shared notes, and backups.",
+      "Improve login security and session controls with configurable lifetimes, device-aware management, and same-device recovery after an IP change.",
+      "Add administrator-configurable email feedback and improve SMTP compatibility with existing delivery settings.",
+      "Make desktop update downloads resumable and improve sync-conflict details and editor outlines when switching notes."
     ],
     "zh-CN": [
-      "修复手机网页版编辑完成后预览内容未更新的问题，并在返回预览时恢复阅读位置。",
-      "修复同步异常详情中缺少操作入口的问题，搜索笔记本时也可在详情中管理同步。"
+      "新增笔记状态，并让状态在设备同步、共享笔记和备份中保持一致。",
+      "完善登录安全与会话管理，支持自定义有效期、设备识别管理及同设备更换网络后的重新登录。",
+      "新增管理员可配置的邮件反馈，并兼容原有 SMTP 投递设置。",
+      "桌面更新下载现可续传，并改进同步冲突详情与切换笔记时的大纲表现。"
     ],
     "ja": [
-      "モバイル Web エディターで保存後のプレビューが古いままになる問題を修正し、プレビューに戻った際の閲覧位置を復元します。",
-      "同期の問題の詳細画面から同期を操作できるように修正しました。ノートブックの検索中も利用できます。"
+      "ノートの状態表示を追加し、端末間の同期、共有ノート、バックアップでも状態を維持します。",
+      "有効期間の設定、デバイス管理、IP アドレス変更後の同じデバイスでの再ログインに対応し、ログインとセッション管理を改善します。",
+      "管理者が設定できるメールフィードバックを追加し、既存の SMTP 配信設定との互換性を改善します。",
+      "デスクトップ更新のダウンロード再開に対応し、同期競合の詳細表示とノート切り替え時のアウトラインを改善します。"
     ]
   }
 }
