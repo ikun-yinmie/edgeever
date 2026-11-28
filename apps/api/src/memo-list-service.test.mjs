@@ -108,6 +108,22 @@ describe("memo list service", () => {
     }
   });
 
+  test.each([
+    ["in_progress", "m.status = ?", "in_progress"],
+    ["completed", "m.status = ?", "completed"],
+    ["cancelled", "m.status = ?", "cancelled"],
+    ["no-status", "m.status IS NULL", null],
+  ])("applies the %s status filter to both page and count queries", async (filter, condition, bindValue) => {
+    const database = createDatabase();
+    await listMemos(database, { workspaceId: "ws_1", filter });
+
+    expect(database.calls).toHaveLength(2);
+    for (const call of database.calls) {
+      expect(call.sql).toContain(condition);
+      if (bindValue) expect(call.parameters).toContain(bindValue);
+    }
+  });
+
   test("combines FTS and escaped LIKE search for normal text", async () => {
     const database = createDatabase();
     await listMemos(database, {

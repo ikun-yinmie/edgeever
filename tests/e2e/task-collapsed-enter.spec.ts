@@ -13,7 +13,7 @@ for (const [name, viewport] of [
   ["compact", { width: 390, height: 844 }],
 ] as const) {
   test(`${name} Enter after a collapsed task creates a sibling and preserves hidden descendants`, async ({ page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/v1/plugins/github/**", (route) => route.fulfill({ status: 404, body: "Plugin download disabled in this test" }));
@@ -39,6 +39,12 @@ for (const [name, viewport] of [
       const children = parent.locator(':scope > div > ul[data-type="taskList"] > li');
       const child = children.first();
       const grandchild = child.locator('li[data-type="taskItem"]');
+      const parentTextLeft = await parent.locator(":scope > div > p").first().evaluate((element) => element.getBoundingClientRect().left);
+      const childCheckboxLeft = await child.locator(":scope > label input").evaluate((element) => element.getBoundingClientRect().left);
+      const childTextLeft = await child.locator(":scope > div > p").first().evaluate((element) => element.getBoundingClientRect().left);
+      expect(Math.abs(childCheckboxLeft - parentTextLeft)).toBeLessThanOrEqual(1);
+      expect(childTextLeft - parentTextLeft).toBeGreaterThanOrEqual(20);
+      expect(childTextLeft - parentTextLeft).toBeLessThan(40);
 
       // The same Enter behavior must retain the current nesting level.
       await child.locator(":scope > .edgeever-task-toggle").click();

@@ -1325,6 +1325,69 @@ mod tests {
     }
 
     #[test]
+    fn memo_list_filters_by_each_status_and_includes_legacy_null_status() {
+        let database = test_database();
+        let in_progress = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "progress" }),
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        set_status(&database, &in_progress, json!("in_progress"));
+        let completed = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "completed" }),
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        set_status(&database, &completed, json!("completed"));
+        let cancelled = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "cancelled" }),
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        set_status(&database, &cancelled, json!("cancelled"));
+        let no_status = create_memo(
+            &database,
+            &json!({ "notebookId": "nb_inbox", "contentMarkdown": "no status" }),
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        for (filter, expected_id) in [
+            ("in_progress", in_progress),
+            ("completed", completed),
+            ("cancelled", cancelled),
+            ("no-status", no_status),
+        ] {
+            let listed = list_memos(&database, &json!({ "filter": filter })).unwrap();
+            let memos = listed["memos"].as_array().unwrap();
+            let ids: Vec<String> = memos
+                .iter()
+                .map(|memo| memo["id"].as_str().unwrap().to_owned())
+                .collect();
+            assert!(ids.contains(&expected_id));
+            assert!(memos.iter().all(|memo| {
+                if filter == "no-status" {
+                    memo["status"].is_null()
+                } else {
+                    memo["status"] == filter
+                }
+            }));
+            assert_eq!(listed["totalCount"], ids.len());
+        }
+    }
+
+    #[test]
     fn memo_status_defaults_to_null_and_missing_update_is_a_noop() {
         let mut database = test_database();
         let memo = create_memo(

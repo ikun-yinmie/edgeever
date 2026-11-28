@@ -1665,8 +1665,8 @@ textarea {
 }
 
 .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
-  margin: 0.25rem 0 0;
-  padding-left: 1.5rem;
+  margin: 0.25rem 0 0 calc(-1.15rem - 0.55rem);
+  padding-left: 0;
 }
 
 /* Numbered task lists keep the same checkbox layout and add an ordered prefix. */

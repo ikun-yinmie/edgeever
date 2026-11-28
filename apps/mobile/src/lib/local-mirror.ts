@@ -10,6 +10,7 @@ import {
 } from "@edgeever/shared";
 import * as SQLite from "expo-sqlite";
 import { filterLocalMemosByExactTag, summarizeMobileTags } from "./mobile-tags";
+import { getMobileMemoStatusFilter } from "./mobile-memo-status-filter";
 
 const DATABASE_NAME = "edgeever-mobile.db";
 const BOOTSTRAP_PAGE_SIZE = 200;
@@ -123,6 +124,13 @@ export const listLocalMemos = async (scope: string, params: LocalMemoListParams)
     conditions.push("tags_text = ''");
   } else if (params.filter === "pinned") {
     conditions.push("is_pinned = 1");
+  }
+  const statusFilter = getMobileMemoStatusFilter(params.filter ?? "all");
+  if (statusFilter) {
+    conditions.push(statusFilter.sql);
+    if (statusFilter.value !== undefined) {
+      binds.push(statusFilter.value);
+    }
   }
 
   const orderBy = params.trash

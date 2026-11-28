@@ -44,6 +44,7 @@ import {
   Settings,
   MoreVertical,
   CheckCircle2,
+  CircleDashed,
   TagX,
   Image as ImageIcon,
   Share2,
@@ -276,6 +277,18 @@ const getMobileFilterIcon = (filterMode: MemoFilterMode) => {
   }
   if (filterMode === "pinned") {
     return <Star className="h-4 w-4" />;
+  }
+  if (filterMode === "in_progress") {
+    return <CircleDashed className="h-4 w-4" />;
+  }
+  if (filterMode === "completed") {
+    return <CheckCircle2 className="h-4 w-4" />;
+  }
+  if (filterMode === "cancelled") {
+    return <X className="h-4 w-4" />;
+  }
+  if (filterMode === "no-status") {
+    return <FileIcon className="h-4 w-4" />;
   }
   return <LayoutList className="h-4 w-4" />;
 };
@@ -546,7 +559,10 @@ export const MemoListPane = ({
 
   const filterOptions = useMemo(() => getMemoFilterOptions(t), [t]);
   const memoSortOptions = useMemo(() => getMemoSortOptions(t), [t]);
-  const mobileFilterOptions = useMemo(() => filterOptions.filter((option: any) => option.value !== "all"), [filterOptions]);
+  const mobileFilterOptions = useMemo(
+    () => filterOptions.filter((option) => option.value === "pinned" || option.value === "tagged" || option.value === "untagged"),
+    [filterOptions],
+  );
   const visibleMemoIds = useMemo(() => memos.map((memo) => memo.id), [memos]);
   const moveNotebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const filteredMoveNotebookOptions = useMemo(() => {
@@ -1534,6 +1550,41 @@ export const MemoListPane = ({
                 {getMobileFilterIcon(option.value)}
               </button>
             ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={cn(
+                    "flex h-mobile-control w-mobile-control items-center justify-center rounded-full border transition",
+                    filterMode === "all"
+                      ? "border-slate-200 bg-card text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                      : "border-slate-700 bg-slate-700 text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]"
+                  )}
+                  type="button"
+                  title={t("memoList.filterTitle", { label: activeFilterLabel })}
+                  aria-label={t("memoList.filterTitle", { label: activeFilterLabel })}
+                >
+                  {getMobileFilterIcon(filterMode)}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 bg-card border border-slate-200 rounded-md py-1 shadow-md">
+                {filterOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between gap-2 px-3 text-left text-sm cursor-pointer outline-none",
+                      filterMode === option.value ? "bg-slate-100 font-medium text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                    onClick={() => handleFilterModeChange(option.value)}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
+                      {getMobileFilterIcon(option.value)}
+                      <span className="truncate">{option.label}</span>
+                    </span>
+                    {filterMode === option.value && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

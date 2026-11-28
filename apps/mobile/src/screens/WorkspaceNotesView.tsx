@@ -97,7 +97,17 @@ export const NotesView = ({
       ? translate("置顶")
       : memoFilterMode === "tagged"
         ? translate("有标签")
-        : translate("无标签");
+        : memoFilterMode === "untagged"
+          ? translate("无标签")
+          : memoFilterMode === "in_progress"
+            ? translate("进行中")
+            : memoFilterMode === "completed"
+              ? translate("已完成")
+              : memoFilterMode === "cancelled"
+                ? translate("已叉掉")
+                : memoFilterMode === "no-status"
+                  ? translate("无状态")
+                  : translate("全部");
   const filterResultLabel = translate(`筛选：${activeFilterLabel} · ${totalMemoCount} 条`);
   const resetFilterLabel = translate("重置");
 

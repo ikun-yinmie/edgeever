@@ -161,7 +161,7 @@ export type InstanceRelease = {
   changes: Record<string, readonly string[]>;
 };
 
-export type MemoFilterMode = "all" | "tagged" | "untagged" | "pinned";
+export type MemoFilterMode = "all" | "tagged" | "untagged" | "pinned" | MemoStatus | "no-status";
 export type MemoSortMode = "updated-desc" | "created-desc" | "title-asc";
 
 export type ListNotebooksResponse = {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { MemoSortMode } from "@edgeever/client";
+import type { MemoFilterMode, MemoSortMode } from "@edgeever/client";
 import { Modal, ScrollView, View } from "react-native";
 import { Check, CheckSquare, FileText, Folder, List, MoreVertical, Sparkles, Tag, Trash2, X } from "../components/icons";
 import { Pressable, Text } from "../components/LocalizedText";
@@ -75,9 +75,11 @@ export const NotesActionsModal = ({
   listDescription,
   listTitle,
   memoListDensity,
+  memoFilterMode,
   memoSortMode,
   onClose,
   onEnterSelection,
+  onFilterModeChange,
   onMemoListDensityChange,
   onOpenTagFilter,
   onSortModeChange,
@@ -89,9 +91,11 @@ export const NotesActionsModal = ({
   listDescription: string;
   listTitle: string;
   memoListDensity: MobileMemoListDensity;
+  memoFilterMode: MemoFilterMode;
   memoSortMode: MemoSortMode;
   onClose: () => void;
   onEnterSelection: () => void;
+  onFilterModeChange: (filterMode: MemoFilterMode) => void;
   onMemoListDensityChange: (density: MobileMemoListDensity) => void;
   onOpenTagFilter: () => void;
   onSortModeChange: (sortMode: MemoSortMode) => void;
@@ -130,6 +134,13 @@ export const NotesActionsModal = ({
               <View style={styles.listActionDivider} />
             </>
           ) : null}
+          <Text style={styles.actionSheetSectionTitle}>按状态筛选</Text>
+          <SheetOptionRow active={memoFilterMode === "all"} label="全部状态" onPress={() => onFilterModeChange("all")} />
+          <SheetOptionRow active={memoFilterMode === "in_progress"} label="进行中" onPress={() => onFilterModeChange("in_progress")} />
+          <SheetOptionRow active={memoFilterMode === "completed"} label="已完成" onPress={() => onFilterModeChange("completed")} />
+          <SheetOptionRow active={memoFilterMode === "cancelled"} label="已叉掉" onPress={() => onFilterModeChange("cancelled")} />
+          <SheetOptionRow active={memoFilterMode === "no-status"} label="无状态" onPress={() => onFilterModeChange("no-status")} />
+          <View style={styles.listActionDivider} />
           <Text style={styles.actionSheetSectionTitle}>显示方式</Text>
           <SheetOptionRow
             active={memoListDensity === "preview"}

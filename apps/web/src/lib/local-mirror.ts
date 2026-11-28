@@ -385,6 +385,8 @@ export const listLocalMemos = async (scope: string, params: LocalMemoListParams)
     if (params.filter === "tagged" && memo.tags.length === 0) return false;
     if (params.filter === "untagged" && memo.tags.length > 0) return false;
     if (params.filter === "pinned" && !memo.isPinned) return false;
+    if (params.filter === "no-status" && memo.status != null) return false;
+    if ((params.filter === "in_progress" || params.filter === "completed" || params.filter === "cancelled") && memo.status !== params.filter) return false;
     if (q && ![memo.title, memo.excerpt, memo.contentText, memo.tags.join(" ")].some((value) => value?.toLocaleLowerCase().includes(q))) return false;
     return true;
   });

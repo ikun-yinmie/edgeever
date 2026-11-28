@@ -202,6 +202,10 @@ export const getMemoFilterOptions = (t: TFunction): Array<{ value: MemoFilterMod
   { value: "pinned", label: t("options.memoFilter.pinned") },
   { value: "tagged", label: t("options.memoFilter.tagged") },
   { value: "untagged", label: t("options.memoFilter.untagged") },
+  { value: "in_progress", label: t("memoStatus.in_progress") },
+  { value: "completed", label: t("memoStatus.completed") },
+  { value: "cancelled", label: t("memoStatus.cancelled") },
+  { value: "no-status", label: t("options.memoFilter.noStatus") },
 ];
 
 export const getShortcutActionOptions = (
@@ -856,6 +860,14 @@ export const filterMemos = (memos: MemoSummary[], filterMode: MemoFilterMode) =>
 
   if (filterMode === "pinned") {
     return memos.filter((memo) => memo.isPinned);
+  }
+
+  if (filterMode === "no-status") {
+    return memos.filter((memo) => memo.status == null);
+  }
+
+  if (filterMode === "in_progress" || filterMode === "completed" || filterMode === "cancelled") {
+    return memos.filter((memo) => memo.status === filterMode);
   }
 
   return memos;

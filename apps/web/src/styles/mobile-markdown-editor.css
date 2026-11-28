@@ -660,8 +660,8 @@ html.dark .edgeever-mobile-tiptap-content ul[data-type="taskList"] li[data-rejec
 }
 
 .edgeever-mobile-tiptap-content ul[data-type="taskList"] ul[data-type="taskList"] {
-  margin: 4px 0 0;
-  padding-left: 24px;
+  margin: 4px 0 0 calc(-22px - 9px);
+  padding-left: 0;
 }
 
 .edgeever-mobile-tiptap-content .edgeever-task-toggle {

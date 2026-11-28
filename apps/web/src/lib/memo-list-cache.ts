@@ -25,6 +25,14 @@ const memoMatchesFilter = (memo: MemoSummary, filterMode: unknown) => {
     return memo.isPinned;
   }
 
+  if (filterMode === "no-status") {
+    return memo.status == null;
+  }
+
+  if (filterMode === "in_progress" || filterMode === "completed" || filterMode === "cancelled") {
+    return memo.status === filterMode;
+  }
+
   return true;
 };
 

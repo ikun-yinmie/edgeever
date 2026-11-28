@@ -13,6 +13,8 @@ describe("mobile UI contract", () => {
     expect(toggleMobileMemoFilterMode("all", "pinned")).toBe("pinned");
     expect(toggleMobileMemoFilterMode("pinned", "pinned")).toBe("all");
     expect(toggleMobileMemoFilterMode("tagged", "untagged")).toBe("untagged");
+    expect(toggleMobileMemoFilterMode("all", "completed")).toBe("completed");
+    expect(toggleMobileMemoFilterMode("no-status", "no-status")).toBe("all");
   });
 
   test("shares immutable memo selection behavior across mobile clients", () => {

@@ -73,7 +73,7 @@ export type DesktopMemoListParams = {
   tag?: string;
   trash?: boolean;
   sort?: "updated-desc" | "created-desc" | "title-asc";
-  filter?: "all" | "pinned" | "tagged" | "untagged";
+  filter?: "all" | "pinned" | "tagged" | "untagged" | "in_progress" | "completed" | "cancelled" | "no-status";
   limit?: number;
   offset?: number;
 };

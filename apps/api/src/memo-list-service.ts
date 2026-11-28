@@ -30,7 +30,7 @@ export type MemoSummaryRow = {
 };
 
 type MemoListSortMode = "updated-desc" | "created-desc" | "title-asc";
-type MemoListFilterMode = "all" | "tagged" | "untagged" | "pinned";
+type MemoListFilterMode = "all" | "tagged" | "untagged" | "pinned" | MemoStatus | "no-status";
 
 type MemoListCursor = {
   sort: MemoListSortMode;
@@ -94,7 +94,10 @@ const normalizeMemoListSort = (value: string | undefined): MemoListSortMode =>
   value === "created-desc" || value === "title-asc" ? value : "updated-desc";
 
 const normalizeMemoListFilter = (value: string | undefined): MemoListFilterMode =>
-  value === "tagged" || value === "untagged" || value === "pinned" ? value : "all";
+  value === "tagged" || value === "untagged" || value === "pinned" ||
+  value === "in_progress" || value === "completed" || value === "cancelled" || value === "no-status"
+    ? value
+    : "all";
 
 const clampNumber = (value: number, min: number, max: number) => {
   if (Number.isNaN(value)) return min;
@@ -205,6 +208,11 @@ export const listMemos = async (
   if (filter === "tagged") baseConditions.push("m.tags_json <> '[]'");
   else if (filter === "untagged") baseConditions.push("m.tags_json = '[]'");
   else if (filter === "pinned") baseConditions.push("m.is_pinned = 1");
+  else if (filter === "no-status") baseConditions.push("m.status IS NULL");
+  else if (filter === "in_progress" || filter === "completed" || filter === "cancelled") {
+    baseConditions.push("m.status = ?");
+    baseBinds.push(filter);
+  }
 
   const getOrderBy = () => {
     if (includeTrash) return "m.deleted_at DESC, m.id DESC";

@@ -568,6 +568,10 @@ pub(crate) fn list_memos(database: &Connection, params: &Value) -> Result<Value,
         Some("pinned") => " AND m.is_pinned = 1",
         Some("tagged") => " AND json_array_length(m.tags_json) > 0",
         Some("untagged") => " AND json_array_length(m.tags_json) = 0",
+        Some("in_progress") => " AND m.status = 'in_progress'",
+        Some("completed") => " AND m.status = 'completed'",
+        Some("cancelled") => " AND m.status = 'cancelled'",
+        Some("no-status") => " AND m.status IS NULL",
         _ => "",
     };
     let order = match params.get("sort").and_then(Value::as_str) {

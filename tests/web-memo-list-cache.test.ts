@@ -78,6 +78,29 @@ describe("memo list cache updates", () => {
     expect(cached?.pages[0]?.totalCount).toBe(1);
   });
 
+  test("moves an edited note between active status-filtered lists", () => {
+    const queryClient = new QueryClient();
+    const completedKey = ["memos", "notebook", null, "", "completed", "updated-desc"] as const;
+    const cancelledKey = ["memos", "notebook", null, "", "cancelled", "updated-desc"] as const;
+    queryClient.setQueryData(completedKey, queryData([[memo({ status: "completed" })]], 1));
+    queryClient.setQueryData(cancelledKey, queryData([[]], 0));
+
+    updateMemoSummaryInLists(queryClient, memo({ status: "cancelled", revision: 2 }));
+
+    expect(queryClient.getQueryData<MemoListQueryData>(completedKey)?.pages[0]).toMatchObject({ memos: [], totalCount: 0 });
+    expect(queryClient.getQueryData<MemoListQueryData>(cancelledKey)?.pages[0]).toMatchObject({ memos: [{ status: "cancelled" }], totalCount: 1 });
+  });
+
+  test("treats missing and null statuses as matching the no-status filter", () => {
+    const queryClient = new QueryClient();
+    const queryKey = ["memos", "notebook", null, "", "no-status", "updated-desc"] as const;
+    queryClient.setQueryData(queryKey, queryData([[]], 0));
+
+    updateMemoSummaryInLists(queryClient, memo({ status: null }));
+
+    expect(queryClient.getQueryData<MemoListQueryData>(queryKey)?.pages[0]).toMatchObject({ memos: [{ status: null }], totalCount: 1 });
+  });
+
   test("removes a note when an edit no longer matches the selected exact tag", () => {
     const queryClient = new QueryClient();
     const queryKey = ["memos", "notebook", null, "", "all", "updated-desc", [], "demo"] as const;

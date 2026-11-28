@@ -64,6 +64,17 @@ describe("memo context menu", () => {
     expect(showInFileManagerIndex).toBeGreaterThan(densityIndex);
   });
 
+  test("offers every memo status in the shared filter menus", () => {
+    const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
+    const options = readFileSync(new URL("../lib/app-helpers.ts", import.meta.url), "utf8");
+
+    for (const value of ["in_progress", "completed", "cancelled", "no-status"]) {
+      expect(options).toContain(`value: "${value}"`);
+    }
+    expect(source).toContain("{filterOptions.map((option) => (");
+    expect(source).toContain("title={t(\"memoList.filterTitle\", { label: activeFilterLabel })}");
+  });
+
   test("opens the card menu without a modal scroll lock so the list does not hitch", () => {
     const source = readFileSync(new URL("./MemoListPane.tsx", import.meta.url), "utf8");
 

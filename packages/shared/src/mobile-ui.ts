@@ -1,3 +1,5 @@
+import type { MemoStatus } from "./types";
+
 export const MOBILE_UI_METRICS = {
   bottomNavigationHeight: 52,
   compactControlHeight: 36,
@@ -7,7 +9,7 @@ export const MOBILE_UI_METRICS = {
   minimumTouchTarget: 44,
 } as const;
 
-export type MobileMemoFilterMode = "all" | "tagged" | "untagged" | "pinned";
+export type MobileMemoFilterMode = "all" | "tagged" | "untagged" | "pinned" | MemoStatus | "no-status";
 
 export const toggleMobileMemoFilterMode = (
   current: MobileMemoFilterMode,

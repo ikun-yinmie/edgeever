@@ -11,6 +11,8 @@ describe("mobile locale translation", () => {
     expect(translateMobileText("从相册选择", "en-US")).toBe("Choose from library");
     expect(translateMobileText("正在同步笔记", "ja")).toBe("ノートを同期しています");
     expect(translateMobileText("从相册选择", "ja")).toBe("ライブラリから選ぶ");
+    expect(translateMobileText("进行中", "en-US")).toBe("In progress");
+    expect(translateMobileText("无状态", "ja")).toBe("状態なし");
   });
 
   test("prefers specific mobile-only templates over broader templates", () => {

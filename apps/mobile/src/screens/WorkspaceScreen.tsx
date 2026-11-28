@@ -1401,6 +1401,7 @@ export const WorkspaceScreen = ({
         bottomOffset={52 + safeAreaInsets.bottom}
         canEnterSelection={visibleMemos.length > 0}
         memoListDensity={memoListDensity}
+        memoFilterMode={memoFilterMode}
         memoSortMode={memoSortMode}
         listDescription={`${searchActive ? searchQuery.data?.pages[0]?.totalCount ?? searchResults.length : memosQuery.data?.pages[0]?.totalCount ?? memos.length} 条笔记`}
         listTitle={memoView === "trash" ? "回收站" : selectedTag ? `#${selectedTag}` : activeNotebook?.name ?? "全部笔记"}
@@ -1409,6 +1410,7 @@ export const WorkspaceScreen = ({
           setNotesActionsOpen(false);
           enterSelectionMode();
         }}
+        onFilterModeChange={handleMemoFilterModeChange}
         onMemoListDensityChange={handleMemoListDensityChange}
         onOpenTagFilter={() => {
           setNotesActionsOpen(false);

@@ -52,6 +52,7 @@ import {
   readNotebookSidebarWidthPreference,
   writeNotebookSidebarWidthPreference,
   findFirstNotebookSearchMatchId,
+  getMemoFilterOptions,
 } from "./app-helpers.ts";
 import {
   resolveShortcutSettings,
@@ -84,6 +85,22 @@ const installLocalStorage = (initialValue = null) => {
 
 afterEach(() => {
   globalThis.window = originalWindow;
+});
+
+describe("memo filter options", () => {
+  test("includes each note status and the no-status option", () => {
+    const options = getMemoFilterOptions((key) => key);
+    expect(options.map((option) => option.value)).toEqual([
+      "all",
+      "pinned",
+      "tagged",
+      "untagged",
+      "in_progress",
+      "completed",
+      "cancelled",
+      "no-status",
+    ]);
+  });
 });
 
 describe("search shortcut scope", () => {

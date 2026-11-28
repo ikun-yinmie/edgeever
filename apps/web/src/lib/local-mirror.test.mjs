@@ -548,6 +548,29 @@ describe("local mirror", () => {
     expect(result.memos.map((memo) => memo.id)).toEqual([expected.id]);
   });
 
+  test("filters local memos by status before counting and paging", async () => {
+    const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
+    await seedNotebook(scope, "nb-inbox");
+    const statuses = ["in_progress", "completed", "completed", "cancelled", null];
+    const created = await Promise.all(statuses.map((status, index) => createLocalMemo(scope, {
+      notebookId: "nb-inbox",
+      title: `Status ${index}`,
+    })));
+    for (let index = 0; index < created.length - 1; index += 1) {
+      await putLocalMemo(scope, { ...created[index], status: statuses[index] });
+    }
+    const { status: _status, ...legacyNoStatus } = created[created.length - 1];
+    await localDb.memos.put({ ...legacyNoStatus, scope });
+
+    const completed = await listLocalMemos(scope, { filter: "completed", limit: 1 });
+    expect(completed.totalCount).toBe(2);
+    expect(completed.memos).toHaveLength(1);
+    expect(completed.nextCursor).toBe("1");
+    expect((await listLocalMemos(scope, { filter: "in_progress" })).memos.map((memo) => memo.id)).toEqual([created[0].id]);
+    expect((await listLocalMemos(scope, { filter: "cancelled" })).memos.map((memo) => memo.id)).toEqual([created[3].id]);
+    expect((await listLocalMemos(scope, { filter: "no-status" })).memos.map((memo) => memo.id)).toEqual([created[4].id]);
+  });
+
   test("updates local content and preserves the memo identity", async () => {
     const scope = createLocalDataScope("https://demo.edgeever.org", "user-1");
     const memo = await createLocalMemo(scope, { notebookId: "nb-inbox" });
