@@ -1,14 +1,23 @@
 {
-  "version": "1.110.0",
+  "version": "1.111.0",
   "changes": {
     "en-US": [
-      "Search notebooks and notebook paths when filtering the task overview."
+      "Bind and verify an account email in settings with your password and an email verification code",
+      "Online feedback now uses the account's verified email as the reply address and shows it to the administrator",
+      "Registration marks the address verified once the code is confirmed and SMTP configuration is validated uniformly",
+      "The desktop renderer error screen offers expandable diagnostics with one-click copy"
     ],
     "zh-CN": [
-      "待办总览支持搜索笔记本名称和路径。"
+      "设置页支持绑定并验证账号邮箱（需当前密码与邮箱验证码）",
+      "站内反馈改用账号已验证的邮箱作为回复地址，管理员可直接回复",
+      "注册验证码确认后邮箱即标记为已验证，并统一校验 SMTP 配置",
+      "桌面端页面异常时可展开诊断信息并一键复制"
     ],
     "ja": [
-      "タスク一覧でノートブック名とパスを検索できるようになりました。"
+      "設定で現在のパスワードとメール認証コードによりアカウントメールを連携・検証できるようになりました",
+      "フィードバックには認証済みのアカウントメールを返信先として使用し、管理者に表示するようになりました",
+      "登録時に認証コード確認済みのメールを検証済みとして記録し、SMTP設定の検証を統一しました",
+      "デスクトップのエラー画面で診断情報を展開してコピーできるようになりました"
     ]
   }
 }
