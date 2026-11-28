@@ -37,9 +37,10 @@ describe("chunk reload retry", () => {
     expect(workspaceSource).toContain('from "@/lib/lazy-retry"');
   });
 
-  test("uses an accessible animated loading indicator for lazy workspace panes", () => {
-    expect(workspaceSource).toContain('from "@/components/ui/LoadingIndicator"');
-    expect(workspaceSource).toContain('<LoadingIndicator label={label} size="md" />');
+  test("uses the shared loading surface for lazy workspace panes", () => {
+    expect(workspaceSource).toContain('from "@/components/ui/LoadingSurface"');
+    expect(workspaceSource).toContain('<LoadingSurface label={label} variant={variant}');
+    expect(workspaceSource).toContain('variant={rightView === "tasks" ? "tasks" : "pane"}');
   });
 
   test("loads the public share page through the retry helper", () => {

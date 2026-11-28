@@ -20,7 +20,7 @@ import { ADMIN_CONSOLE_PATH } from "@/lib/routes";
 import { useTranslation } from "react-i18next";
 import * as m from "motion/react-m";
 import { Button } from "@/components/ui/button";
-import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { LoadingSurface } from "@/components/ui/LoadingSurface";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoListPane, MemoSelectionActionBar } from "./MemoListPane";
 import { MemoTabsBar } from "./MemoTabsBar";
@@ -190,10 +190,8 @@ const ExecutionCenterPane = lazyWithChunkRetry("ExecutionCenterPane", () =>
   import("./execution/ExecutionCenterPane").then((module) => ({ default: module.ExecutionCenterPane }))
 );
 
-const PaneLoadingFallback = ({ label = "Loading" }: { label?: string }) => (
-  <div className="flex h-full min-h-0 items-center justify-center bg-card">
-    <LoadingIndicator label={label} size="md" />
-  </div>
+const PaneLoadingFallback = ({ label = "Loading", variant = "pane" }: { label?: string; variant?: "pane" | "tasks" }) => (
+  <LoadingSurface label={label} variant={variant} className="h-full min-h-0" />
 );
 
 type MemoDeleteOptimisticContext = {
@@ -3868,6 +3866,8 @@ const WorkspaceAppForUser = ({
           ? t("aiPrompts.title")
         : rightView === "execution-center"
           ? t("executionHistory.centerTitle")
+        : rightView === "tasks"
+          ? t("memoTasks.loading")
         : rightView === "recent"
           ? t("recentMemos.title")
         : rightView === "evernote-migration"
@@ -4196,7 +4196,7 @@ const WorkspaceAppForUser = ({
             )}
             <div className="min-h-0 min-w-0 flex-1">
             {shouldRenderRightPane && (
-              <Suspense fallback={<PaneLoadingFallback label={rightPaneLoadingLabel} />}>
+              <Suspense fallback={<PaneLoadingFallback label={rightPaneLoadingLabel} variant={rightView === "tasks" ? "tasks" : "pane"} />}>
                 <m.div key={rightView} className="h-full min-h-0 min-w-0" {...paneEnterMotion}>
                   {rightView === "settings" ? (
                     <SettingsPane

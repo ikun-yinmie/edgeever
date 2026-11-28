@@ -1,4 +1,4 @@
-import { devices, expect as baseExpect, test, type Page } from "@playwright/test";
+import { devices, expect as baseExpect, test, type Locator, type Page } from "@playwright/test";
 import { createExcerpt, docToMarkdown, docToText, markdownToDoc, type MemoDetail, type Notebook, type TiptapDoc } from "@edgeever/shared";
 
 const memoId = "memo_mobile_edit_return";
@@ -402,6 +402,155 @@ test("Done returns to the saved note when the server detail read fails", async (
   expect(state.memo.title).toBe(title);
   expect(state.memo.contentText).toBe(text);
 });
+
+const middleTaskText = "长正文中部需要触摸切换的待办";
+const middleParagraphText = "第 41 段。把手机端编辑位置带回预览的长正文。";
+
+const seedLongMobileMemo = (state: Awaited<ReturnType<typeof mockWorkspace>>) => {
+  const paragraphs = Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 段。把手机端编辑位置带回预览的长正文。`);
+  paragraphs.splice(40, 0, `- [ ] ${middleTaskText}`);
+  const markdown = [originalText, ...paragraphs].join("\n\n");
+  const contentJson = markdownToDoc(markdown) as TiptapDoc;
+  state.memo = {
+    ...state.memo,
+    contentJson,
+    contentMarkdown: markdown,
+    contentText: docToText(contentJson),
+    excerpt: createExcerpt(markdown),
+  };
+};
+
+const waitForInitialEditorFocus = async (page: Page, editor: Locator) => {
+  await expect(editor).toBeFocused();
+  // Initialization focuses the document end after 160ms, then ProseMirror
+  // scrolls the selection on a frame. Finish that before moving to the middle.
+  await page.waitForTimeout(300);
+};
+
+const expectBodyBlockVisibleInPreview = async (block: Locator) => {
+  await expect(block).toBeInViewport({ ratio: 1 });
+  await expect.poll(() => block.evaluate((element) => {
+    const scroller = document.querySelector(".edgeever-editor")!;
+    const viewport = scroller.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    return rect.top >= Math.max(0, viewport.top)
+      && rect.bottom <= Math.min(window.innerHeight, viewport.bottom);
+  }), { message: "The same body block must be fully visible inside the returned preview" }).toBe(true);
+};
+
+for (const waitForFocus of [true, false]) {
+  test(`middle checkbox touch taps cycle all three states without jumping to the bottom, then Done keeps that body block visible${waitForFocus ? "" : " with an early tap"}`, async ({ page }) => {
+    const state = await mockWorkspace(page);
+    seedLongMobileMemo(state);
+    const editor = await openEditor(page);
+    if (waitForFocus) {
+      await waitForInitialEditorFocus(page, editor);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.focusNode?.textContent)).toContain("第 80 段");
+    }
+    const task = editor.locator('li[data-type="taskItem"]').filter({ hasText: middleTaskText });
+    const checkbox = task.locator(':scope > label input[type="checkbox"]');
+    await expect(checkbox).not.toBeChecked();
+    await task.evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await expect(checkbox).toBeInViewport({ ratio: 1 });
+    if (waitForFocus) await page.waitForTimeout(200);
+    const middleScrollY = await page.evaluate(() => window.scrollY);
+    expect(middleScrollY).toBeGreaterThan(500);
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight - window.scrollY)).toBeGreaterThan(1000);
+
+    for (const [checked, rejected] of [[true, false], [false, true], [false, false]] as const) {
+      await test.step(`touch checkbox: checked=${checked}, rejected=${rejected}`, async () => {
+        // Use a real touch sequence: click()/check() do not reproduce mobile
+        // touch focus and can miss the scroll-to-the-stale-caret regression.
+        const activeElementBeforeTap = await page.evaluateHandle(() => document.activeElement);
+        await checkbox.tap();
+        if (waitForFocus) await expect(editor).toBeFocused();
+        else await expect.poll(() => activeElementBeforeTap.evaluate((element) => element === document.activeElement)).toBe(true);
+        await activeElementBeforeTap.dispose();
+        await expect(checkbox).not.toBeFocused();
+        await expect(task).toHaveAttribute("data-checked", String(checked));
+        if (checked) await expect(checkbox).toBeChecked();
+        else await expect(checkbox).not.toBeChecked();
+        if (rejected) await expect(task).toHaveAttribute("data-rejected", "true");
+        else await expect(task).not.toHaveAttribute("data-rejected", "true");
+        await page.waitForTimeout(300);
+        const position = await checkbox.evaluate((element) => ({
+          scrollY: window.scrollY,
+          maxScrollY: document.scrollingElement!.scrollHeight - window.innerHeight,
+          checkboxTop: element.getBoundingClientRect().top,
+          activeElement: document.activeElement?.tagName,
+          selectionText: window.getSelection()?.focusNode?.textContent,
+        }));
+        await test.info().attach(`touch-position-${checked}-${rejected}`, { body: JSON.stringify({ middleScrollY, ...position }), contentType: "application/json" });
+        expect.soft(Math.abs(position.scrollY - middleScrollY), JSON.stringify(position)).toBeLessThan(40);
+        await expect.soft(checkbox).toBeInViewport({ ratio: 1, timeout: 1000 });
+      });
+    }
+
+    // Do not scroll back before Done: that would conceal a broken touch path.
+    await page.getByRole("button", { name: "完成", exact: true }).tap();
+    await expectPreview(page, "手机编辑测试笔记", middleTaskText);
+    const previewTask = page.locator('.edgeever-workspace-editor li[data-type="taskItem"]').filter({ hasText: middleTaskText });
+    await expect(previewTask).toHaveAttribute("data-checked", "false");
+    await expect(previewTask).not.toHaveAttribute("data-rejected", "true");
+    await expectBodyBlockVisibleInPreview(previewTask);
+  });
+}
+
+for (const resetScrollOnBlur of [false, true]) {
+  test(`Done after typing in a middle paragraph keeps that exact paragraph visible in preview${resetScrollOnBlur ? " when blur resets window scroll" : ""}`, async ({ page }) => {
+    const state = await mockWorkspace(page);
+    seedLongMobileMemo(state);
+    const editor = await openEditor(page);
+    await waitForInitialEditorFocus(page, editor);
+    const paragraph = editor.locator("p").filter({ hasText: middleParagraphText });
+    await paragraph.evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await expect(paragraph).toBeInViewport({ ratio: 1 });
+    await paragraph.tap();
+    await page.keyboard.press("End");
+    const insertedText = "手机中段实际输入后仍停在这里";
+    await page.keyboard.insertText(insertedText);
+    const editedParagraph = editor.locator("p").filter({ hasText: insertedText });
+    await expect(editedParagraph).toBeInViewport({ ratio: 1 });
+    const savedParagraphText = await editedParagraph.innerText();
+    const middleScrollY = await page.evaluate(() => window.scrollY);
+    expect(middleScrollY).toBeGreaterThan(500);
+
+    const release = resetScrollOnBlur ? gateSave(state) : null;
+    if (resetScrollOnBlur) {
+      await page.evaluate(() => {
+        // Simulate the transient relayout following keyboard dismissal. Keeping
+        // the save pending proves the reset happened before return navigation.
+        document.addEventListener("blur", (event) => {
+          if (!(event.target instanceof HTMLElement) || !event.target.matches(".edgeever-mobile-tiptap-content")) return;
+          const before = window.scrollY;
+          window.setTimeout(() => {
+            window.scrollTo(0, 0);
+            sessionStorage.setItem("e2e-mobile-blur-scroll-reset", JSON.stringify({ before, after: window.scrollY }));
+          }, 0);
+        }, true);
+      });
+    }
+    try {
+      await page.getByRole("button", { name: "完成", exact: true }).tap();
+      if (resetScrollOnBlur) {
+        await expect.poll(() => page.evaluate(() => {
+          const reset = sessionStorage.getItem("e2e-mobile-blur-scroll-reset");
+          return reset ? JSON.parse(reset) as { before: number; after: number } : null;
+        })).toEqual({ before: middleScrollY, after: 0 });
+        release!();
+      }
+      await expectPreview(page, "手机编辑测试笔记", insertedText);
+      expect(state.memo.contentText).toContain(savedParagraphText);
+      // A broad scroll fraction (> 0.55) also accepts jumping all the way to
+      // the bottom. Require the exact paragraph edited above to be on screen.
+      const previewParagraph = page.locator(".edgeever-workspace-editor p").filter({ hasText: insertedText });
+      await expect(previewParagraph).toHaveText(savedParagraphText);
+      await expectBodyBlockVisibleInPreview(previewParagraph);
+    } finally {
+      release?.();
+    }
+  });
+}
 
 test("Done returns to the scroll position where the editor left off", async ({ page }) => {
   const state = await mockWorkspace(page);

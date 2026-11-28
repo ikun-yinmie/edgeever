@@ -1,16 +1,21 @@
+import type { EditorView } from "@tiptap/pm/view";
 import { getEditorScrollProgress, restoreEditorScrollProgress } from "./editor-mode-scroll";
 
 export const EDITOR_SCROLL_MEMORY_STORAGE_KEY = "edgeever.editor.scroll-memory:v1";
 const MAX_ENTRIES = 40;
 
-type ScrollMetrics = Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">;
+type ScrollMetrics = Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">
+  & Partial<Pick<HTMLElement, "getBoundingClientRect">>;
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
+
+type EditorScrollAnchor = { position: number; offset: number };
 
 export type EditorScrollMemoryEntry = {
   progress: number;
   scrollHeight: number;
   scrollTop: number;
   updatedAt: number;
+  anchor?: EditorScrollAnchor;
 };
 
 type EditorScrollMemory = Record<string, EditorScrollMemoryEntry>;
@@ -91,15 +96,33 @@ export const captureEditorScrollMemory = (
   };
 };
 
+export const captureEditorScrollAnchor = (
+  view: EditorView,
+  viewportTop: number,
+): EditorScrollAnchor | undefined => {
+  const rect = view.dom.getBoundingClientRect();
+  const point = view.posAtCoords({ left: rect.left + Math.min(24, rect.width / 2), top: viewportTop + 24 });
+  if (!point) return undefined;
+  return { position: point.pos, offset: view.coordsAtPos(point.pos).top - viewportTop };
+};
+
 export const restoreEditorScrollMemory = (
   element: ScrollMetrics | null,
   entry: EditorScrollMemoryEntry,
+  view?: EditorView,
 ) => {
   if (!element) return false;
   restoreEditorScrollProgress(element, entry.progress);
   if (Math.abs(element.scrollHeight - entry.scrollHeight) <= 2) {
     const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
     element.scrollTop = Math.min(Math.max(0, entry.scrollTop), maxScrollTop);
+  }
+  const anchor = entry.anchor;
+  if (view && element.getBoundingClientRect && anchor
+    && isFiniteNumber(anchor.position) && isFiniteNumber(anchor.offset)
+    && Number.isInteger(anchor.position) && anchor.position >= 0 && anchor.position <= view.state.doc.content.size) {
+    const top = view.coordsAtPos(anchor.position).top;
+    element.scrollTop += top - element.getBoundingClientRect().top - anchor.offset;
   }
   return true;
 };

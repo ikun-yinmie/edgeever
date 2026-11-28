@@ -41,7 +41,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { LoadingSurface } from "@/components/ui/LoadingSurface";
 import { ClipboardCopyNotice } from "@/components/ClipboardCopyNotice";
 import { MemoEditorHeaderActions } from "@/components/MemoEditorHeaderActions";
 import { MemoEditorMetadataRow } from "@/components/MemoEditorMetadataRow";
@@ -1686,21 +1686,25 @@ const RichEditorPane = ({
       return;
     }
 
-    initialScrollRestoreDoneRef.current = true;
     if (useMarkdownSourceEditor || useMobilePlainTextEditor) return;
 
     const entry = readEditorScrollMemory(currentMemoId);
     if (!entry) return;
 
+    let secondFrame: number | null = null;
     const firstFrame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (!container.isConnected) return;
-        restoreEditorScrollMemory(container, entry);
+      secondFrame = window.requestAnimationFrame(() => {
+        if (!container.isConnected || memoRef.current?.id !== currentMemoId) return;
+        restoreEditorScrollMemory(container, entry, isEditorReady(editor) ? editor.view : undefined);
+        initialScrollRestoreDoneRef.current = true;
       });
     });
 
-    return () => window.cancelAnimationFrame(firstFrame);
-  }, [editorScrollContainer, hydratedEditorMemoId, memo?.id, useMarkdownSourceEditor, useMobilePlainTextEditor]);
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [editor, editorScrollContainer, hydratedEditorMemoId, memo?.id, useMarkdownSourceEditor, useMobilePlainTextEditor]);
 
   // A workspace restored from bfcache keeps its frozen scroll position and has
   // already consumed the one-shot restore above. On a fresh mount the restore
@@ -1709,23 +1713,20 @@ const RichEditorPane = ({
     const handleMobileEditorReturn = (event: Event) => {
       const detail = (event as CustomEvent<{ memoId?: string }>).detail;
       const currentMemoId = memo?.id ?? null;
-      if (
-        !currentMemoId
-        || detail?.memoId !== currentMemoId
-        || hydratedEditorMemoId !== currentMemoId
-      ) {
-        return;
-      }
+      if (!currentMemoId || detail?.memoId !== currentMemoId) return;
+      initialScrollRestoreDoneRef.current = false;
+      if (hydratedEditorMemoId !== currentMemoId) return;
       const container = editorScrollContainerRef.current;
       const entry = readEditorScrollMemory(currentMemoId);
       if (container && entry) {
-        restoreEditorScrollMemory(container, entry);
+        restoreEditorScrollMemory(container, entry, isEditorReady(editor) ? editor.view : undefined);
+        initialScrollRestoreDoneRef.current = true;
       }
     };
 
     window.addEventListener("edgeever:mobile-editor-return-preview", handleMobileEditorReturn);
     return () => window.removeEventListener("edgeever:mobile-editor-return-preview", handleMobileEditorReturn);
-  }, [hydratedEditorMemoId, memo?.id]);
+  }, [editor, hydratedEditorMemoId, memo?.id]);
 
   useEffect(() => {
     const syncPreference = (event?: Event) => {
@@ -4238,8 +4239,8 @@ const RichEditorPane = ({
       <div className="flex h-full min-w-0 flex-col bg-card">
         <EmptyEditorHeader />
         {selectionActionBar}
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <LoadingIndicator label={t("editor.loading")} size="md" />
+        <div className="min-h-0 flex-1">
+          <LoadingSurface label={t("editor.loading")} variant="editor" className="h-full" />
         </div>
       </div>
     );

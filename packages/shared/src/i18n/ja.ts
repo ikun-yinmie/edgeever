@@ -3,6 +3,8 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 // Shared by the PWA and native mobile clients.
 export const ja = {
   memoTasks: {
+    matched: "一致するタスク {{count}} 件 · 文脈の行を除く", taskCount: "{{count}} 件のタスク", tasksLabel: "件のタスク", notesCount: "{{count}} 件のノート", notebooksCount: "{{count}} 個のノートブック",
+    categoryHint: "子ノートブックも含めて表示します", unfiled: "ノートブックが利用できません", sourceNotebook: "元のノートブック", statusLabel: "状態",
     title: "タスク一覧", inNote: "本文のタスク", all: "すべて", pending: "未着手", doing: "進行中", done: "完了", rejected: "取り消し",
     description: "原文と階層を保ったまま、ノート内のタスクをまとめて確認できます。", rule: "親が未チェック・未取り消しで、子孫に完了または取り消しの項目がある場合、進行中と自動判定します。",
     automatic: "自動", search: "タスクやノートを検索…", allNotebooks: "すべてのノートブック", loading: "ノート内のタスクを読み込み中…", loadFailed: "読み込めませんでした。再試行してください。",

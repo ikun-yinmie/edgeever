@@ -77,6 +77,31 @@ describe("editor scroll memory", () => {
     expect(scroller.scrollTop).toBe(900);
   });
 
+  test("restores the visible document anchor across different editor layouts", () => {
+    const scroller = { ...createScroller(0, 6000, 600), getBoundingClientRect: () => ({ top: 80 }) };
+    const view = {
+      state: { doc: { content: { size: 1000 } } },
+      coordsAtPos: (position) => {
+        expect(position).toBe(420);
+        return { top: 3200 - scroller.scrollTop };
+      },
+    };
+    restoreEditorScrollMemory(scroller, {
+      progress: 0.5, scrollHeight: 4000, scrollTop: 1700, updatedAt: 1,
+      anchor: { position: 420, offset: 24 },
+    }, view);
+    expect(scroller.scrollTop).toBe(3096);
+  });
+
+  test("falls back to progress when the stored anchor is outside the document", () => {
+    const scroller = { ...createScroller(0, 6000, 600), getBoundingClientRect: () => ({ top: 80 }) };
+    restoreEditorScrollMemory(scroller, {
+      progress: 0.5, scrollHeight: 3000, scrollTop: 1200, updatedAt: 1,
+      anchor: { position: 420, offset: 24 },
+    }, { state: { doc: { content: { size: 100 } } } });
+    expect(scroller.scrollTop).toBe(2700);
+  });
+
   test("falls back to relative progress after content reflows", () => {
     const scroller = createScroller(0, 6000, 600);
     restoreEditorScrollMemory(scroller, {

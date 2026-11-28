@@ -59,7 +59,7 @@ import { parseImageWidth, TASK_ITEM_DEFAULT_IMAGE_WIDTH_PERCENT } from "@edgeeve
 import { ThemeBlock } from "./ThemeBlock";
 import { EditorTagPicker } from "./EditorTagPicker";
 import { cacheSavedLocalMemo, listLocalTags } from "@/lib/local-mirror";
-import { writeEditorScrollMemory } from "@/components/editor/editor-scroll-memory";
+import { captureEditorScrollAnchor, writeEditorScrollMemory, type EditorScrollMemoryEntry } from "@/components/editor/editor-scroll-memory";
 
 const ProtectedExternalImage = Image.extend({
   addPasteRules() {
@@ -622,25 +622,31 @@ export const MobileStandaloneTiptapEditor = ({
     }, EDITOR_LOCAL_SAVE_DELAY_MS);
   }, [persistLocalDraft, saveNow, setSaveStateStable]);
 
+  const returnScrollMemoryRef = useRef<EditorScrollMemoryEntry | null>(null);
+  const captureReturnScrollMemory = useCallback((): EditorScrollMemoryEntry => {
+    const scroller = document.scrollingElement;
+    const scrollHeight = Math.max(0, scroller?.scrollHeight ?? document.body.scrollHeight);
+    const scrollTop = Math.max(0, window.scrollY || scroller?.scrollTop || 0);
+    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
+    const viewportTop = document.querySelector(".mobile-editor-header")?.getBoundingClientRect().bottom ?? 0;
+    return {
+      progress: maxScrollTop > 0 ? Math.min(1, Math.max(0, scrollTop / maxScrollTop)) : 0,
+      scrollHeight,
+      scrollTop,
+      updatedAt: Date.now(),
+      anchor: editor && !editor.isDestroyed ? captureEditorScrollAnchor(editor.view, viewportTop) : undefined,
+    };
+  }, [editor]);
+
   const persistReturnPreview = useCallback(() => {
     const currentMemo = memoRef.current;
     if (!currentMemo) {
       return;
     }
 
-    // The preview restores this memo's scroll memory on the way back. Record
-    // the editor's own position: the entry the preview wrote is where the user
-    // left the reading screen, not where they edited.
-    const scroller = document.scrollingElement;
-    const scrollHeight = Math.max(0, scroller?.scrollHeight ?? document.body.scrollHeight);
-    const scrollTop = Math.max(0, window.scrollY || scroller?.scrollTop || 0);
-    const maxScrollTop = Math.max(0, scrollHeight - window.innerHeight);
-    writeEditorScrollMemory(currentMemo.id, {
-      progress: maxScrollTop > 0 ? Math.min(1, Math.max(0, scrollTop / maxScrollTop)) : 0,
-      scrollHeight,
-      scrollTop,
-      updatedAt: Date.now(),
-    });
+    // Keep the position captured before blur/keyboard dismissal, including on
+    // pagehide, which may run after navigation has changed the viewport.
+    writeEditorScrollMemory(currentMemo.id, returnScrollMemoryRef.current ?? captureReturnScrollMemory());
 
     writeMobileEditorReturnPreview({
       memoId: currentMemo.id,
@@ -650,7 +656,7 @@ export const MobileStandaloneTiptapEditor = ({
       tags: parseMobileEditorTags(tagsTextRef.current),
       updatedAt: dirtyRef.current ? new Date().toISOString() : currentMemo.updatedAt,
     });
-  }, []);
+  }, [captureReturnScrollMemory]);
 
   const navigateBack = useCallback(() => {
     persistReturnPreview();
@@ -689,6 +695,7 @@ export const MobileStandaloneTiptapEditor = ({
       return;
     }
 
+    returnScrollMemoryRef.current = captureReturnScrollMemory();
     leavingRef.current = true;
     setLeavePending(true);
     const wasEditable = Boolean(editor?.isEditable);
@@ -751,10 +758,12 @@ export const MobileStandaloneTiptapEditor = ({
         converged = !dirtyRef.current && currentSnapshot() === lastSavedSnapshotRef.current;
       }
       if (!converged) {
+        returnScrollMemoryRef.current = null;
         return;
       }
       navigateBack();
     } catch (saveError) {
+      returnScrollMemoryRef.current = null;
       setError(saveError instanceof Error ? saveError.message : t("editor.saveState.error"));
       setSaveStateStable("error");
     } finally {
@@ -767,7 +776,7 @@ export const MobileStandaloneTiptapEditor = ({
         editor.setEditable(wasEditable, false);
       }
     }
-  }, [currentSnapshot, editor, navigateBack, notebookUpdatePending, persistLocalDraft, saveNow, sendBackgroundSave, setSaveStateStable, t]);
+  }, [captureReturnScrollMemory, currentSnapshot, editor, navigateBack, notebookUpdatePending, persistLocalDraft, saveNow, sendBackgroundSave, setSaveStateStable, t]);
 
   const handleTitleChange = (nextTitle: string) => {
     setTitle(nextTitle);
@@ -1261,7 +1270,13 @@ export const MobileStandaloneTiptapEditor = ({
   };
 
   return (
-    <div className="mobile-editor-shell">
+    <div className="mobile-editor-shell" onPointerDownCapture={() => {
+      // A deliberate tap wins over the delayed initial focus at document end.
+      if (initialFocusTimerRef.current !== null) {
+        window.clearTimeout(initialFocusTimerRef.current);
+        initialFocusTimerRef.current = null;
+      }
+    }}>
       <MobileEditorHeader
         saveLabel={saveLabel}
         statusClassName={statusClassName}

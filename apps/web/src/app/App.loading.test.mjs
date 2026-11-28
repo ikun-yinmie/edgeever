@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
 
 describe("auth loading screen", () => {
-  test("shows a spinner and staged slow-network copy instead of a bare site name", () => {
-    expect(source).toContain("Loader2");
-    expect(source).toContain("animate-spin");
+  test("uses the shared branded startup surface and staged slow-network copy", () => {
+    expect(source).toContain('import { LoadingSurface } from "@/components/ui/LoadingSurface"');
+    expect(source).toContain('variant="startup"');
     expect(source).toContain('t("appLoading.waiting")');
     expect(source).toContain('t("appLoading.slowNetwork")');
     expect(source).toContain("setSlowNetwork(true), 10000");

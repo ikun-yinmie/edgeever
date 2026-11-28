@@ -58,13 +58,14 @@ const MobileEditorHeaderInner = ({
         type="button"
         aria-label={t("common.back")}
         disabled={backDisabled}
+        onPointerDown={(event) => event.preventDefault()}
         onClick={onBack ?? onLeave}
       >
         ‹
       </button>
       <div className="mobile-editor-actions">
         <span className={`mobile-editor-status ${statusClassName}`}>{saveLabel}</span>
-        <button className="mobile-editor-done" type="button" disabled={doneDisabled} onClick={onLeave}>
+        <button className="mobile-editor-done" type="button" disabled={doneDisabled} onPointerDown={(event) => event.preventDefault()} onClick={onLeave}>
           {t("editor.done")}
         </button>
       </div>

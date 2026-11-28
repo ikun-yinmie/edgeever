@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { Navigate, Route, Routes, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { PwaUpdateNotice } from "@/components/PwaUpdateNotice";
 import { PwaInstallProvider } from "@/components/PwaInstallContext";
 import { PwaIosPrompt } from "@/components/PwaIosPrompt";
 import { Button } from "@/components/ui/button";
+import { LoadingSurface } from "@/components/ui/LoadingSurface";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   api,
@@ -53,20 +53,18 @@ const AuthLoadingScreen = ({ title, detail }: { title?: string; detail?: string 
   }, []);
 
   return (
-    <div className="flex h-[100dvh] items-center justify-center bg-slate-50 px-6 text-center text-slate-700">
-      <div className="flex flex-col items-center" role="status" aria-live="polite">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" aria-hidden="true" />
-        <div className="mt-3 text-sm font-semibold">{title ?? getSiteDisplayName(branding)}</div>
-        <div className="mt-2 text-xs text-slate-500">
-          {detail ?? (slowNetwork ? t("appLoading.slowNetwork") : t("appLoading.waiting"))}
-        </div>
-        {stalled && (
-          <Button className="mt-4" size="sm" variant="outline" onClick={() => window.location.reload()}>
-            {t("appLoading.reload")}
-          </Button>
-        )}
-      </div>
-    </div>
+    <LoadingSurface
+      className="h-[100dvh]"
+      variant="startup"
+      label={t("appLoading.waiting")}
+      title={title ?? getSiteDisplayName(branding)}
+      detail={detail ?? (slowNetwork ? t("appLoading.slowNetwork") : t("appLoading.waiting"))}
+      action={stalled ? (
+        <Button className="mt-4" size="sm" variant="outline" onClick={() => window.location.reload()}>
+          {t("appLoading.reload")}
+        </Button>
+      ) : undefined}
+    />
   );
 };
 

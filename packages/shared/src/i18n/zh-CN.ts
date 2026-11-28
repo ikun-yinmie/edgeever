@@ -3,6 +3,8 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 // Shared by the PWA and native mobile clients.
 export const zhCN = {
   memoTasks: {
+    matched: "{{count}} 项匹配待办 · 不含上下文", taskCount: "{{count}} 项待办", tasksLabel: "项待办", notesCount: "{{count}} 篇笔记", notebooksCount: "{{count}} 个笔记本",
+    categoryHint: "选择笔记本时包含所有子级", unfiled: "笔记本不可用", sourceNotebook: "来源笔记本", statusLabel: "状态",
     title: "待办总览", inNote: "本文待办", all: "全部", pending: "未进行", doing: "进行中", done: "已完成", rejected: "已叉掉",
     description: "汇总笔记里的待办，保留原文与子级关系。", rule: "父项未勾选、未叉掉，但子级已有已完成或已叉掉的事项时，自动归入进行中。",
     automatic: "自动", search: "搜索待办内容或笔记…", allNotebooks: "全部笔记本", loading: "正在读取笔记中的待办…", loadFailed: "待办读取失败，请重试。",

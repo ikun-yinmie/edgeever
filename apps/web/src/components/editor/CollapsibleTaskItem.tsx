@@ -89,6 +89,10 @@ export const CollapsibleTaskItem = EdgeEverTaskItem.extend({
       checkboxStyler.style.cssText = visuallyHiddenStyle;
       checkboxWrapper.contentEditable = "false";
       checkbox.type = "checkbox";
+      // Touch must keep the editor's focus/selection just like a mouse click.
+      // Moving focus to the native input can dismiss the keyboard and scroll
+      // the old text selection back into view on mobile browsers.
+      checkboxWrapper.addEventListener("pointerdown", (event) => event.preventDefault());
       checkbox.addEventListener("mousedown", (event) => event.preventDefault());
 
       const syncCheckboxA11y = (currentNode: typeof node) => {

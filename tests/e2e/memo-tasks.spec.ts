@@ -146,7 +146,7 @@ test("task overview and in-note dialog derive progress and persist marks", async
     await overviewSearch.fill("No such task anywhere");
     await expect(page.getByText("没有匹配的待办", { exact: true })).toBeVisible();
     await overviewSearch.fill(title);
-    await page.locator('button[aria-pressed]').filter({ hasText: "已完成" }).click();
+    await page.locator('[data-task-status-filters] button[aria-pressed]').filter({ hasText: "已完成" }).click();
     const completedParent = page.locator('[data-task-status="done"]').filter({ has: page.getByText("Parent", { exact: true }) });
     await completedParent.getByRole("button", { name: /定位原文/ }).click();
     await expect(editor).toContainText("Parent");
