@@ -1,23 +1,20 @@
 {
-  "version": "1.111.0",
+  "version": "1.111.1",
   "changes": {
     "en-US": [
-      "Bind and verify an account email in settings with your password and an email verification code",
-      "Online feedback now uses the account's verified email as the reply address and shows it to the administrator",
-      "Registration marks the address verified once the code is confirmed and SMTP configuration is validated uniformly",
-      "The desktop renderer error screen offers expandable diagnostics with one-click copy"
+      "Filter notes by status (in progress, completed, cancelled, no status) across the web list, desktop sidecar, and mobile app; refine nested task list indentation",
+      "Rework the login error surface: collapse diagnostics (error code, CF-Ray, time, client version) into an expandable details drawer with one-tap copy",
+      "Unify the remaining loading states: assets-pane skeleton, branded share-page loading, and the standard settings loading indicator"
     ],
     "zh-CN": [
-      "设置页支持绑定并验证账号邮箱（需当前密码与邮箱验证码）",
-      "站内反馈改用账号已验证的邮箱作为回复地址，管理员可直接回复",
-      "注册验证码确认后邮箱即标记为已验证，并统一校验 SMTP 配置",
-      "桌面端页面异常时可展开诊断信息并一键复制"
+      "笔记列表支持按状态筛选（进行中/已完成/已取消/无状态），Web、桌面与手机端全端生效；优化嵌套待办列表缩进",
+      "登录失败提示美化：错误代码默认折叠进「详细信息」抽屉，展开显示错误代码/CF-Ray/发生时间/版本并支持一键复制",
+      "补齐加载效果：附件资源库改骨架屏、公开分享页启用品牌加载动画、设置卡加载样式统一"
     ],
     "ja": [
-      "設定で現在のパスワードとメール認証コードによりアカウントメールを連携・検証できるようになりました",
-      "フィードバックには認証済みのアカウントメールを返信先として使用し、管理者に表示するようになりました",
-      "登録時に認証コード確認済みのメールを検証済みとして記録し、SMTP設定の検証を統一しました",
-      "デスクトップのエラー画面で診断情報を展開してコピーできるようになりました"
+      "ノートをステータス（進行中・完了・取消し・ステータスなし）で絞り込めるようにし、Web・デスクトップ・モバイルで利用可能に。ネストしたタスクリストのインデントを調整",
+      "ログインエラー表示を刷新：診断情報（エラーコード・CF-Ray・発生時刻・バージョン）を「詳細情報」に折りたたみ、ワンタップでコピー可能に",
+      "ローディング表示を統一：添付リソースのスケルトン、共有ページのブランドローディング、設定カードのインジケータを整える"
     ]
   }
 }
