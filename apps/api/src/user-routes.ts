@@ -249,8 +249,10 @@ export const registerUserRoutes = (
       binds.push(input.displayName);
     }
     if (input.email !== undefined) {
-      updates.push("email = ?");
-      binds.push(input.email);
+      // Compare against the row at write time, not the earlier admin read: a
+      // concurrent verification must not leave a replacement address verified.
+      updates.push("email_verified_at = CASE WHEN email IS NOT ? THEN NULL ELSE email_verified_at END", "email = ?");
+      binds.push(input.email, input.email);
     }
     if (input.password !== undefined) {
       updates.push("password_hash = ?");

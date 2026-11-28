@@ -129,7 +129,10 @@ export const verifyLogin = async (env: Bindings, username: string, password: str
   // Members may sign in with their username or their registered email address.
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedUsername);
   const existingUser = isEmail
-    ? await getUserByEmail(env.storage.db, normalizedUsername.toLowerCase())
+    ? (await getUserByEmail(env.storage.db, normalizedUsername)
+      ?? (normalizedUsername !== normalizedUsername.toLowerCase()
+        ? await getUserByEmail(env.storage.db, normalizedUsername.toLowerCase())
+        : null))
     : await getUserByUsername(env.storage.db, normalizedUsername);
 
   if (existingUser) {
@@ -208,7 +211,7 @@ const getUserByEmail = async (db: DatabaseAdapter, email: string) =>
 
 export const getInstanceUser = (db: DatabaseAdapter, userId: string) =>
   db.prepare(
-    `SELECT u.id, u.username, u.password_hash, u.display_name, u.is_disabled,
+    `SELECT u.id, u.username, u.password_hash, u.display_name, u.email, u.is_disabled, u.is_deleted,
             u.last_login_at, u.created_at, u.account_type, wm.role
      FROM users u
      INNER JOIN workspace_members wm ON wm.user_id = u.id

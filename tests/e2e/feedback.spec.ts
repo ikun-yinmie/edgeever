@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 test.use({ storageState: { cookies: [], origins: [] } });
 
 type Failure = { code: string; status: number; details?: Record<string, unknown> };
-type Submission = { requestId: string; content: string; replyTo: string | null; systemInfo: string | null };
+type Submission = { requestId: string; content: string; replyTo?: string | null; systemInfo: string | null };
 
 const mockWorkspace = async (page: Page) => {
   const state = {
@@ -14,6 +14,18 @@ const mockWorkspace = async (page: Page) => {
     postGate: null as Promise<void> | null,
     failure: null as Failure | null,
     adminFailure: null as Failure | null,
+    accountEmail: {
+      email: "bound@example.test" as string | null,
+      emailVerifiedAt: "2026-11-28T00:00:00.000Z" as string | null,
+      canManage: true,
+      emailDeliveryConfigured: true,
+    },
+    accountEmailFailure: null as Failure | null,
+    accountEmailGate: null as Promise<void> | null,
+    emailCodeFailure: null as Failure | null,
+    emailVerifyFailure: null as Failure | null,
+    emailCodeRequests: [] as Array<{ email: string; currentPassword: string }>,
+    emailVerifyRequests: [] as Array<{ email: string; code: string; currentPassword: string }>,
     configReads: 0,
     submissions: [] as Submission[],
     patches: [] as Record<string, unknown>[],
@@ -57,6 +69,24 @@ const mockWorkspace = async (page: Page) => {
         Object.assign(state.settings, patch);
       }
       return json({ settings: state.settings });
+    }
+    if (path === "/api/v1/auth/email") {
+      if (state.accountEmailGate) await state.accountEmailGate;
+      return state.accountEmailFailure ? fail(state.accountEmailFailure) : json({ accountEmail: state.accountEmail });
+    }
+    if (path === "/api/v1/auth/email/code") {
+      state.emailCodeRequests.push(route.request().postDataJSON());
+      return state.emailCodeFailure ? fail(state.emailCodeFailure)
+        : json({ ok: true, expiresInMinutes: 10, cooldownSeconds: 60 });
+    }
+    if (path === "/api/v1/auth/email/verify") {
+      const input = route.request().postDataJSON();
+      state.emailVerifyRequests.push(input);
+      if (state.emailVerifyFailure) return fail(state.emailVerifyFailure);
+      if (input.code !== "654321") return fail({ code: "email_code_invalid", status: 400 });
+      state.accountEmail.email = input.email;
+      state.accountEmail.emailVerifiedAt = "2026-11-28T01:00:00.000Z";
+      return json({ accountEmail: state.accountEmail });
     }
     if (path === "/api/v1/auth/session") return json({
       authRequired: true, authenticated: true, demoMode: false,
@@ -127,7 +157,8 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "
       await page.goto("/settings");
       const dialog = await openFeedback(page);
       const content = dialog.getByLabel("反馈内容", { exact: true });
-      const replyTo = dialog.getByLabel("回复邮箱（可选）", { exact: true });
+      await expect(dialog).toContainText("bound@example.test");
+      await expect(dialog.getByLabel("回复邮箱（可选）", { exact: true })).toHaveCount(0);
       const submit = dialog.getByRole("button", { name: "提交反馈", exact: true });
       await content.fill("   ");
       await submit.click();
@@ -135,21 +166,17 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "
       await content.fill("a".repeat(5001));
       await submit.click();
       await expect(dialog.getByRole("alert")).toContainText("1–5000");
-      await content.fill("  可复现的问题  ");
-      await replyTo.fill("invalid-email");
-      await submit.click();
-      await expect(replyTo).toHaveAttribute("aria-invalid", "true");
       expect(state.submissions).toHaveLength(0);
-      await replyTo.fill("reply@example.test");
+      await content.fill("  可复现的问题  ");
       await submit.click();
       await expect(dialog.getByRole("alert")).toContainText("反馈邮件发送失败");
       await expect(content).toHaveValue("  可复现的问题  ");
-      await expect(replyTo).toHaveValue("reply@example.test");
-      await expect(replyTo).toHaveAttribute("maxlength", "200");
+      await expect(dialog).toContainText("bound@example.test");
       await expect(dialog.getByRole("link", { name: "support@example.test", exact: true })).toHaveAttribute("href", "mailto:support@example.test");
       await dialog.getByRole("button", { name: "复制邮箱", exact: true }).click();
       await expect(dialog.getByText("邮箱已复制。", { exact: true })).toBeVisible();
-      expect(state.submissions[0]).toMatchObject({ content: "可复现的问题", replyTo: "reply@example.test", systemInfo: null });
+      expect(state.submissions[0]).toMatchObject({ content: "可复现的问题", systemInfo: null });
+      expect([undefined, null, "bound@example.test"]).toContain(state.submissions[0].replyTo);
       expect(state.submissions[0].requestId).toMatch(/^[a-f\d-]{36}$/i);
       await dialog.getByRole("button", { name: "关闭", exact: true }).click();
       await openFeedback(page);
@@ -177,7 +204,7 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "
       await dialog.getByRole("button", { name: "关闭", exact: true }).click();
       await openFeedback(page);
       await expect(content).toHaveValue("");
-      await expect(replyTo).toHaveValue("");
+      await expect(dialog).toContainText("bound@example.test");
       await expect(dialog.getByRole("checkbox")).not.toBeChecked();
       expect(state.submissions).toHaveLength(3);
     });
@@ -208,6 +235,102 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 900 }, { name: "
       await expect(dialog).toContainText("反馈已发送");
       expect(state.submissions).toHaveLength(2);
       expect(state.submissions[1].requestId).toBe(state.submissions[0].requestId);
+    });
+
+    test("verifies a binding inside feedback and keeps the original draft through failures", async ({ page }) => {
+      const state = await mockWorkspace(page);
+      await page.goto("/settings");
+      const dialog = await openFeedback(page);
+      const content = dialog.getByLabel("反馈内容", { exact: true });
+      await content.fill("验证完成后继续发送原来的反馈");
+      state.accountEmail.emailVerifiedAt = null;
+      state.failure = { code: "feedback_email_unverified", status: 403 };
+      await dialog.getByRole("button", { name: "提交反馈", exact: true }).click();
+      await expect(dialog.getByRole("button", { name: "提交反馈", exact: true })).toBeDisabled();
+      await expect(content).toHaveValue("验证完成后继续发送原来的反馈");
+      await dialog.getByRole("button", { name: "绑定或验证邮箱", exact: true }).click();
+      const manager = page.getByRole("dialog", { name: "账号邮箱", exact: true });
+      await expect(manager).toBeVisible();
+      await expect(manager.locator("form form")).toHaveCount(0);
+      await manager.getByLabel("新邮箱", { exact: true }).fill("new-bound@example.test");
+      await manager.getByLabel("当前密码", { exact: true }).fill("incorrect-password");
+      state.emailCodeFailure = { code: "invalid_current_password", status: 400 };
+      await manager.getByRole("button", { name: "发送验证码", exact: true }).click();
+      await expect(manager.getByRole("alert")).toContainText("当前密码");
+      await expect(manager.getByRole("alert")).not.toContainText("Untranslated server message");
+      state.emailCodeFailure = null;
+      await manager.getByLabel("当前密码", { exact: true }).fill("controlled-test-password");
+      await manager.getByRole("button", { name: "发送验证码", exact: true }).click();
+      await expect(manager.getByLabel("邮箱验证码", { exact: true })).toBeEnabled();
+      expect(state.emailCodeRequests.at(-1)).toEqual({ email: "new-bound@example.test", currentPassword: "controlled-test-password" });
+      await manager.getByLabel("邮箱验证码", { exact: true }).fill("000000");
+      await manager.getByRole("button", { name: "确认绑定", exact: true }).click();
+      await expect(manager.getByRole("alert")).toContainText("验证码");
+      await expect(manager.getByLabel("新邮箱", { exact: true })).toHaveValue("new-bound@example.test");
+      await manager.screenshot({ path: test.info().outputPath(`account-email-verification-${viewport.name}.png`) });
+      await manager.getByLabel("邮箱验证码", { exact: true }).fill("654321");
+      await manager.getByRole("button", { name: "确认绑定", exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText("new-bound@example.test");
+      await expect(content).toHaveValue("验证完成后继续发送原来的反馈");
+      await expect(dialog.getByRole("button", { name: "提交反馈", exact: true })).toBeEnabled();
+      await dialog.screenshot({ path: test.info().outputPath(`feedback-verified-${viewport.name}.png`) });
+      state.failure = null;
+      await dialog.getByRole("button", { name: "提交反馈", exact: true }).click();
+      await expect(dialog).toContainText("反馈已发送");
+      expect(state.submissions).toHaveLength(2);
+      expect(state.submissions[1]).toEqual(state.submissions[0]);
+      expect(state.submissions[1].replyTo).toBeUndefined();
+    });
+
+    test("account settings retain the old email until rebind confirmation and clear credentials afterwards", async ({ page }) => {
+      const state = await mockWorkspace(page);
+      await page.goto("/settings");
+      await page.getByRole("button", { name: "登录设置", exact: true }).click();
+      const card = page.getByRole("region", { name: "账号邮箱", exact: true });
+      await expect(card).toContainText("bound@example.test");
+      await card.getByLabel("新邮箱", { exact: true }).fill("Replacement@Example.test");
+      await card.getByLabel("当前密码", { exact: true }).fill("controlled-test-password");
+      await card.getByRole("button", { name: "发送验证码", exact: true }).click();
+      await expect(card.getByLabel("邮箱验证码", { exact: true })).toBeEnabled();
+      await expect(card).toContainText("bound@example.test");
+      expect(state.accountEmail.email).toBe("bound@example.test");
+      await card.getByLabel("邮箱验证码", { exact: true }).fill("654321");
+      await card.getByRole("button", { name: "确认绑定", exact: true }).click();
+      await expect(card).toContainText("邮箱已验证并绑定");
+      await expect(card).toContainText("Replacement@Example.test");
+      await expect(card.getByLabel("当前密码", { exact: true })).toHaveValue("");
+      await expect(card.getByLabel("邮箱验证码", { exact: true })).toHaveValue("");
+      await card.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: test.info().outputPath(`account-email-settings-${viewport.name}.png`) });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    });
+
+    test("blocks stale verified-email cache while refreshing or after a failed refresh", async ({ page }) => {
+      const state = await mockWorkspace(page);
+      await page.goto("/settings");
+      const dialog = await openFeedback(page);
+      const submit = dialog.getByRole("button", { name: "提交反馈", exact: true });
+      await expect(submit).toBeEnabled();
+      await dialog.getByLabel("反馈内容", { exact: true }).fill("刷新失败时保留这段草稿");
+      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      let release!: () => void;
+      state.accountEmailGate = new Promise<void>((resolve) => { release = resolve; });
+      state.accountEmailFailure = { code: "unavailable", status: 503 };
+      await openFeedback(page);
+      await expect(submit).toBeDisabled();
+      release();
+      await expect(dialog.getByRole("alert")).toBeVisible();
+      await expect(submit).toBeDisabled();
+      await expect(dialog.getByLabel("反馈内容", { exact: true })).toHaveValue("刷新失败时保留这段草稿");
+      expect(state.submissions).toHaveLength(0);
+      state.accountEmailGate = null;
+      state.accountEmailFailure = null;
+      await dialog.getByRole("button", { name: "重试", exact: true }).click();
+      await expect(submit).toBeEnabled();
+      await submit.click();
+      await expect(dialog).toContainText("反馈已发送");
+      expect(state.submissions).toHaveLength(1);
     });
 
     test("handles busy and disabled responses without exposing raw server errors", async ({ page }) => {

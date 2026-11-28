@@ -1,50 +1,70 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
-import { ApiRequestError, api } from "@/lib/api";
+import { ApiRequestError, api, type AccountEmail } from "@/lib/api";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { createClientUuid } from "@/lib/client-id";
 import { getClientRuntimeDiagnostics } from "@/lib/system-diagnostics";
+import { AccountEmailForm, accountEmailQueryKey } from "./AccountEmailCard";
 import { getShareableWebSystemInfoItems, type SystemInfoDiagnostics } from "./SystemInfoPanel";
 
 type FeedbackPayload = Parameters<typeof api.submitFeedback>[0];
+
+type FeedbackDialogProps = {
+  diagnostics?: SystemInfoDiagnostics | null;
+  /** Already sanitized diagnostics included only when the user opts in. */
+  extraSystemInfo?: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  accountId?: string | null;
+  accountType?: "user" | "group";
+  authRequired?: boolean;
+  demoMode?: boolean;
+  sessionKey?: string;
+};
 
 export const FeedbackDialog = ({
   diagnostics,
   extraSystemInfo,
   open,
   onOpenChange,
-}: {
-  diagnostics?: SystemInfoDiagnostics | null;
-  /** Already sanitized diagnostics included only when the user opts in. */
-  extraSystemInfo?: string | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) => {
+  accountId = null,
+  accountType,
+  authRequired = false,
+  demoMode = false,
+  sessionKey = "default",
+}: FeedbackDialogProps) => {
   const { t, i18n } = useTranslation();
   const id = useId();
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
-  const [replyTo, setReplyTo] = useState("");
   const [includeSystemInfo, setIncludeSystemInfo] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ content?: string; replyTo?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ content?: string }>({});
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
   const [retryAt, setRetryAt] = useState<number | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [showEmailManager, setShowEmailManager] = useState(false);
   // Keep the exact payload for a failed attempt, including its diagnostics snapshot.
   const requestRef = useRef<FeedbackPayload | null>(null);
   const submittingRef = useRef(false);
+  const supportedAccount = Boolean(accountId && authRequired && !demoMode && accountType !== "group");
   const configQuery = useQuery({
     queryKey: ["public-feedback"],
     queryFn: api.getFeedbackConfig,
     enabled: open,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const accountEmailQuery = useQuery({
+    queryKey: accountEmailQueryKey(accountId, sessionKey),
+    queryFn: api.getAccountEmail,
+    enabled: open && supportedAccount,
     staleTime: 0,
     retry: false,
     refetchOnWindowFocus: false,
@@ -58,13 +78,34 @@ export const FeedbackDialog = ({
   });
   const submitMutation = useMutation({ mutationFn: api.submitFeedback, retry: false });
   const feedback = configQuery.data?.feedback;
+  const accountEmail: AccountEmail | undefined = accountEmailQuery.data?.accountEmail;
+  const accountEmailReady = Boolean(
+    supportedAccount
+    && !accountEmailQuery.isFetching
+    && !accountEmailQuery.isError
+    && accountEmail?.email
+    && accountEmail.emailVerifiedAt
+    && accountEmail.canManage
+    && accountEmail.emailDeliveryConfigured,
+  );
 
   useEffect(() => {
     if (open) {
       setSucceeded(false);
       setCopyState("idle");
+      setShowEmailManager(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    setContent("");
+    setIncludeSystemInfo(false);
+    setFieldErrors({});
+    setErrorKey(null);
+    setSucceeded(false);
+    setShowEmailManager(false);
+    requestRef.current = null;
+  }, [accountId, sessionKey]);
 
   useEffect(() => {
     if (retryAt === null) return;
@@ -82,13 +123,11 @@ export const FeedbackDialog = ({
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (submittingRef.current || retryAt !== null || !feedback?.enabled || configQuery.isFetching
-      || (includeSystemInfo && clientRuntimeQuery.isFetching)) return;
+      || accountEmailQuery.isFetching || !accountEmailReady || (includeSystemInfo && clientRuntimeQuery.isFetching)) return;
     const trimmedContent = content.trim();
-    const trimmedReplyTo = replyTo.trim();
-    const nextErrors = {
-      ...(trimmedContent.length < 1 || trimmedContent.length > 5000 ? { content: t("feedback.contentInvalid") } : {}),
-      ...(trimmedReplyTo && !z.email().max(200).safeParse(trimmedReplyTo).success ? { replyTo: t("feedback.replyToInvalid") } : {}),
-    };
+    const nextErrors = trimmedContent.length < 1 || trimmedContent.length > 5000
+      ? { content: t("feedback.contentInvalid") }
+      : {};
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -98,7 +137,6 @@ export const FeedbackDialog = ({
       requestRef.current ??= {
         requestId: createClientUuid(),
         content: trimmedContent,
-        replyTo: trimmedReplyTo || null,
         systemInfo: includeSystemInfo
           ? [
             getShareableWebSystemInfoItems(t, i18n.language, {
@@ -111,7 +149,6 @@ export const FeedbackDialog = ({
       };
       await submitMutation.mutateAsync(requestRef.current);
       setContent("");
-      setReplyTo("");
       setIncludeSystemInfo(false);
       requestRef.current = null;
       setRetryAt(null);
@@ -131,7 +168,11 @@ export const FeedbackDialog = ({
       } else {
         setErrorKey(code === "feedback_rate_limited" ? "feedback.rateLimited"
           : code === "feedback_busy" ? "feedback.busy"
-          : code === "email_delivery_failed" ? "feedback.deliveryFailed" : "feedback.submitFailed");
+          : code === "email_delivery_failed" ? "feedback.deliveryFailed"
+          : code === "feedback_email_unverified" ? "feedback.emailUnverified"
+          : code === "feedback_email_mismatch" ? "feedback.emailMismatch"
+          : "feedback.submitFailed");
+        if (code === "feedback_email_unverified") await accountEmailQuery.refetch();
         if ((code === "feedback_rate_limited" || code === "feedback_busy")
           && typeof details.retryAfterSeconds === "number" && Number.isFinite(details.retryAfterSeconds)
           && details.retryAfterSeconds > 0) {
@@ -160,80 +201,113 @@ export const FeedbackDialog = ({
     </div>
   ) : null;
 
+  const accountGate = !supportedAccount ? (
+    <div className="space-y-3" role="status">
+      <p className="text-sm text-amber-900">{t(demoMode ? "feedback.emailUnsupportedDemo" : accountType === "group" ? "feedback.emailUnsupportedGroup" : "feedback.emailUnsupportedLocal")}</p>
+    </div>
+  ) : accountEmailQuery.isFetching ? (
+    <LoadingIndicator label={t("feedback.loadingEmail")} centered />
+  ) : accountEmailQuery.isError ? (
+    <div className="space-y-3" role="alert">
+      <p className="text-sm text-rose-600">{t("feedback.emailUnavailable")}</p>
+      <Button onClick={() => void accountEmailQuery.refetch()} type="button" variant="outline">{t("feedback.retry")}</Button>
+    </div>
+  ) : !accountEmail?.emailDeliveryConfigured ? (
+    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">{t("feedback.smtpNotConfigured")}</p>
+  ) : !accountEmail?.email || !accountEmail.emailVerifiedAt ? (
+    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3" role="status">
+      <p className="text-sm text-amber-900">{t(accountEmail?.email ? "feedback.emailUnverified" : "feedback.emailNotBound")}</p>
+      <Button onClick={() => setShowEmailManager(true)} type="button" variant="outline">{t("feedback.manageEmail")}</Button>
+    </div>
+  ) : (
+    <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2.5">
+      <p className="text-xs font-semibold text-emerald-800">{t("feedback.fixedEmailLabel")}</p>
+      <p className="mt-1 break-all text-sm font-medium text-emerald-950">{accountEmail.email}</p>
+      <p className="mt-1 text-xs text-emerald-800">{t("feedback.fixedEmailHint")}</p>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>{t("feedback.title")}</DialogTitle>
-          <DialogDescription>{t("feedback.dialogDescription")}</DialogDescription>
+          <DialogTitle>{t(showEmailManager ? "accountEmail.title" : "feedback.title")}</DialogTitle>
+          <DialogDescription>{t(showEmailManager ? "accountEmail.description" : "feedback.dialogDescription")}</DialogDescription>
         </DialogHeader>
 
-        {configQuery.isFetching ? (
-          <LoadingIndicator label={t("feedback.loadingConfig")} centered />
-        ) : configQuery.isError ? (
-          <div className="space-y-3">
-            <p className="text-sm text-rose-600" role="alert">{t("feedback.configFailed")}</p>
-            <Button onClick={() => void configQuery.refetch()} type="button" variant="outline">{t("feedback.retry")}</Button>
-          </div>
-        ) : !feedback?.enabled ? (
-          <div className="space-y-3 text-sm" role="status">
-            <p className="break-words">{t(feedback?.contactEmail ? "feedback.disabledWithContact" : "feedback.disabledWithoutContact", { email: feedback?.contactEmail })}</p>
-            {contactDetails}
-          </div>
-        ) : succeeded ? (
-          <p className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800" role="status">{t("feedback.success")}</p>
+        {showEmailManager ? (
+          <>
+            <AccountEmailForm
+              accountId={accountId}
+              accountType={accountType}
+              authRequired={authRequired}
+              demoMode={demoMode}
+              embedded
+              onCompleted={() => setShowEmailManager(false)}
+              sessionKey={sessionKey}
+            />
+            <DialogFooter>
+              <Button onClick={() => setShowEmailManager(false)} type="button" variant="outline">{t("feedback.backToFeedback")}</Button>
+            </DialogFooter>
+          </>
         ) : (
-          <form className="space-y-4" id={`${id}-form`} noValidate onSubmit={(event) => void handleSubmit(event)}>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor={`${id}-content`}>{t("feedback.issueContentHeading")}</label>
-              <textarea
-                aria-describedby={fieldErrors.content ? `${id}-content-error` : `${id}-limit`}
-                aria-invalid={Boolean(fieldErrors.content)}
-                className="flex min-h-36 w-full resize-y rounded-md border border-slate-200 bg-transparent px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 sm:text-sm"
-                disabled={submitMutation.isPending}
-                id={`${id}-content`}
-                onChange={(event) => { changeDraft(); setContent(event.target.value); }}
-                placeholder={t("feedback.issueContentPrompt")}
-                value={content}
-              />
-              <p className="text-xs text-slate-500" id={`${id}-limit`}>{t("feedback.contentLimit", { count: content.trim().length })}</p>
-              {fieldErrors.content ? <p className="text-xs text-rose-600" id={`${id}-content-error`} role="alert">{fieldErrors.content}</p> : null}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor={`${id}-reply`}>{t("feedback.replyToLabel")}</label>
-              <Input
-                aria-describedby={fieldErrors.replyTo ? `${id}-reply-error` : undefined}
-                aria-invalid={Boolean(fieldErrors.replyTo)}
-                autoComplete="email"
-                disabled={submitMutation.isPending}
-                id={`${id}-reply`}
-                maxLength={200}
-                onChange={(event) => { changeDraft(); setReplyTo(event.target.value); }}
-                type="email"
-                value={replyTo}
-              />
-              {fieldErrors.replyTo ? <p className="text-xs text-rose-600" id={`${id}-reply-error`} role="alert">{fieldErrors.replyTo}</p> : null}
-            </div>
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox checked={includeSystemInfo} disabled={submitMutation.isPending} onCheckedChange={(checked) => { changeDraft(); setIncludeSystemInfo(checked === true); }} />
-              <span>{t("feedback.includeSystemInfo")}<span className="mt-1 block text-xs text-slate-500">{t("feedback.systemInfoNotice")}</span></span>
-            </label>
-            <p className="text-xs text-slate-500">{t("feedback.onlinePrivacyNotice")}</p>
-            <p className="text-xs text-slate-500">{t("feedback.quotaHint")}</p>
-            {errorKey ? <p className="text-sm text-rose-600" role="alert">{t(errorKey)}</p> : null}
-            {errorKey && contactDetails ? <div className="space-y-2 text-sm"><p>{t("feedback.contactAdminHint")}</p>{contactDetails}</div> : null}
-            {retryAt !== null ? <p className="text-sm text-amber-800" role="status">{t("feedback.retryAt", { time: new Date(retryAt).toLocaleString(i18n.language) })}</p> : null}
-          </form>
+          <>
+            {configQuery.isFetching ? (
+              <LoadingIndicator label={t("feedback.loadingConfig")} centered />
+            ) : configQuery.isError ? (
+              <div className="space-y-3">
+                <p className="text-sm text-rose-600" role="alert">{t("feedback.configFailed")}</p>
+                <Button onClick={() => void configQuery.refetch()} type="button" variant="outline">{t("feedback.retry")}</Button>
+              </div>
+            ) : !feedback?.enabled ? (
+              <div className="space-y-3 text-sm" role="status">
+                <p className="break-words">{t(feedback?.contactEmail ? "feedback.disabledWithContact" : "feedback.disabledWithoutContact", { email: feedback?.contactEmail })}</p>
+                {contactDetails}
+              </div>
+            ) : succeeded ? (
+              <p className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800" role="status">{t("feedback.success")}</p>
+            ) : (
+              <form className="space-y-4" id={`${id}-form`} noValidate onSubmit={(event) => void handleSubmit(event)}>
+                {accountGate}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor={`${id}-content`}>{t("feedback.issueContentHeading")}</label>
+                  <textarea
+                    aria-describedby={fieldErrors.content ? `${id}-content-error` : `${id}-limit`}
+                    aria-invalid={Boolean(fieldErrors.content)}
+                    className="flex min-h-36 w-full resize-y rounded-md border border-slate-200 bg-transparent px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 sm:text-sm"
+                    disabled={submitMutation.isPending || !accountEmailReady}
+                    id={`${id}-content`}
+                    onChange={(event) => { changeDraft(); setContent(event.target.value); }}
+                    placeholder={t("feedback.issueContentPrompt")}
+                    value={content}
+                  />
+                  <p className="text-xs text-slate-500" id={`${id}-limit`}>{t("feedback.contentLimit", { count: content.trim().length })}</p>
+                  {fieldErrors.content ? <p className="text-xs text-rose-600" id={`${id}-content-error`} role="alert">{fieldErrors.content}</p> : null}
+                </div>
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox checked={includeSystemInfo} disabled={submitMutation.isPending || !accountEmailReady} onCheckedChange={(checked) => { changeDraft(); setIncludeSystemInfo(checked === true); }} />
+                  <span>{t("feedback.includeSystemInfo")}<span className="mt-1 block text-xs text-slate-500">{t("feedback.systemInfoNotice")}</span></span>
+                </label>
+                <p className="text-xs text-slate-500">{t("feedback.onlinePrivacyNotice")}</p>
+                <p className="text-xs text-slate-500">{t("feedback.quotaHint")}</p>
+                {errorKey ? <p className="text-sm text-rose-600" role="alert">{t(errorKey)}</p> : null}
+                {errorKey && contactDetails ? <div className="space-y-2 text-sm"><p>{t("feedback.contactAdminHint")}</p>{contactDetails}</div> : null}
+                {retryAt !== null ? <p className="text-sm text-amber-800" role="status">{t("feedback.retryAt", { time: new Date(retryAt).toLocaleString(i18n.language) })}</p> : null}
+              </form>
+            )}
+          </>
         )}
 
-        <DialogFooter className="gap-2 sm:space-x-0">
-          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">{t("common.close")}</Button>
-          {feedback?.enabled && !configQuery.isFetching && !configQuery.isError && !succeeded ? (
-            <Button disabled={submitMutation.isPending || retryAt !== null || (includeSystemInfo && clientRuntimeQuery.isFetching)} form={`${id}-form`} type="submit" variant="solid">
-              {t(submitMutation.isPending ? "feedback.submitting" : "feedback.submit")}
-            </Button>
-          ) : null}
-        </DialogFooter>
+        {!showEmailManager ? (
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button onClick={() => onOpenChange(false)} type="button" variant="outline">{t("common.close")}</Button>
+            {feedback?.enabled && !configQuery.isFetching && !configQuery.isError && !succeeded && !showEmailManager ? (
+              <Button disabled={submitMutation.isPending || retryAt !== null || !accountEmailReady || (includeSystemInfo && clientRuntimeQuery.isFetching)} form={`${id}-form`} type="submit" variant="solid">
+                {t(submitMutation.isPending ? "feedback.submitting" : "feedback.submit")}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

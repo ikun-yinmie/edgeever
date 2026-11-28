@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { z as validator } from "zod";
 import type { FeedbackSubmitSchema } from "@edgeever/shared";
 import type { Bindings } from "./api-context";
-import { getInstanceSettingsRow, getSmtpPassword, type SmtpConfig } from "./instance-settings-service";
+import { getInstanceSettingsRow, getSmtpConfig, type SmtpConfig } from "./instance-settings-service";
 import { sendFeedbackEmail } from "./smtp-client";
 import type { DatabaseAdapter } from "./storage-contract";
 
@@ -14,7 +14,8 @@ export const FEEDBACK_LEASE_MS = 2 * 60 * 1000;
 
 type FeedbackInput = z.infer<typeof FeedbackSubmitSchema>;
 type FeedbackDetails = { contactEmail?: string | null; retryAfterSeconds?: number };
-type FeedbackErrorCode = "feedback_disabled" | "feedback_rate_limited" | "feedback_busy" | "email_delivery_failed";
+type FeedbackErrorCode = "feedback_disabled" | "feedback_rate_limited" | "feedback_busy" | "email_delivery_failed"
+  | "feedback_email_unverified" | "feedback_email_mismatch";
 export class FeedbackError extends Error {
   constructor(
     readonly code: FeedbackErrorCode,
@@ -51,24 +52,7 @@ const getConfiguration = async (environment: Bindings): Promise<FeedbackConfigur
   const disabled = { contactEmail, recipient, smtp: null };
   if (!settings.feedback_enabled || !recipient) return disabled;
 
-  const host = settings.smtp_host?.trim();
-  const fromAddress = normalizeEmail(settings.smtp_from_address);
-  const port = settings.smtp_port ?? 587;
-  if (!host || /[\s\x00-\x1f\x7f]/.test(host) || !fromAddress ||
-      !Number.isInteger(port) || port < 1 || port > 65535) return disabled;
-
-  const username = settings.smtp_username?.trim() || null;
-  if (username && /[\r\n\x00]/.test(username)) return disabled;
-  // No username means an unauthenticated relay; ignore any leftover secret.
-  const password = username ? await getSmtpPassword(environment, settings) : null;
-  if (username && !password) return disabled;
-  const fromName = settings.smtp_from_name?.trim() || null;
-  if (fromName && /[\r\n\x00]/.test(fromName)) return disabled;
-  return {
-    contactEmail,
-    recipient,
-    smtp: { host, port, secure: Boolean(settings.smtp_secure), username, password, fromAddress, fromName },
-  };
+  return { contactEmail, recipient, smtp: await getSmtpConfig(environment, settings) };
 };
 
 export const getPublicFeedback = async (environment: Bindings) => {
@@ -82,6 +66,25 @@ const findSuccess = (database: DatabaseAdapter, accountId: string, requestId: st
     .bind(accountId, requestId).first<{ succeeded_at: number }>();
 
 const retrySeconds = (deadline: number, now: number) => Math.max(1, Math.ceil((deadline - now) / 1000));
+
+const getVerifiedFeedbackSender = async (
+  database: DatabaseAdapter,
+  accountId: string,
+  replyTo: string | null | undefined,
+  details: FeedbackDetails,
+) => {
+  const user = await database.prepare(`SELECT username, email, email_verified_at FROM users
+    WHERE id = ? AND is_disabled = 0 AND is_deleted = 0 AND COALESCE(account_type, 'user') = 'user'`)
+    .bind(accountId).first<{ username: string; email: string | null; email_verified_at: string | null }>();
+  const email = normalizeEmail(user?.email);
+  if (!user?.email_verified_at || !email) {
+    throw new FeedbackError("feedback_email_unverified", "Bind and verify your account email before sending feedback.", 403, details);
+  }
+  if (replyTo && replyTo.trim() !== email) {
+    throw new FeedbackError("feedback_email_mismatch", "The reply address must match your verified account email.", 400, details);
+  }
+  return { accountId, username: user.username, email };
+};
 
 export const submitFeedback = async (
   environment: Bindings,
@@ -98,6 +101,7 @@ export const submitFeedback = async (
   if (!configuration.smtp || !configuration.recipient) {
     throw new FeedbackError("feedback_disabled", "Feedback delivery is not configured or is disabled.", 403, details);
   }
+  await getVerifiedFeedbackSender(database, accountId, input.replyTo, details);
 
   const now = dependencies.now ?? Date.now;
   const token = crypto.randomUUID();
@@ -154,10 +158,14 @@ export const submitFeedback = async (
         { ...details, retryAfterSeconds: 1 });
     }
 
+    // Read the authoritative identity again after reserving the send: a changed
+    // or revoked binding must not survive in a session or a queued draft.
+    const sender = await getVerifiedFeedbackSender(database, accountId, input.replyTo, details);
     try {
       await (dependencies.send ?? sendFeedbackEmail)(configuration.smtp, configuration.recipient, {
         content: input.content,
-        replyTo: input.replyTo,
+        replyTo: sender.email,
+        sender,
         systemInfo: input.systemInfo,
       });
     } catch {

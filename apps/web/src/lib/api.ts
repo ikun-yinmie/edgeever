@@ -37,6 +37,12 @@ export type {
   SyncWatchResponse,
 } from "@edgeever/client";
 
+export type {
+  AccountEmailStatus as AccountEmail,
+  AccountEmailResponse,
+  AccountEmailCodeResponse,
+} from "@edgeever/client";
+
 const WEB_DEVICE_ID_STORAGE_KEY = "edgeever.web.device-id";
 export const DESKTOP_API_BASE_URL_STORAGE_KEY = "edgeever.desktop.api-base-url";
 const DESKTOP_SESSION_STORAGE_KEY = "edgeever.desktop.session";

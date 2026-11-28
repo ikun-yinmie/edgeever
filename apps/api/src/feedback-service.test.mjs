@@ -42,15 +42,22 @@ const createFixture = ({ beforeFeedbackMigration = false, beforeSmtpCompatibilit
     sqlite.query(`UPDATE instance_settings SET ${entries.map(([key]) => `${key} = ?`).join(", ")} WHERE id = 'instance'`)
       .run(...entries.map(([, value]) => value));
   };
-  if (!beforeFeedbackMigration) patch({
-    feedback_enabled: 1,
-    feedback_recipient_email: "private-feedback@example.com",
-    contact_email: "public-contact@example.com",
-    smtp_host: "smtp.example.com",
-    smtp_port: 587,
-    smtp_secure: 0,
-    smtp_from_address: "edgeever@example.com",
-  });
+  if (!beforeFeedbackMigration) {
+    patch({
+      feedback_enabled: 1,
+      feedback_recipient_email: "private-feedback@example.com",
+      contact_email: "public-contact@example.com",
+      smtp_host: "smtp.example.com",
+      smtp_port: 587,
+      smtp_secure: 0,
+      smtp_from_address: "edgeever@example.com",
+    });
+    const now = new Date().toISOString();
+    for (const [id, email] of [["user-a", "reply@example.com"], ["user-b", "other@example.com"]]) {
+      sqlite.query(`INSERT INTO users (id, username, password_hash, display_name, email, email_verified_at, created_at, updated_at)
+        VALUES (?, ?, 'test-hash', ?, ?, ?, ?, ?)`).run(id, id, id, email, now, now, now);
+    }
+  }
   return {
     sqlite, environment, patch,
     reopen() {
@@ -320,6 +327,82 @@ describe("feedback persistence and quota", () => {
   });
 });
 
+describe("feedback verified account identity", () => {
+  test.each([
+    ["missing account", "DELETE FROM users WHERE id = 'user-a'"],
+    ["no bound email", "UPDATE users SET email = NULL, email_verified_at = NULL WHERE id = 'user-a'"],
+    ["unverified email", "UPDATE users SET email_verified_at = NULL WHERE id = 'user-a'"],
+    ["invalid stored email", "UPDATE users SET email = 'invalid' WHERE id = 'user-a'"],
+    ["disabled account", "UPDATE users SET is_disabled = 1 WHERE id = 'user-a'"],
+    ["archived account", "UPDATE users SET is_deleted = 1 WHERE id = 'user-a'"],
+    ["shared group account", "UPDATE users SET account_type = 'group' WHERE id = 'user-a'"],
+  ])("rejects %s without sending or consuming quota", async (_, change) => {
+    const { environment, sqlite } = createFixture();
+    sqlite.exec(change);
+    let delivered = 0;
+    const response = await post(createApp({ send: async () => { delivered += 1; } }), environment);
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("feedback_email_unverified");
+    expect(delivered).toBe(0);
+    expect(successCount(sqlite)).toBe(0);
+    expect(leaseCount(sqlite)).toBe(0);
+  });
+
+  test.each([undefined, null, "reply@example.com"])("derives the sender from the account when replyTo is %s", async (replyTo) => {
+    const { environment } = createFixture();
+    const sent = [];
+    const response = await post(createApp({ send: async (...args) => { sent.push(args); } }), environment,
+      input({ replyTo, accountId: "user-b", sender: { username: "forged" } }));
+    expect(response.status).toBe(200);
+    expect(sent[0][2]).toMatchObject({
+      replyTo: "reply@example.com",
+      sender: { accountId: "user-a", username: "user-a", email: "reply@example.com" },
+    });
+  });
+
+  test("rejects a different legacy reply address without sending or reserving quota", async () => {
+    const { environment, sqlite } = createFixture();
+    let delivered = 0;
+    const response = await post(createApp({ send: async () => { delivered += 1; } }), environment,
+      input({ replyTo: "other@example.com" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe("feedback_email_mismatch");
+    expect(delivered).toBe(0);
+    expect(successCount(sqlite)).toBe(0);
+    expect(leaseCount(sqlite)).toBe(0);
+  });
+
+  test("rechecks a revoked binding immediately before SMTP and releases the reservation", async () => {
+    const { environment, sqlite } = createFixture();
+    const wrapped = wrapEnvironment(environment, async (sql, method, execute) => {
+      const result = await execute();
+      if (sql.startsWith("UPDATE feedback_account_leases SET expires_at") && method === "first") {
+        sqlite.query("UPDATE users SET email_verified_at = NULL WHERE id = 'user-a'").run();
+      }
+      return result;
+    });
+    let delivered = 0;
+    await expect(submitFeedback(wrapped, "user-a", input(), { send: async () => { delivered += 1; } }))
+      .rejects.toMatchObject({ code: "feedback_email_unverified", status: 403 });
+    expect(delivered).toBe(0);
+    expect(successCount(sqlite)).toBe(0);
+    expect(leaseCount(sqlite)).toBe(0);
+    expect(sqlite.query("SELECT COUNT(*) AS count FROM feedback_requests").get().count).toBe(0);
+  });
+
+  test("a successful request remains idempotent after its binding is revoked", async () => {
+    const { environment, sqlite } = createFixture();
+    const submitted = input();
+    let delivered = 0;
+    const dependencies = { send: async () => { delivered += 1; } };
+    await submitFeedback(environment, "user-a", submitted, dependencies);
+    sqlite.query("UPDATE users SET email_verified_at = NULL WHERE id = 'user-a'").run();
+    await submitFeedback(environment, "user-a", submitted, dependencies);
+    expect(delivered).toBe(1);
+    expect(successCount(sqlite)).toBe(1);
+  });
+});
+
 describe("feedback public configuration and routes", () => {
   // The product requirement is an account-scoped quota. Nothing in the feedback
   // path may fall back to the request IP, which would let one account on a
@@ -384,7 +467,10 @@ describe("feedback public configuration and routes", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0][0]).toMatchObject({ username: "mail-user", password: "smtp-secret", secure: false });
     expect(sent[0][1]).toBe("private-feedback@example.com");
-    expect(sent[0][2]).toEqual({ content: "useful feedback", replyTo: "reply@example.com", systemInfo: "client info" });
+    expect(sent[0][2]).toEqual({
+      content: "useful feedback", replyTo: "reply@example.com", systemInfo: "client info",
+      sender: { accountId: "user-a", username: "user-a", email: "reply@example.com" },
+    });
   });
 
   test("migrates legacy port 587 delivery to STARTTLS and keeps later explicit choices", async () => {

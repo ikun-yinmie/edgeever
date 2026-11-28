@@ -23,6 +23,7 @@ import type { EditorContentAlignment } from "@/lib/app-helpers";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
+import { AccountEmailCard } from "./settings/AccountEmailCard";
 import { MyInviteCard } from "./settings/MyInviteCard";
 import { DataExportCard } from "./settings/DataExportCard";
 import { DesktopStorageCard } from "./settings/DesktopStorageCard";
@@ -222,7 +223,14 @@ export const SettingsPane = ({
                 <ArrowUpRight className="h-4 w-4 text-slate-400" />
               </button>
             ) : null}
-            <FeedbackLink className="hidden lg:flex" />
+            <FeedbackLink
+              accountId={user?.id}
+              accountType={user?.accountType}
+              authRequired={authRequired}
+              demoMode={demoMode}
+              sessionKey={dataScope ?? "web"}
+              className="hidden lg:flex"
+            />
             <ProductHuntLink className="hidden lg:flex" />
           </SettingsGroup>
         );
@@ -255,6 +263,13 @@ export const SettingsPane = ({
         return (
           <SettingsGroup>
             <AccountInfoCard user={user} />
+            <AccountEmailCard
+              accountId={user?.id}
+              accountType={user?.accountType}
+              authRequired={authRequired}
+              demoMode={demoMode}
+              sessionKey={dataScope ?? "web"}
+            />
             <MyInviteCard />
             <PasswordCard authRequired={authRequired} demoMode={demoMode} />
             {demoMode ? null : (
@@ -422,7 +437,13 @@ export const SettingsPane = ({
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
                 </button>
-                <FeedbackLink />
+                <FeedbackLink
+                  accountId={user?.id}
+                  accountType={user?.accountType}
+                  authRequired={authRequired}
+                  demoMode={demoMode}
+                  sessionKey={dataScope ?? "web"}
+                />
                 <ProductHuntLink />
               </div>
             </div>

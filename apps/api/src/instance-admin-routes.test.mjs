@@ -68,6 +68,8 @@ const createEnvironment = ({ beforeSmtpCompatibility = false } = {}) => {
 const createTestApp = (role = "owner") => {
   const app = new Hono();
   registerInstanceAdminRoutes(app, {
+    // Delivery failure is controlled; never perform DNS/SMTP in these tests.
+    sendRegistrationCodeEmail: async () => { throw new Error("Simulated delivery failure"); },
     authenticateRequest: async () => ({
       kind: "user",
       actorType: "user",

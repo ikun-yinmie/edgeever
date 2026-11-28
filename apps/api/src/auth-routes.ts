@@ -9,6 +9,7 @@ import { zValidator } from "@hono/zod-validator";
 import type { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { audit, auditStatement } from "./audit";
+import { registerAccountEmailRoutes } from "./account-email-routes";
 import {
   checkLoginRateLimit,
   clearLoginAttempts,
@@ -112,6 +113,8 @@ export const registerAuthRoutes = (
   app: Hono<AppEnv>,
   dependencies: AuthRouteDependencies,
 ) => {
+  registerAccountEmailRoutes(app, dependencies);
+
   app.get("/api/v1/auth/session", async (context) => {
     const authMode = await dependencies.getInstanceAuthMode(context.env);
 

@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { FileText, LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -75,9 +75,14 @@ export const LoadingSurface = ({
       <TaskSkeleton label={label} />
     ) : (
       <div className="edgeever-loading__pane">
+        <span className="edgeever-loading__pane-icon" aria-hidden="true">
+          <FileText strokeWidth={1.5} />
+        </span>
         <span className="edgeever-loading__pane-label">{label}</span>
-        <span className="edgeever-loading__pane-line edgeever-loading__pane-line--long" aria-hidden="true" />
-        <span className="edgeever-loading__pane-line edgeever-loading__pane-line--short" aria-hidden="true" />
+        <div className="edgeever-loading__pane-lines" aria-hidden="true">
+          <span className="edgeever-loading__pane-line edgeever-loading__pane-line--long" />
+          <span className="edgeever-loading__pane-line edgeever-loading__pane-line--short" />
+        </div>
       </div>
     )}
   </section>

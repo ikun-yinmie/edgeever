@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
-import { createSmtpMailer, sendFeedbackEmail, sendRegistrationCodeEmail } from "./smtp-client.ts";
+import { createSmtpMailer, sendAccountEmailCodeEmail, sendFeedbackEmail, sendRegistrationCodeEmail } from "./smtp-client.ts";
 
 const CRLF = "\r\n";
 const encoder = new TextEncoder();
@@ -172,6 +172,42 @@ describe("shared SMTP protocol and mail rendering", () => {
     expect(message.text).toBe(`${feedback.content}\n\n--- System information / 系统信息 ---\n${feedback.systemInfo}`);
     expect(transport.events).not.toContain("QUIT");
     expect(transport.state.closeCount).toBe(1);
+  });
+
+  test("carries verified account identity and sends replies to the bound mailbox", async () => {
+    const transport = scriptedTransport([...setupSteps(), ...deliverySteps()]);
+    const sender = { accountId: "usr-feedback", username: "feedback-user", email: "bound@example.invalid" };
+    await mailerFor(transport).sendFeedbackEmail(config, recipient, { ...feedback, replyTo: sender.email, sender });
+    const message = decodeMessage(transport.writes.at(-1));
+    expect(transport.completed).toBe(true);
+    expect(message.headers).toContain(`From: =?UTF-8?B?`);
+    expect(message.headers).toContain(`<${config.fromAddress}>`);
+    expect(message.headers).toContain(`To: <${recipient}>`);
+    expect(message.headers).toContain(`Reply-To: <${sender.email}>`);
+    expect(message.text).toBe([
+      `Account / 账号: ${sender.username}`,
+      `Account ID / 账号 ID: ${sender.accountId}`,
+      `Verified email / 已验证邮箱: ${sender.email}`,
+      "", feedback.content, "", "--- System information / 系统信息 ---", feedback.systemInfo,
+    ].join("\n"));
+  });
+
+  test.each(["zh-CN", "en-US"])("sends a binding-specific code with the actual expiry for %s", async (locale) => {
+    const transport = scriptedTransport([...setupSteps(), ...deliverySteps()]);
+    await mailerFor(transport).sendAccountEmailCodeEmail(config, recipient, "654321", locale, 75);
+    const message = decodeMessage(transport.writes.at(-1));
+    expect(transport.completed).toBe(true);
+    expect(message.subject).toBe(locale === "zh-CN" ? "EdgeEver 邮箱绑定验证码：654321" : "EdgeEver account email verification: 654321");
+    expect(message.text).toContain("654321");
+    expect(message.text).toContain(locale === "zh-CN" ? "75 秒内有效" : "75 seconds");
+    expect(message.text).not.toContain("10 minutes");
+    expect(message.headers).not.toContain("Reply-To:");
+  });
+
+  test.each([["zh-CN", "75 秒"], ["en-US", "75 seconds"]])("uses configured registration code expiry for %s", async (locale, expiry) => {
+    const transport = scriptedTransport([...setupSteps(), ...deliverySteps()]);
+    await mailerFor(transport).sendRegistrationCodeEmail(config, recipient, "123456", locale, 75);
+    expect(decodeMessage(transport.writes.at(-1)).text).toContain(expiry);
   });
 
   test("implicit TLS skips STARTTLS and supports PLAIN without requiring optional feedback fields", async () => {
@@ -630,8 +666,9 @@ describe("Bun native transport against loopback SMTP", () => {
     } finally { await server.close(); }
   }, 10_000);
 
-  test("default exports include both mail types", () => {
+  test("default exports include feedback and both verification mail types", () => {
     expect(typeof sendFeedbackEmail).toBe("function");
     expect(typeof sendRegistrationCodeEmail).toBe("function");
+    expect(typeof sendAccountEmailCodeEmail).toBe("function");
   });
 });

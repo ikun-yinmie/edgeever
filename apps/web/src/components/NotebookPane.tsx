@@ -386,6 +386,10 @@ const SyncStatusBar = ({
   notebooks,
   syncPaused,
   syncScope,
+  accountId,
+  accountType,
+  authRequired,
+  demoMode,
 }: {
   summary: SyncQueueSummary;
   isOnline: boolean;
@@ -396,6 +400,10 @@ const SyncStatusBar = ({
   notebooks: Notebook[];
   syncPaused?: { pull: boolean; push: boolean };
   syncScope: string;
+  accountId?: string | null;
+  accountType?: "user" | "group";
+  authRequired: boolean;
+  demoMode: boolean;
 }) => {
   const { t } = useTranslation();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -500,6 +508,10 @@ const SyncStatusBar = ({
             notebooks={notebooks}
             onSyncNow={onSyncNow}
             syncScope={syncScope}
+            accountId={accountId}
+            accountType={accountType}
+            authRequired={authRequired}
+            demoMode={demoMode}
           />
         </Suspense>
       )}
@@ -957,6 +969,10 @@ export const NotebookPane = ({
             notebooks={notebooks}
             syncPaused={syncPaused}
             syncScope={syncScope}
+            accountId={user?.id}
+            accountType={user?.accountType}
+            authRequired={authRequired}
+            demoMode={demoMode}
           />
         </div>
       )}

@@ -21,6 +21,10 @@ import type {
   CompanionToolExecuteResult,
   ApiToken,
   AuthSession,
+  AccountEmailResponse,
+  AccountEmailCodeResponse,
+  AccountEmailCodeRequestInput,
+  AccountEmailVerifyInput,
   LoginInput,
   LoginDeviceSession,
   LoginSessionPolicy,
@@ -73,6 +77,14 @@ import type {
   PluginAiGenerateRequest,
   PluginPublicFetchRequest,
   PluginPublicFetchResponse,
+} from "@edgeever/shared";
+
+export type {
+  AccountEmailStatus,
+  AccountEmailResponse,
+  AccountEmailCodeResponse,
+  AccountEmailCodeRequestInput,
+  AccountEmailVerifyInput,
 } from "@edgeever/shared";
 
 const MAX_SINGLE_REQUEST_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -1112,6 +1124,20 @@ export const createEdgeEverClient = (options: EdgeEverClientOptions = {}) => {
     getInstanceRelease: () => request<InstanceRelease>("/api/release"),
 
     getSession: () => request<AuthSession>("/api/v1/auth/session"),
+
+    getAccountEmail: () => request<AccountEmailResponse>("/api/v1/auth/email"),
+
+    requestAccountEmailCode: (input: AccountEmailCodeRequestInput) =>
+      request<AccountEmailCodeResponse>("/api/v1/auth/email/code", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+
+    verifyAccountEmail: (input: AccountEmailVerifyInput) =>
+      request<AccountEmailResponse>("/api/v1/auth/email/verify", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
 
     getPublicMemoShare: (token: string) =>
       request<PublicMemoShareResponse>(`/api/public/shares/${encodeURIComponent(token)}`),

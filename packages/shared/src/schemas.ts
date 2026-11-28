@@ -188,6 +188,19 @@ export const LoginDeviceSessionUpdateSchema = z.object({
   label: z.string().trim().max(80).nullable(),
 });
 
+// Preserve address case: users.email and its unique index use exact matching.
+export const AccountEmailCodeRequestSchema = z.object({
+  email: z.string().trim().email("A valid email address is required.").max(200),
+  currentPassword: z.string().min(1).max(512),
+});
+
+export const AccountEmailVerifySchema = AccountEmailCodeRequestSchema.extend({
+  code: z.string().trim().regex(/^\d{6}$/, "A six-digit verification code is required."),
+});
+
+export type AccountEmailCodeRequestInput = z.infer<typeof AccountEmailCodeRequestSchema>;
+export type AccountEmailVerifyInput = z.infer<typeof AccountEmailVerifySchema>;
+
 export const ChangePasswordSchema = z
   .object({
     currentPassword: z.string().min(1).max(512),

@@ -8,6 +8,29 @@ const jsonResponse = (body, init = {}) => new Response(JSON.stringify(body), {
 });
 
 describe("EdgeEver client HTTP contract", () => {
+  test("uses the fixed account-email endpoints, exact bodies and cookie credentials", async () => {
+    const calls = [];
+    const accountEmail = { email: "Case@Example.COM", emailVerifiedAt: null, canManage: true, emailDeliveryConfigured: true };
+    const client = createEdgeEverClient({ baseUrl: "https://notes.example/", fetch: async (url, init) => {
+      calls.push({ url, init });
+      return jsonResponse(String(url).endsWith("/code")
+        ? { ok: true, expiresInMinutes: 2, cooldownSeconds: 60 }
+        : { accountEmail });
+    } });
+    expect(await client.getAccountEmail()).toEqual({ accountEmail });
+    const input = { email: "Case@Example.COM", currentPassword: "test-password" };
+    expect(await client.requestAccountEmailCode(input)).toEqual({ ok: true, expiresInMinutes: 2, cooldownSeconds: 60 });
+    expect(await client.verifyAccountEmail({ ...input, code: "123456" })).toEqual({ accountEmail });
+    expect(calls.map(({ url }) => url)).toEqual([
+      "https://notes.example/api/v1/auth/email", "https://notes.example/api/v1/auth/email/code", "https://notes.example/api/v1/auth/email/verify",
+    ]);
+    expect(calls[0].init.method ?? "GET").toBe("GET");
+    expect(calls.slice(1).map(({ init }) => init.method)).toEqual(["POST", "POST"]);
+    expect(JSON.parse(calls[1].init.body)).toEqual(input);
+    expect(JSON.parse(calls[2].init.body)).toEqual({ ...input, code: "123456" });
+    expect(calls.map(({ init }) => init.credentials)).toEqual(["include", "include", "include"]);
+  });
+
   test("reads feedback availability and submits to the connected instance", async () => {
     const calls = [];
     const client = createEdgeEverClient({ baseUrl: "https://notes.example/", token: "test-token", fetch: async (url, init) => {

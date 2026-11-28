@@ -134,7 +134,7 @@ describe("cross-platform Wrangler runner", () => {
       .split("\n")
       .filter((line) => line.startsWith("CREATE TRIGGER "));
 
-    expect(triggerLines).toHaveLength(12);
+    expect(triggerLines).toHaveLength(14);
     for (const triggerLine of triggerLines) {
       expect(triggerLine).toEndWith(" END;");
     }

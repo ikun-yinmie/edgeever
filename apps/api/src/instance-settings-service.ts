@@ -1,4 +1,6 @@
 import type { ShareServerConfig, ShareServerEntry } from "@edgeever/shared";
+import { z } from "zod";
+import type { Bindings } from "./api-context";
 import { decryptSecret } from "./secret-encryption";
 import { resolvePrimaryObjectStorageEncryptionKey } from "./object-storage";
 import type { DatabaseAdapter } from "./storage-contract";
@@ -278,4 +280,27 @@ export const getSmtpPassword = async (
   } catch {
     return null;
   }
+};
+
+const smtpAddressSchema = z.string().email();
+
+export const getSmtpConfig = async (
+  environment: Bindings,
+  settings?: InstanceSettingsRow,
+): Promise<SmtpConfig | null> => {
+  const row = settings ?? await getInstanceSettingsRow(environment.storage.db);
+  const host = row.smtp_host?.trim();
+  const fromAddress = row.smtp_from_address?.trim();
+  const port = row.smtp_port ?? 587;
+  if (!host || /[\s\x00-\x1f\x7f]/.test(host) || !fromAddress || !smtpAddressSchema.safeParse(fromAddress).success ||
+      !Number.isInteger(port) || port < 1 || port > 65535) return null;
+
+  const username = row.smtp_username?.trim() || null;
+  if (username && /[\r\n\x00]/.test(username)) return null;
+  // A relay without a username must not inherit a stale encrypted password.
+  const password = username ? await getSmtpPassword(environment, row) : null;
+  if (username && !password) return null;
+  const fromName = row.smtp_from_name?.trim() || null;
+  if (fromName && /[\r\n\x00]/.test(fromName)) return null;
+  return { host, port, secure: Boolean(row.smtp_secure), username, password, fromAddress, fromName };
 };

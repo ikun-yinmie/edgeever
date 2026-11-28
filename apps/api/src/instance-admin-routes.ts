@@ -24,6 +24,7 @@ import {
   getPublicSiteBranding,
   getSiteIconDataUrl,
   getSmtpPassword,
+  getSmtpConfig,
   isRegistrationCodeRequired,
   isRegistrationEnabled,
   isRegistrationInviteRequired,
@@ -86,6 +87,7 @@ const getRequestIp = (context: AppContext): string | null => {
 
 type RegistrationRouteDependencies = {
   authenticateRequest: (context: AppContext, touch: boolean) => Promise<AuthContext | null>;
+  sendRegistrationCodeEmail?: typeof sendRegistrationCodeEmail;
 };
 
 type InviteRow = {
@@ -297,8 +299,8 @@ export const registerInstanceAdminRoutes = (
         return apiError(context, "email_domain_not_allowed", "This email is not on the registration allowlist.", 403);
       }
 
-      const smtpPassword = await getSmtpPassword(context.env, settings);
-      if (!settings.smtp_host || !settings.smtp_from_address || !smtpPassword) {
+      const smtpConfig = await getSmtpConfig(context.env, settings);
+      if (!smtpConfig) {
         return apiError(context, "smtp_not_configured", "Email delivery is not configured by the administrator.", 400);
       }
 
@@ -354,19 +356,12 @@ export const registerInstanceAdminRoutes = (
       ]);
 
       try {
-        await sendRegistrationCodeEmail(
-          {
-            host: settings.smtp_host,
-            port: settings.smtp_port ?? 587,
-            secure: Boolean(settings.smtp_secure),
-            username: settings.smtp_username,
-            password: smtpPassword,
-            fromAddress: settings.smtp_from_address,
-            fromName: settings.smtp_from_name,
-          },
+        await (dependencies.sendRegistrationCodeEmail ?? sendRegistrationCodeEmail)(
+          smtpConfig,
           email,
           code,
           context.req.header("accept-language") ?? null,
+          ttlMs / 1000,
         );
       } catch (error) {
         console.error("[registration] failed to send verification code", error);
@@ -415,6 +410,7 @@ export const registerInstanceAdminRoutes = (
     }
 
     const codeRequired = Boolean(settings.registration_code_required);
+    let verifiedCode: { id: string; codeHash: string } | null = null;
     if (codeRequired) {
       const record = await database
         .prepare(`SELECT id, code_hash, attempts, expires_at, ip, device_id FROM email_verifications WHERE email = ? ORDER BY created_at DESC LIMIT 1`)
@@ -448,6 +444,7 @@ export const registerInstanceAdminRoutes = (
         }
         return apiError(context, "email_code_invalid", "Incorrect verification code.", 400);
       }
+      verifiedCode = { id: record.id, codeHash: candidateHash };
     }
 
     // Invite code gate: consume a valid invite when required.
@@ -487,9 +484,13 @@ export const registerInstanceAdminRoutes = (
     const notebooks = createDefaultNotebookRows(workspaceId);
     const statements = [
       database.prepare(
-        `INSERT INTO users (id, username, password_hash, display_name, email, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).bind(userId, username, passwordHash, displayName, input.email, now, now),
+        `INSERT INTO users (id, username, password_hash, display_name, email, email_verified_at, created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE ? = 0 OR EXISTS (SELECT 1 FROM email_verifications
+           WHERE id = ? AND email = ? AND code_hash = ? AND attempts < ? AND expires_at > ?)`,
+      ).bind(userId, username, passwordHash, displayName, input.email, verifiedCode ? now : null, now, now,
+        codeRequired ? 1 : 0, verifiedCode?.id ?? null, input.email, verifiedCode?.codeHash ?? null,
+        CODE_MAX_VERIFY_ATTEMPTS, new Date().toISOString()),
       database.prepare(
         `INSERT INTO workspaces (id, name, is_personal, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
       ).bind(workspaceId, `${displayName}'s workspace`, now, now),
@@ -501,8 +502,8 @@ export const registerInstanceAdminRoutes = (
          VALUES (?, ?, NULL, ?, ?, 'notebook', ?, ?, ?, ?)`,
       ).bind(notebook.id, workspaceId, notebook.name, notebook.slug, notebook.color, notebook.sortOrder, now, now)),
       ...createWorkspaceDefaultSeedStatements(database, workspaceId, now, context.req.header("accept-language")),
-      ...(codeRequired
-        ? [database.prepare(`DELETE FROM email_verifications WHERE email = ?`).bind(input.email)]
+      ...(verifiedCode
+        ? [database.prepare(`DELETE FROM email_verifications WHERE id = ?`).bind(verifiedCode.id)]
         : []),
       ...inviteStatements,
       auditStatement(database, "user", userId, "user.register", "user", userId, {
@@ -510,7 +511,22 @@ export const registerInstanceAdminRoutes = (
         email: input.email,
       }),
     ];
-    await database.batch(statements);
+    try {
+      await database.batch(statements);
+    } catch (error) {
+      // The INSERT rechecks the exact challenge after password hashing. If it
+      // was replaced/consumed/expired, the membership FK rolls back the batch.
+      if (verifiedCode) {
+        const stillValid = await database.prepare(
+          `SELECT id FROM email_verifications WHERE id = ? AND code_hash = ? AND attempts < ? AND expires_at > ?`,
+        ).bind(verifiedCode.id, verifiedCode.codeHash, CODE_MAX_VERIFY_ATTEMPTS, new Date().toISOString()).first();
+        if (!stillValid) return apiError(context, "email_code_invalid", "The verification code is no longer valid. Request a new code.", 400);
+      }
+      if (/UNIQUE constraint failed: users\.(email|username)/i.test(String(error))) {
+        return conflict(context, "username_or_email_exists", "Username or email already registered.");
+      }
+      throw error;
+    }
 
     return context.json({ ok: true }, 201);
   });

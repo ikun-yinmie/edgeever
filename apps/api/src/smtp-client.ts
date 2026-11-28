@@ -11,7 +11,12 @@ type SmtpConnection = {
 };
 
 type SocketFactory = (config: SmtpConfig, signal: AbortSignal) => Promise<SmtpConnection>;
-type Feedback = { content: string; replyTo?: string | null; systemInfo?: string | null };
+type Feedback = {
+  content: string;
+  replyTo?: string | null;
+  systemInfo?: string | null;
+  sender?: { accountId: string; username: string; email: string };
+};
 type TextEmail = { subject: string; text: string; replyTo?: string | null };
 const CRLF = "\r\n";
 const DELIVERY_TIMEOUT_MS = 30_000;
@@ -439,16 +444,33 @@ export const createSmtpMailer = (options: { connect?: SocketFactory; timeoutMs?:
   };
 
   return {
-    sendRegistrationCodeEmail: async (config: SmtpConfig, to: string, code: string, locale: string | null): Promise<void> => {
+    sendRegistrationCodeEmail: async (config: SmtpConfig, to: string, code: string, locale: string | null, ttlSeconds = 600): Promise<void> => {
       const isZh = !locale || locale.startsWith("zh");
+      const lifetime = isZh
+        ? ttlSeconds % 60 === 0 ? `${ttlSeconds / 60} 分钟` : `${ttlSeconds} 秒`
+        : ttlSeconds % 60 === 0 ? `${ttlSeconds / 60} minutes` : `${ttlSeconds} seconds`;
       const subject = isZh ? `EdgeEver 注册验证码：${code}` : `EdgeEver registration code: ${code}`;
       const text = isZh
-        ? `你正在注册 EdgeEver。\n\n验证码：${code}\n\n10 分钟内有效。如果不是你本人的操作，请忽略这封邮件。`
-        : `Someone is registering an EdgeEver account with this email.\n\nVerification code: ${code}\n\nThe code expires in 10 minutes. If this was not you, ignore this email.`;
+        ? `你正在注册 EdgeEver。\n\n验证码：${code}\n\n${lifetime}内有效。如果不是你本人的操作，请忽略这封邮件。`
+        : `Someone is registering an EdgeEver account with this email.\n\nVerification code: ${code}\n\nThe code expires in ${lifetime}. If this was not you, ignore this email.`;
+      await sendTextEmail(config, to, { subject, text });
+    },
+    sendAccountEmailCodeEmail: async (config: SmtpConfig, to: string, code: string, locale: string | null, ttlSeconds: number): Promise<void> => {
+      const isZh = !locale || locale.startsWith("zh");
+      const subject = isZh ? `EdgeEver 邮箱绑定验证码：${code}` : `EdgeEver account email verification: ${code}`;
+      const text = isZh
+        ? `你正在绑定或验证 EdgeEver 账号邮箱。\n\n验证码：${code}\n\n${ttlSeconds} 秒内有效。请勿向他人提供验证码。如果不是你本人的操作，请忽略这封邮件。`
+        : `You are binding or verifying an EdgeEver account email.\n\nVerification code: ${code}\n\nThe code expires in ${ttlSeconds} seconds. Do not share this code. If this was not you, ignore this email.`;
       await sendTextEmail(config, to, { subject, text });
     },
     sendFeedbackEmail: async (config: SmtpConfig, to: string, feedback: Feedback): Promise<void> => {
       const text = [
+        ...(feedback.sender ? [
+          `Account / 账号: ${feedback.sender.username}`,
+          `Account ID / 账号 ID: ${feedback.sender.accountId}`,
+          `Verified email / 已验证邮箱: ${feedback.sender.email}`,
+          "",
+        ] : []),
         feedback.content,
         ...(feedback.systemInfo ? ["", "--- System information / 系统信息 ---", feedback.systemInfo] : []),
       ].join("\n");
@@ -461,4 +483,4 @@ export const createSmtpMailer = (options: { connect?: SocketFactory; timeoutMs?:
   };
 };
 
-export const { sendRegistrationCodeEmail, sendFeedbackEmail } = createSmtpMailer();
+export const { sendRegistrationCodeEmail, sendAccountEmailCodeEmail, sendFeedbackEmail } = createSmtpMailer();

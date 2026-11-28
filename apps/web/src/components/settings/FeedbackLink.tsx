@@ -4,7 +4,21 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { FeedbackDialog } from "./FeedbackDialog";
 
-export const FeedbackLink = ({ className }: { className?: string }) => {
+export const FeedbackLink = ({
+  className,
+  accountId,
+  accountType,
+  authRequired,
+  demoMode,
+  sessionKey,
+}: {
+  className?: string;
+  accountId?: string | null;
+  accountType?: "user" | "group";
+  authRequired?: boolean;
+  demoMode?: boolean;
+  sessionKey?: string;
+}) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -30,7 +44,15 @@ export const FeedbackLink = ({ className }: { className?: string }) => {
         </span>
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
-      <FeedbackDialog open={open} onOpenChange={setOpen} />
+      <FeedbackDialog
+        accountId={accountId}
+        accountType={accountType}
+        authRequired={authRequired}
+        demoMode={demoMode}
+        sessionKey={sessionKey}
+        open={open}
+        onOpenChange={setOpen}
+      />
     </>
   );
 };

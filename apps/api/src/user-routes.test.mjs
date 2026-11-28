@@ -418,9 +418,11 @@ describe("single member updates", () => {
     expect(response.status).toBe(200);
     const update = environment.harness.batched.find((statement) => statement.sql.startsWith("UPDATE users SET"));
     expect(update.sql).toContain("username = ?");
+    expect(update.sql).toContain("email_verified_at = CASE WHEN email IS NOT ? THEN NULL ELSE email_verified_at END");
     expect(update.bindings).toEqual([
       "writer2",
       "Second Writer",
+      "writer@example.com",
       "writer@example.com",
       expect.any(String),
       "usr_member",

@@ -348,6 +348,21 @@ export type AuthSession = {
   sessionToken?: string;
 };
 
+export type AccountEmailStatus = {
+  email: string | null;
+  emailVerifiedAt: string | null;
+  canManage: boolean;
+  emailDeliveryConfigured: boolean;
+};
+
+export type AccountEmailResponse = { accountEmail: AccountEmailStatus };
+
+export type AccountEmailCodeResponse = {
+  ok: true;
+  expiresInMinutes: number;
+  cooldownSeconds: number;
+};
+
 export type SessionClientKind = "desktop" | "web" | "mobile";
 
 export type LoginDeviceSession = {

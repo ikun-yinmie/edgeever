@@ -39,12 +39,20 @@ export const DesktopSyncIssuesDialog = ({
   onSyncNow,
   open,
   syncScope,
+  accountId,
+  accountType,
+  authRequired,
+  demoMode,
 }: {
   notebooks: Notebook[];
   onOpenChange: (open: boolean) => void;
   onSyncNow: () => Promise<void> | void;
   open: boolean;
   syncScope: string;
+  accountId?: string | null;
+  accountType?: "user" | "group";
+  authRequired: boolean;
+  demoMode: boolean;
 }) => {
   const { i18n, t } = useTranslation();
   const [items, setItems] = useState<DesktopOutboxItem[]>([]);
@@ -439,6 +447,10 @@ export const DesktopSyncIssuesDialog = ({
       )}
 
       <FeedbackDialog
+        accountId={accountId}
+        accountType={accountType}
+        authRequired={authRequired}
+        demoMode={demoMode}
         diagnostics={reportDiagnostics}
         extraSystemInfo={reportDiagnosticText}
         onOpenChange={setReporting}
