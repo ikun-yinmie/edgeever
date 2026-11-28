@@ -4,6 +4,7 @@ import { CheckCircle2, Cloud, Database, Loader2, TriangleAlert } from "lucide-re
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   SETTINGS_CARD_DESCRIPTION_CLASSNAME,
@@ -98,7 +99,7 @@ export const ObjectStorageCard = ({ demoMode }: { demoMode: boolean }) => {
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:px-5 sm:pb-5">
         {settingsQuery.isLoading ? (
-          <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />{t("common.loading")}</p>
+          <LoadingIndicator label={t("common.loading")} />
         ) : (
           <form className="grid gap-5" onSubmit={submit}>
             <div className="grid gap-2 sm:grid-cols-2">

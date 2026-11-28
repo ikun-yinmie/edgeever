@@ -17,12 +17,12 @@ import {
   Grid,
   List,
   X,
-  Loader2,
   Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonTooltip } from "@/components/ui/button-tooltip";
+import { LoadingSurface } from "@/components/ui/LoadingSurface";
 import { formatDateTime } from "@/lib/utils";
 import { toDesktopResourceDownloadUrl } from "@/lib/desktop-resources";
 import { WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
@@ -304,10 +304,7 @@ export const AssetsPane = ({ onClose, repository, onOpenExecutionCenter }: Asset
       <div className="flex-1 overflow-y-auto bg-slate-50/30 p-6">
         <div className="mx-auto max-w-4xl">
           {resourcesQuery.isLoading ? (
-            <div className="flex flex-col items-center justify-center py-32 text-slate-400">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mb-2" />
-              <span className="text-xs font-medium">{t("assets.loading")}</span>
-            </div>
+            <LoadingSurface className="min-h-[420px] rounded-2xl" label={t("assets.loading")} variant="pane" />
           ) : filteredResources.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-card px-6 py-24 text-center">
               <Archive className="h-10 w-10 text-slate-350 mb-3 stroke-[1.5]" />

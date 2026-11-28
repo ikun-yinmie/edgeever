@@ -10,6 +10,8 @@ import { useParams } from "react-router";
 import { ApiRequestError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { LoadingSurface } from "@/components/ui/LoadingSurface";
 import { EdgeEverCodeBlock, codeBlockLowlight } from "@/lib/code-block";
 import { withEnvironmentTitlePrefix } from "@/lib/environment-title";
 import { getSiteDisplayName, refreshSiteBranding, useSiteBranding } from "@/lib/site-branding";
@@ -168,15 +170,12 @@ const SharedDocument = ({
   token: string;
   onEditorReady?: (editor: Editor | null) => void;
 }) => {
+  const { t } = useTranslation();
   const body = useMemo(() => resolvePublicShareBody(share, token), [share, token]);
   if (body.type === "diagram") {
     return (
       <Suspense
-        fallback={
-          <div className="flex min-h-[360px] items-center justify-center text-slate-400">
-            <LoaderCircle className="h-6 w-6 animate-spin" />
-          </div>
-        }
+        fallback={<LoadingIndicator label={t("sharing.publicLoading")} centered className="min-h-[360px]" />}
       >
         <ReadOnlyX6Diagram diagram={body.diagram} locale={locale} theme="light" />
       </Suspense>
@@ -292,9 +291,12 @@ export const PublicSharePage = () => {
 
   if (shareQuery.isLoading) {
     return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-50 text-slate-500">
-        <LoaderCircle className="h-6 w-6 animate-spin" aria-label={t("sharing.publicLoading")} />
-      </main>
+      <LoadingSurface
+        className="min-h-[100dvh]"
+        variant="startup"
+        label={t("sharing.publicLoading")}
+        detail={t("sharing.publicLoading")}
+      />
     );
   }
 
