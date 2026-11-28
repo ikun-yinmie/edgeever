@@ -1,14 +1,14 @@
 {
-  "version": "1.109.0",
+  "version": "1.110.0",
   "changes": {
     "en-US": [
-      "Add category-aware task overview, resilient loading states, and mobile editor return-position restoration."
+      "Search notebooks and notebook paths when filtering the task overview."
     ],
     "zh-CN": [
-      "新增按分类筛选的待办总览、可靠加载态，并恢复移动端编辑完成后的阅读位置。"
+      "待办总览支持搜索笔记本名称和路径。"
     ],
     "ja": [
-      "カテゴリ別タスク一覧、堅牢な読み込み表示、モバイル編集後の読書位置復元を追加します。"
+      "タスク一覧でノートブック名とパスを検索できるようになりました。"
     ]
   }
 }
