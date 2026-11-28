@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Gauge, LockKeyhole, X } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Check, ChevronDown, Copy, Gauge, LockKeyhole, TriangleAlert, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { normalizeInstanceUrl } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { GitHubRepositoryLink } from "@/components/GitHubRepositoryLink";
 import { Input } from "@/components/ui/input";
 import { getSiteDisplayName, useSiteBranding } from "@/lib/site-branding";
 import { getConfiguredDesktopApiBaseUrl, probeDesktopInstanceUrls, selectActiveDesktopApiBaseUrl } from "@/lib/api";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   DEFAULT_DESKTOP_PROXY_SETTINGS,
   getDesktopProxySettings,
@@ -45,6 +46,13 @@ const getDefaultLoginCredentials = () => {
   return isDemoHost ? DEMO_LOGIN_CREDENTIALS : { username: "admin", password: "" };
 };
 
+// Diagnostics shown in the collapsible panel use a plain local timestamp so a
+// reported failure can be matched against server logs without timezone math.
+const formatDiagnosticsTime = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitting, onRegister, onSubmit }: LoginScreenProps) => {
   const { t } = useTranslation();
   const siteName = getSiteDisplayName(useSiteBranding());
@@ -67,6 +75,20 @@ export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitti
   const [instanceProbe, setInstanceProbe] = useState<{ url: string; ms: number } | null>(null);
   const [instanceProbeFailed, setInstanceProbeFailed] = useState(false);
   const [instanceBusy, setInstanceBusy] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [diagnosticsTime, setDiagnosticsTime] = useState("");
+  // The error prop is rebuilt on every App render; only re-arm the panel when
+  // the failure itself changes so the timestamp stays meaningful and the panel
+  // is not collapsed by unrelated background rerenders.
+  const errorSignature = error ? `${error.diagnosticCode}|${error.rayId ?? ""}|${error.message}` : "";
+  useEffect(() => {
+    if (!error) return;
+    setDiagnosticsOpen(false);
+    setDiagnosticsCopied(false);
+    setDiagnosticsTime(formatDiagnosticsTime(new Date()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [errorSignature]);
 
   const currentPrimaryUrl = () => (instanceUrl.trim() ? normalizeInstanceUrl(instanceUrl) : getConfiguredDesktopApiBaseUrl());
 
@@ -164,6 +186,23 @@ export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitti
   const proxyLatency = (value: number | null) =>
     value === null ? t("login.desktopProxyProbeUnavailable") : t("login.desktopProxyProbeLatencyValue", { ms: value });
 
+  const diagnosticsText = error
+    ? [
+        error.message,
+        t("login.diagnosticCode", { code: error.diagnosticCode }),
+        error.rayId ? t("login.cloudflareRayId", { id: error.rayId }) : null,
+        diagnosticsTime ? t("login.diagnosticsTime", { time: diagnosticsTime }) : null,
+        t("login.diagnosticsVersion", { version: `v${__EDGEEVER_APP_VERSION__}` }),
+      ].filter(Boolean).join("\n")
+    : "";
+
+  const handleCopyDiagnostics = async () => {
+    if (await copyTextToClipboard(diagnosticsText)) {
+      setDiagnosticsCopied(true);
+      window.setTimeout(() => setDiagnosticsCopied(false), 2000);
+    }
+  };
+
   return (
     <main className="flex h-[100dvh] items-center justify-center bg-[var(--workspace-canvas)] px-4 py-8 text-slate-950">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgb(var(--brand-green-rgb)/0.045),transparent_42%)]" />
@@ -183,17 +222,44 @@ export const LoginScreen = ({ error, instanceUrl: initialInstanceUrl, isSubmitti
         <form className="space-y-5" onSubmit={handleSubmit}>
           {error ? (
             <div
-              className="rounded-lg border border-rose-100 bg-rose-50/80 px-3.5 py-3 text-rose-800 transition duration-150 animate-shake"
+              className="overflow-hidden rounded-xl border border-rose-200/70 bg-gradient-to-b from-rose-50 to-rose-50/60 text-rose-800 shadow-[0_12px_28px_-18px_rgb(244_63_94/0.4)] animate-shake"
+              key={errorSignature}
               role="alert"
             >
-              <p className="text-sm font-medium leading-6">{error.message}</p>
-              <p className="mt-1 font-mono text-[11px] text-rose-500">
-                {t("login.diagnosticCode", { code: error.diagnosticCode })}
-              </p>
-              {error.rayId ? (
-                <p className="mt-0.5 break-all font-mono text-[11px] text-rose-500">
-                  {t("login.cloudflareRayId", { id: error.rayId })}
-                </p>
+              <div className="flex items-start gap-2.5 px-3.5 py-3">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                  <TriangleAlert className="h-3.5 w-3.5" />
+                </span>
+                <p className="text-sm font-medium leading-6">{error.message}</p>
+              </div>
+              <button
+                aria-expanded={diagnosticsOpen}
+                className="flex w-full items-center gap-1 border-t border-rose-200/60 bg-rose-100/25 px-3.5 py-1.5 text-left text-[11px] font-medium text-rose-400 transition hover:bg-rose-100/50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40"
+                type="button"
+                onClick={() => setDiagnosticsOpen((open) => !open)}
+              >
+                <ChevronDown className={`h-3 w-3 transition-transform ${diagnosticsOpen ? "rotate-180" : ""}`} />
+                {t("login.diagnosticsToggle")}
+              </button>
+              {diagnosticsOpen ? (
+                <div className="animate-in fade-in slide-in-from-top-1 space-y-2 border-t border-rose-200/60 px-3.5 py-2.5 duration-200">
+                  <div className="space-y-0.5 break-all font-mono text-[11px] leading-5 text-rose-600">
+                    <p>{t("login.diagnosticCode", { code: error.diagnosticCode })}</p>
+                    {error.rayId ? <p>{t("login.cloudflareRayId", { id: error.rayId })}</p> : null}
+                    {diagnosticsTime ? <p>{t("login.diagnosticsTime", { time: diagnosticsTime })}</p> : null}
+                    <p>{t("login.diagnosticsVersion", { version: `v${__EDGEEVER_APP_VERSION__}` })}</p>
+                  </div>
+                  <button
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-200 bg-card/80 px-2 text-[11px] font-medium text-rose-600 transition hover:bg-card hover:text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40"
+                    type="button"
+                    onClick={() => {
+                      void handleCopyDiagnostics();
+                    }}
+                  >
+                    {diagnosticsCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {diagnosticsCopied ? t("login.diagnosticsCopied") : t("login.diagnosticsCopy")}
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : null}
