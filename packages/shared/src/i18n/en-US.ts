@@ -4,7 +4,7 @@ import { memoTemplateSeedTranslations } from "../memo-template-seeds";
 export const enUS = {
   memoTasks: {
     matched: "{{count}} matching tasks · context excluded", taskCount: "{{count}} tasks", tasksLabel: "tasks", notesCount: "{{count}} notes", notebooksCount: "{{count}} notebooks",
-    categoryHint: "Selecting a notebook includes its subnotebooks", unfiled: "Unavailable notebook", sourceNotebook: "Source notebook", statusLabel: "Status",
+    categoryHint: "Selecting a notebook includes its subnotebooks", searchNotebook: "Search notebooks or paths…", noNotebookFound: "No matching notebooks", unfiled: "Unavailable notebook", sourceNotebook: "Source notebook", statusLabel: "Status",
     title: "Task overview", inNote: "Tasks in this note", all: "All", pending: "Not started", doing: "In progress", done: "Completed", rejected: "Crossed out",
     description: "Tasks across your notes, with their source and hierarchy intact.", rule: "An unmarked parent is in progress when any descendant is completed or crossed out.",
     automatic: "Auto", search: "Search tasks or notes…", allNotebooks: "All notebooks", loading: "Reading tasks from notes…", loadFailed: "Could not load tasks. Please retry.",

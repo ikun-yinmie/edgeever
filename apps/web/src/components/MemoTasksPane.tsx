@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowUpRight, ChevronDown, FileText, FolderOpen, Info, ListChecks, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, FileText, FolderOpen, Info, ListChecks, RefreshCw, Search } from "lucide-react";
 import { resolveMemoContentDoc, type MemoDetail, type Notebook } from "@edgeever/shared";
 import { Button } from "@/components/ui/button";
 import { MemoTasksLoadingSurface } from "@/components/ui/LoadingSurface";
@@ -33,6 +33,9 @@ export const MemoTasksPane = ({ repository, scope, notebooks, onClose, onNavigat
   const queryKey = useMemo(() => ["memo-tasks", scope], [scope]);
   const query = useQuery({ queryKey, queryFn: ({ signal }) => loadTaskMemos(repository, scope, signal), staleTime: 0 });
   const [filter, setFilter] = useState(initialFilter);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const categorySearchRef = useRef<HTMLInputElement | null>(null);
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => subscribeRepositoryMutations(scope, event => {
@@ -43,6 +46,11 @@ export const MemoTasksPane = ({ repository, scope, notebooks, onClose, onNavigat
     window.addEventListener("edgeever:memo-detail-refreshed", refresh);
     return () => window.removeEventListener("edgeever:memo-detail-refreshed", refresh);
   }, [queryClient, queryKey]);
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const timer = window.setTimeout(() => categorySearchRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [categoryOpen]);
   useEffect(() => {
     const handleRemap = (event: Event) => {
       const mappings = notebookIdMappingsFromEvent(event);
@@ -112,19 +120,51 @@ export const MemoTasksPane = ({ repository, scope, notebooks, onClose, onNavigat
     </button>
     {(previewChildren.get(task.id)?.length ?? 0) > 0 && <div className="ml-3 border-l pl-2">{previewChildren.get(task.id)!.map(preview)}</div>}
   </div>;
-  const categoryPicker = <DropdownMenu>
+  const selectNotebook = (notebookId: string) => {
+    updateFilter({ notebookId });
+    setCategoryOpen(false);
+    setCategoryQuery("");
+  };
+  const filteredNotebookOptions = useMemo(() => {
+    const search = categoryQuery.trim().toLocaleLowerCase();
+    return notebookOptions.filter(option => !search || [option.name, option.path].some(value => value.toLocaleLowerCase().includes(search)));
+  }, [categoryQuery, notebookOptions]);
+  const categoryPicker = <DropdownMenu open={categoryOpen} onOpenChange={open => { setCategoryOpen(open); setCategoryQuery(""); }}>
     <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="h-9 min-w-0 max-w-full gap-2 sm:max-w-64" aria-label={t("memoTasks.allNotebooks")}>
       <FolderOpen className="h-4 w-4 shrink-0 text-primary" /><span className="truncate">{notebookOptions.find(option => option.id === filter.notebookId)?.path ?? t("memoTasks.allNotebooks")}</span><ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
     </Button></DropdownMenuTrigger>
-    <DropdownMenuContent align="start" className="max-h-[min(65dvh,28rem)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto border-border text-foreground">
-      <DropdownMenuLabel className="text-xs text-muted-foreground">{t("memoTasks.categoryHint")}</DropdownMenuLabel>
-      <DropdownMenuSeparator className="bg-border" />
-      <DropdownMenuRadioGroup value={filter.notebookId} onValueChange={notebookId => updateFilter({ notebookId })} aria-label={t("memoTasks.allNotebooks")}>
-        <DropdownMenuRadioItem value="">{t("memoTasks.allNotebooks")}</DropdownMenuRadioItem>
-        {notebookOptions.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} textValue={option.path} aria-label={option.path}>
-          <span className="flex min-w-0 items-start gap-2" style={{ paddingLeft: Math.min(option.depth, 6) * 12 }}><FolderOpen className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block break-words">{option.name}</span>{option.depth > 0 && <span className="block break-words text-[10px] text-muted-foreground">{option.path}</span>}</span></span>
-        </DropdownMenuRadioItem>)}
-      </DropdownMenuRadioGroup>
+    <DropdownMenuContent align="start" className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden border-border p-0 text-foreground">
+      <DropdownMenuLabel className="px-3 py-2 text-xs text-muted-foreground">{t("memoTasks.categoryHint")}</DropdownMenuLabel>
+      <DropdownMenuSeparator className="m-0 bg-border" />
+      <div className="flex h-10 items-center gap-2 border-b border-border px-3">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={categorySearchRef}
+          aria-label={t("memoTasks.searchNotebook")}
+          className="h-full w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          placeholder={t("memoTasks.searchNotebook")}
+          value={categoryQuery}
+          onChange={event => setCategoryQuery(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setCategoryOpen(false);
+              setCategoryQuery("");
+            } else if (event.key.length === 1) event.stopPropagation();
+          }}
+        />
+      </div>
+      <div className="max-h-[min(55dvh,24rem)] overflow-y-auto p-1">
+        <DropdownMenuRadioGroup value={filter.notebookId} onValueChange={selectNotebook} aria-label={t("memoTasks.allNotebooks")}>
+          {(!categoryQuery.trim() || t("memoTasks.allNotebooks").toLocaleLowerCase().includes(categoryQuery.trim().toLocaleLowerCase())) && <DropdownMenuRadioItem value="" textValue={t("memoTasks.allNotebooks")} data-task-notebook-option="all">
+            {t("memoTasks.allNotebooks")}
+          </DropdownMenuRadioItem>}
+          {filteredNotebookOptions.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} textValue={option.path} aria-label={option.path} data-task-notebook-option={option.id}>
+            <span className="flex min-w-0 items-start gap-2" style={{ paddingLeft: Math.min(option.depth, 6) * 12 }}><FolderOpen className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block break-words">{option.name}</span>{option.depth > 0 && <span className="block break-words text-[10px] text-muted-foreground">{option.path}</span>}</span></span>
+          </DropdownMenuRadioItem>)}
+          {filteredNotebookOptions.length === 0 && <div className="px-3 py-6 text-center text-xs text-muted-foreground">{t("memoTasks.noNotebookFound")}</div>}
+        </DropdownMenuRadioGroup>
+      </div>
     </DropdownMenuContent>
   </DropdownMenu>;
   return (
